@@ -6,6 +6,7 @@ import jsonlines
 import json
 import random
 import os
+from tqdm import tqdm
 
 def count_lines(jsonl_file: str) -> int:
     num_lines = 0
@@ -54,14 +55,14 @@ def __write_range(in_file: str,
             fout.write(obj)
 
 
-def shuffle(in_file: str, out_file:str, buffer_size:int = 1000) -> None:
+def shuffle(in_file: str, out_file:str, buffer_size:int = 10000) -> None:
     assert not (in_file == out_file)
     assert not os.path.exists(out_file)
     input_num_lines = count_lines(in_file)
     assignment = list(range(input_num_lines))
     random.shuffle(assignment)
     num_passes = math.ceil(input_num_lines / buffer_size)
-    for pass_num in range(num_passes):
+    for pass_num in tqdm(range(num_passes)):
         start_idx = pass_num * buffer_size
         end_idx = min(start_idx + buffer_size, input_num_lines) 
         __write_range(in_file, out_file, start_idx, end_idx, assignment)
@@ -146,16 +147,7 @@ def test_split(test_file: str) -> None:
 
 
 if __name__ == "__main__":
+    shuffle("data/data-points-partial-split/train-shuffled.jsonl", "bingo-ringo-bongo")
     #shuffle("test_examples.jsonl", "examples-shuffled.jsonl", buffer_size=1000)
-    examples_loc = "test_examples.jsonl"
-    shuffled_loc = "examples-shuffled.jsonl"
-    shuffle(examples_loc, shuffled_loc)
-    split_freqs = {
-        "examples-train.jsonl": 0.8,
-        "examples-val.jsonl": 0.1,
-        "examples-test.jsonl": 0.1,
-    }
-    split(shuffled_loc, split_freqs)
-    #test_shuffle("test_examples.jsonl") 
 
 

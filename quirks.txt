@@ -1,0 +1,16 @@
+
+
+Example of how coq files are currently named:
+===================================================
+* The leading dash is a little funky
+* Some are surrounded by single quotes and some are not
+```
+ -coq-dataset-repos-zunction-Coqy-dtkr-ex3.v
+ -coq-dataset-repos-zunction-Coqy-dtkr-ex4.v
+'-coq-dataset-repos-zunction-Coqy-old version-Basics.v'
+'-coq-dataset-repos-zunction-Coqy-old version-Induction.v'
+```
+
+Size Discrepancy:
+===================
+Uncompressed files when I downloaded the data from drive were 540M but Nuno had the dataset at 12G

@@ -1,2 +1,6 @@
+raw-data
 data
 mypy.ini
+venv
+__pycache__
+
