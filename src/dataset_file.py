@@ -8,6 +8,9 @@ import json
 import pdb
 import re
 
+STEPS_NAME = "steps.jsonl"
+FILE_CONTEXT_NAME = "file_context.jsonl"
+
 class Sentence:
     bad_sentence_endings: set[str] = set()
     def __init__(self, 
@@ -274,8 +277,8 @@ class DatasetFile:
 
     @classmethod
     def from_directory(cls, dir_path: str) -> DatasetFile:
-        file_context_loc = os.path.join(dir_path, "file_context.jsonl")
-        steps_loc = os.path.join(dir_path, "steps.jsonl")
+        file_context_loc = os.path.join(dir_path, FILE_CONTEXT_NAME)
+        steps_loc = os.path.join(dir_path, STEPS_NAME)
         assert os.path.exists(file_context_loc)
         assert os.path.exists(steps_loc)
         

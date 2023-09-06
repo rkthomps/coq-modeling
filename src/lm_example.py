@@ -19,6 +19,9 @@ class LmExample:
             "output": self.output,
         }
 
+    @classmethod
+    def json_from_dataset_file(cls, dataset_file: DatasetFile) -> list[dict[str, str]]:
+        return [example.to_json() for example in cls.from_dataset_file(dataset_file)]
 
     @classmethod
     def from_dataset_file(cls, dataset_file: DatasetFile) -> list[LmExample]:
