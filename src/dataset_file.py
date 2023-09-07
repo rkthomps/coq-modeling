@@ -25,7 +25,7 @@ class Sentence:
         except AssertionError:
             if text.strip() not in self.bad_sentence_endings:
                 self.bad_sentence_endings.add(text.strip())
-                print("Not Sentence:", text.strip())
+                print(f"{file_path}:{line} Not Sentence: {text.strip()}")
         assert type(file_path) == str
         assert all([type(m) == str for m in module])
         assert type(sentence_type) == str
@@ -289,7 +289,7 @@ class DatasetFile:
 
 
 if __name__ == "__main__":
-    TEST_PATH = "/Users/kylethompson/UCSD/llm-difference-descriptions/coq-lsp-mining/res/"
+    TEST_PATH = "raw-data/data-points-partial"
     for dirname in os.listdir(TEST_PATH):
         absolute_dirname = os.path.join(TEST_PATH, dirname)
         obj = DatasetFile.from_directory(absolute_dirname)
