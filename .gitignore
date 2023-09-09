@@ -3,3 +3,6 @@ data
 mypy.ini
 venv
 __pycache__
+.vscode
+*.egg-info
+build

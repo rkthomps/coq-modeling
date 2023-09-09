@@ -6,10 +6,10 @@ import argparse
 import jsonlines
 from tqdm import tqdm
 
-from lm_example import LmExample, BasicLmExample
-from split_raw_data import data_shape_expected, SPLITS
-from jsonl_utils import shuffle
-from dataset_file import DatasetFile
+from data_management.lm_example import LmExample, BasicLmExample
+from data_management.split_raw_data import data_shape_expected, SPLITS
+from data_management.jsonl_utils import shuffle
+from data_management.dataset_file import DatasetFile
 
 EXAMPLE_FORMATS: dict[str, Type[LmExample]] = {
     "basic": BasicLmExample,

@@ -1,9 +1,12 @@
 from __future__ import annotations
+from typing import Any
+
 import sys, os
 import pdb
 import jsonlines
 
-from dataset_file import DatasetFile, FocusedStep, Proof
+from data_management.dataset_file import (
+    DatasetFile, FocusedStep, Proof)
 
 
 class LmExample:
@@ -25,7 +28,14 @@ class LmExample:
 
     @classmethod
     def from_dataset_file(cls, dataset_file: DatasetFile) -> list[LmExample]:
-        raise ValueError("Some concrete subclass must override the LmExample classmethod \"from_dataset_file\".")
+        raise NotImplementedError
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> LmExample:
+        input = json_data["input"]
+        output = json_data["output"]
+        return cls(input, output)
+
 
 
 class BasicLmExample(LmExample):
@@ -50,6 +60,7 @@ class BasicLmExample(LmExample):
             for step in proof.steps:
                 basic_lm_examples.append(cls.__example_from_step(step, proof))
         return basic_lm_examples
+
 
 
 if __name__ == "__main__":

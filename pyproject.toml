@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="coq-modeling"
+version="0.0.1"
+dependencies = [
+    "torch",
+    "transformers",
+    "tqdm",
+    "trl",
+    "peft",
+    "jsonlines",
+    "sentencepiece",
+    "protobuf",
+]
+ 
+[tool.setuptools.packages.find]
+where = ["src"]

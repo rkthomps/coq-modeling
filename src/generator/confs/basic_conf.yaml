@@ -1,0 +1,42 @@
+seed_everything: 1
+trainer:
+  accelerator: gpu
+  devices: 1
+  precision: ??? 
+  strategy: 
+    class_path: pytorch_lightning.strategies.DeepSpeedStrategy
+    init_args:
+      stage: 2
+      offload_optimizer: False
+      cpu_checkpointing: False
+  gradient_clip_val: 1.0
+  max_steps: 10000
+  check_val_every_n_epoch: 2
+  num_sanity_val_steps: 0
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args: 
+        verbose: true
+        save_top_k: 1
+        save_last: true
+        monitor: ???
+        mode: ???
+    - class_path: pytorch_lightning.callbacks.EarlyStopping
+      init_args:
+        monitor: ??? 
+        patience: 3
+        mode: ??? 
+        verbose: true
+
+model: 
+  model_name: google/byt5-small
+  lr: 5e-4
+  warmup_steps: 2000
+
+data:
+  data_path: data/data-points-partial-split
+  model_name: google/byt5-small
+  batch_size: ???
+  eval_batch_size: ???
+  max_seq_len: ???
+  

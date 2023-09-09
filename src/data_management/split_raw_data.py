@@ -5,7 +5,7 @@ import random
 import shutil
 from tqdm import tqdm
 
-from dataset_file import STEPS_NAME, FILE_CONTEXT_NAME
+from data_management.dataset_file import STEPS_NAME, FILE_CONTEXT_NAME
 
 TRAIN_NAME = "train"
 VAL_NAME = "val"
