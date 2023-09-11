@@ -8,7 +8,7 @@ Language models for Coq based on data collected from the coq lsp.
 ## Dowloading and Partitioning Data
 - Download ~40% of coq data scraped from GitHub [here](https://drive.google.com/file/d/17b85sftlgmQxqxFXZ7JPUOAfazaTROUw/view?usp=sharing). For purposes of this document, assume the raw data is downloaded to "/raw/data/location"
 - Partition the raw data into training, validation and testing with\
-  `python3 src/data_management/split_raw_data.py --assignment partial-assignment.json /raw/data/location`.\
+  `python3 src/data_management/split_raw_data.py --assignment assignment.json /raw/data/location`.\
   Alternatively, you can create your own splits with\
   `python3 src/data_management/split_raw_data.py --train_prop 0.8 --val_prop 0.1 --test_prop 0.1 /raw/data/location`.
 - After running this script, there should be a new directory called "/raw/data/location-split" containing the subdirectories "train", "val", "test". 
