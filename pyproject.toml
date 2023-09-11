@@ -15,6 +15,7 @@ dependencies = [
     "sentencepiece",
     "protobuf",
     "matplotlib",
+    "bitsandbytes",
 ]
  
 [tool.setuptools.packages.find]
