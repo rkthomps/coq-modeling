@@ -16,6 +16,7 @@ dependencies = [
     "protobuf",
     "matplotlib",
     "bitsandbytes",
+    "scipy",
 ]
  
 [tool.setuptools.packages.find]
