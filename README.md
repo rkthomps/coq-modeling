@@ -2,8 +2,7 @@
 Language models for Coq based on data collected from the coq lsp. 
 
 ## Setup
-- **Install Requirements:** Install project requirements via `python3 -m pip install -r requirements.txt` from the root of the project directory. 
-- **Add Project to Environment** Run `pip3 install --editable .`
+- **Install Project:** Change to project directory and run `python3 -m pip install --editable .`
 
 ## Dowloading and Partitioning Data
 - Download ~40% of coq data scraped from GitHub [here](https://drive.google.com/file/d/17b85sftlgmQxqxFXZ7JPUOAfazaTROUw/view?usp=sharing). For purposes of this document, assume the raw data is downloaded to "/raw/data/location"
