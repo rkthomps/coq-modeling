@@ -14,6 +14,7 @@ dependencies = [
     "jsonlines",
     "sentencepiece",
     "protobuf",
+    "matplotlib",
 ]
  
 [tool.setuptools.packages.find]
