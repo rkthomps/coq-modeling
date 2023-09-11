@@ -75,7 +75,7 @@ response_template = " <TACTIC>"
 def formatting_examples_func(examples: list[LmExample]) -> list[str]: 
     output_strs: list[str] = []
     for example in examples:
-        collated_str = f"{example.input}\n{response_template}{example.output}"
+        collated_str = f"{example.input}\n{response_template} {example.output}"
         output_strs.append(collated_str) 
     return output_strs
 
