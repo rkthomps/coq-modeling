@@ -17,6 +17,7 @@ dependencies = [
     "matplotlib",
     "bitsandbytes",
     "scipy",
+    "pyyaml",
 ]
  
 [tool.setuptools.packages.find]

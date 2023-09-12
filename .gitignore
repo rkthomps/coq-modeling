@@ -7,3 +7,5 @@ __pycache__
 *.egg-info
 build
 models
+src/tactic_gen/confs/**
+!src/tactic_gen/confs/basic_train.yaml
