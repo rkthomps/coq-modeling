@@ -19,6 +19,7 @@ dependencies = [
     "scipy",
     "pyyaml",
     "flask",
+    "pytest",
 ]
  
 [tool.setuptools.packages.find]

@@ -1,5 +1,5 @@
-Require Import List.
-Require Import Nat.
+Require Import Coq.Lists.List.
+Require Import Coq.Init.Nat.
 
 Fixpoint min (l : (list nat)) : option nat := 
     match l with
