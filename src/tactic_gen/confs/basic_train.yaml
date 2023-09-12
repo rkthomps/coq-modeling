@@ -1,0 +1,22 @@
+# File Paths
+data_path: "/home/ubuntu/coq-modeling/data/data-points"
+model_name: "codellama/CodeLlama-7b-hf"
+output_dir: "/home/ubuntu/coq-modeling/models/codellama-7b-hf-test" 
+
+# Training Args
+max_seq_len: 512
+per_device_train_batch_size: 4
+learning_rate: 1.41e-5
+num_train_epochs: 1
+peft_lora_r: 64
+peft_lora_alpha: 16
+
+# Evaluation Args
+evaluation_strategy: "steps"
+eval_steps: 500
+
+# Logging Args
+logging_steps: 1 
+save_steps: 100
+save_total_limit: 5
+
