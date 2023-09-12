@@ -2,10 +2,9 @@ raw-data
 data
 mypy.ini
 venv
-__pycache__
-.vscode
 *.egg-info
 build
 models
+__pycache__
 src/tactic_gen/confs/**
-!src/tactic_gen/confs/basic_train.yaml
+!src/tactic_gen/confs/codellama_basic.yaml
