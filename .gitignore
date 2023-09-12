@@ -1,10 +1,18 @@
+# Data and model locations
 raw-data
 data
-mypy.ini
+models
+
+# Config files
+src/tactic_gen/confs/**
+!src/tactic_gen/confs/codellama_basic.yaml
+
+# Python files
 venv
 *.egg-info
 build
-models
 __pycache__
-src/tactic_gen/confs/**
-!src/tactic_gen/confs/codellama_basic.yaml
+
+# IDE files
+mypy.ini
+.vscode

@@ -27,7 +27,7 @@ from data_management.split_raw_data import TRAIN_NAME, VAL_NAME
 # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments
 
 
-def __load_config(path: str) -> dict[str, Any]:
+def load_config(path: str) -> dict[str, Any]:
     with open(path, "r") as fin:
         conf = load(fin, Loader=Loader)
     assert type(conf) == dict
@@ -136,6 +136,9 @@ def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
 RESPONSE_TEMPLATE = "<TACTIC>"
 NEWLINE_RESPONSE_TEMPLATE = f"\n{RESPONSE_TEMPLATE}\n"
 
+def collate_input(input: str) -> str:
+    return "f{input}{NEWLINE_RESPONSE_TEMPLATE}"
+
 def formatting_examples_func(examples: dict[str, list[str]]) -> list[str]: 
     """NOTE: THE TYPE ANNOTATION FOR EXAMPLES MAY NOT BE EXACTLY RIGHT BUT
        MATCHES MY MENTAL MODEL OF THE DATA STRUCTURE"""
@@ -143,7 +146,8 @@ def formatting_examples_func(examples: dict[str, list[str]]) -> list[str]:
     for i in range(len(examples["input"])):
         example_in = examples["input"][i]
         example_out = examples["output"][i]
-        collated_str = f"{example_in}{NEWLINE_RESPONSE_TEMPLATE}{example_out}"
+        collated_input = collate_input(example_in)
+        collated_str = f"{collated_input}{example_out}"
         output_strs.append(collated_str) 
     return output_strs
 
@@ -183,7 +187,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train code llama by providing a .yaml config file. As an example, see src/tactic_gen/confs/basic_train.yaml")
     parser.add_argument("yaml_config", help="yaml config file to use for training.")
     args = parser.parse_args(sys.argv[1:])
-    conf = __load_config(args.yaml_config)
+    conf = load_config(args.yaml_config)
     __copy_config(args.yaml_config, conf)
     trainer = get_trainer(conf)
     trainer.train()

@@ -18,6 +18,7 @@ dependencies = [
     "bitsandbytes",
     "scipy",
     "pyyaml",
+    "flask",
 ]
  
 [tool.setuptools.packages.find]
