@@ -26,6 +26,23 @@ from data_management.split_raw_data import TRAIN_NAME, VAL_NAME
 # More ideas for arguments here: 
 # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments
 
+
+def __load_config(path: str) -> dict[str, Any]:
+    with open(path, "r") as fin:
+        conf = load(fin, Loader=Loader)
+    assert type(conf) == dict
+    assert all(type(s) == str for s in conf.keys())
+    return conf
+
+CONF_NAME = "training_conf.yaml"
+def __copy_config(conf_path: str, conf: dict[str, Any]) -> None:
+    output_dir = __get_required_arg("output_dir", conf)
+    if os.path.exists(output_dir):
+        print(f"{output_dir} already exists.")
+        exit(1)
+    os.makedirs(output_dir)
+    shutil.copy(conf_path, os.path.join(output_dir, CONF_NAME))
+
 def __get_required_arg(key: str, conf: dict[str, Any]) -> Any:
     if key not in conf:
         print(f"{key} is a required field in the configuration file.")
@@ -134,17 +151,22 @@ def formatting_examples_func(examples: dict[str, list[str]]) -> list[str]:
 def get_trainer(conf: dict[str, Any]) -> SFTTrainer:
     max_seq_len = __get_required_arg("max_seq_len", conf)
 
+    print("\n\nBuilding Training Config...")
     training_args = get_training_args(conf)
+    print("\n\nRetrieving Model...")
     model = get_model(conf)
+    print("\n\nRetrieving Tokenizer...")
     tokenizer = get_tokenizer(conf)
     peft_config = get_peft_conf(conf)
 
+    print("\n\nConstructing Dataset...")
     train_dataset, val_dataset = get_datasets(conf)
 
     response_template_ids = tokenizer.encode(NEWLINE_RESPONSE_TEMPLATE)[2:-1]
     collator = DataCollatorForCompletionOnlyLM(
         response_template_ids, tokenizer=tokenizer)
 
+    print("\n\nBuilding Trainer...")
     return SFTTrainer(
         model=model,
         args=training_args,
@@ -157,19 +179,12 @@ def get_trainer(conf: dict[str, Any]) -> SFTTrainer:
         tokenizer=tokenizer,
     )
 
-CONF_NAME = "training_conf.yaml"
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train code llama by providing a .yaml config file. As an example, see src/tactic_gen/confs/basic_train.yaml")
     parser.add_argument("yaml_config", help="yaml config file to use for training.")
     args = parser.parse_args(sys.argv[1:])
-    with open(args.yaml_config, "r") as fin:
-        conf = load(fin, Loader=Loader)
-    output_dir = __get_required_arg("output_dir", conf)
-    if os.path.exists(output_dir):
-        print(f"{output_dir} already exists.")
-        exit(1)
-    os.makedirs(output_dir)
-    shutil.copy(args.yaml_config, os.path.join(output_dir, CONF_NAME))
+    conf = __load_config(args.yaml_config)
+    __copy_config(args.yaml_config, conf)
     trainer = get_trainer(conf)
     trainer.train()
 
