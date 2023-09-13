@@ -168,7 +168,7 @@ class FocusedStep:
         return hash((self.term, self.step.text, self.n_step))
 
     def __eq__(self, other: object) -> bool: 
-        if not isinstance(object, FocusedStep):
+        if not isinstance(other, FocusedStep):
             return False
         return hash(self) == hash(other)
 

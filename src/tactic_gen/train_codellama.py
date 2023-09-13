@@ -14,6 +14,8 @@ from transformers import (
     BitsAndBytesConfig, TrainingArguments)
 import torch
 from datasets import Dataset
+from evaluate import EvaluationModule
+import numpy as np 
 
 from data_management.lm_example import LmExample
 from data_management.create_lm_dataset import split_file_path
@@ -79,6 +81,10 @@ def get_training_args(conf: dict[str, Any]) -> TrainingArguments:
         evaluation_strategy = "steps",
         eval_steps = __get_required_arg(
             "eval_steps", conf),
+        per_device_eval_batch_size = __get_required_arg(
+            "per_device_eval_batch_size", conf),
+        eval_accumulation_steps= __get_optional_arg(
+            "eval_accumulation_steps", conf, 1)
         )
 
 def get_peft_conf(conf: dict[str, Any]) -> LoraConfig:
@@ -99,22 +105,29 @@ def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
     return model
 
 
-def dataset_gen(dataset_path: str, split: str) -> Iterable[dict[str, str]]:
+def dataset_gen(dataset_path: str, split: str, limit: int) -> Iterable[dict[str, str]]:
     file_path = split_file_path(dataset_path, split)
     with jsonlines.open(file_path, "r") as fin:
+        num_examples = 0
         for obj in fin:
+            if limit > 0 and num_examples >= limit:
+                break
             yield obj 
+            num_examples += 1
 
 
 def get_datasets(conf: dict[str, Any]) -> tuple[Dataset, Dataset]:
     data_path = __get_required_arg("data_path", conf)
+    num_eval_examples = __get_optional_arg("num_eval_examples", conf, -1)
     train_kwargs = {
         "dataset_path": data_path,
         "split": TRAIN_NAME,
+        "limit": -1,
     }
     val_kwargs = {
         "dataset_path": data_path,
         "split": VAL_NAME,
+        "limit": num_eval_examples,
     }
     train_dataset = Dataset.from_generator(dataset_gen, gen_kwargs=train_kwargs)
     val_dataset = Dataset.from_generator(dataset_gen, gen_kwargs=val_kwargs)

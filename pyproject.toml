@@ -20,6 +20,8 @@ dependencies = [
     "pyyaml",
     "flask",
     "pytest",
+    "evaluate",
+    "numpy",
 ]
  
 [tool.setuptools.packages.find]

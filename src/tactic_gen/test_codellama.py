@@ -3,6 +3,7 @@ from typing import Any
 import sys, os
 import requests
 import json
+import pdb
 
 import jsonlines
 
@@ -33,31 +34,39 @@ def get_context(context: list[Term]) -> list[dict[str, Any]]:
     return res
 
 
-def get_last_step_data_point(proof: ProofTerm) -> Any:
-    step = proof.steps[-1]
-    goals = list(map(lambda goal: repr(goal), step.goals.goals.goals))
-    data_point = {
-        "term": {
-            "text": proof.text,
-            "file_path": proc_file_path(proof.file_path),
-            "module": proof.module,
-            "type": str(proof.type),
-            "line": proof.ast.range.start.line,
-            "context": get_context(proof.context)
-        },
-        "step": {
-            "text": step.text,
-            "context": get_context(step.context)
-        },
-        "n_step": len(proof.steps),
-        "goals": goals,
-        "next_steps": []
-    }
-    return data_point 
+def get_last_proof_data_points(proof: ProofTerm) -> Any:
+    data_points = []
+    for i, step in enumerate(proof.steps):
+        goals = list(map(lambda goal: repr(goal), step.goals.goals.goals))
+        data_point = {
+            "term": {
+                "text": proof.text,
+                "file_path": proc_file_path(proof.file_path),
+                "module": proof.module,
+                "type": str(proof.type),
+                "line": proof.ast.range.start.line,
+                "context": get_context(proof.context)
+            },
+            "step": {
+                "text": step.text,
+                "context": get_context(step.context)
+            },
+            "n_step": i + 1,
+            "goals": goals,
+            "next_steps": []
+        }
+        for next_step in proof.steps[i + 1:]:
+            data_point["next_steps"].append({
+                "text": next_step.text,
+                "context": get_context(next_step.context)
+            })
+        data_points.append(data_point)
+    return data_points
+
 
 def update_search_dir(search_dir: str, 
                       last_proof: ProofTerm, 
-                      proof_step_data: Any, 
+                      last_proof_data: Any, 
                       context_data: Any) -> None:
     steps_loc = os.path.join(search_dir, STEPS_NAME)
     context_loc = os.path.join(search_dir, FILE_CONTEXT_NAME)
@@ -69,7 +78,7 @@ def update_search_dir(search_dir: str,
         os.remove(context_loc)
 
     with jsonlines.open(steps_loc, "w") as fout:
-        fout.write_all([proof_step_data])
+        fout.write_all(last_proof_data)
     with jsonlines.open(context_loc, "w") as fout:
         fout.write_all([{
             "file": proc_file_path(last_proof.file_path),
@@ -94,18 +103,19 @@ with CoqFile(EXAMPLE_LOC, timeout=TIMEOUT) as coq_file:
         assert len(last_proof.steps) > 0
         last_step = last_proof.steps[-1]
         assert "Admitted" in last_step.text
-        proof_step_data = get_last_step_data_point(last_proof)
-        update_search_dir(SEARCH_DIR, last_proof, proof_step_data, context_data)
+        last_proof_data = get_last_proof_data_points(last_proof)
+        update_search_dir(SEARCH_DIR, last_proof, last_proof_data, context_data)
         dataset_obj = DatasetFile.from_directory(SEARCH_DIR)
         examples = BasicLmExample.from_dataset_file(dataset_obj)
-        assert len(examples) == 1
-        example = examples[0]
-        print("input:", example.input)
-        print("output:", example.output)
+        example = examples[-1]
+        
+        print(f"Input:\n------------\n{example.input}")
+        print(f"Output:\n-------------\n{example.output}")
         request_data = example.to_json()
         model_response = requests.post(SERVER_URL, request_data)
         response_dic = json.loads(model_response.content)
-        print(response_dic["output"])
+        output = response_dic["output"] 
+        print(f"Response:\n-------------\n{output}")
 
 
 

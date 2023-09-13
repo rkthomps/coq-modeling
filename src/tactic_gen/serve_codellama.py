@@ -14,8 +14,8 @@ from tactic_gen.train_codellama import (collate_input, CONF_NAME, load_config,
 
 app = Flask(__name__) 
 
-MODEL_LOC = "/home/ubuntu/coq-modeling/models/codellama-7b-hf-test"
-CHECKPOINT_NUM = 1100
+MODEL_LOC = "/home/ubuntu/coq-modeling/models/codellama-freq-eval"
+CHECKPOINT_NUM = 426 
 
 model_path = os.path.join(MODEL_LOC, f"checkpoint-{CHECKPOINT_NUM}")
 model_conf = load_config(os.path.join(MODEL_LOC, CONF_NAME))
@@ -32,11 +32,17 @@ device = "cuda"
 def codellama() -> str:
     example = LmExample.from_json(request.form)
     collated_in = collate_input(example.input)
-    inputs = tokenizer.encode(collated_in, return_tensors="pt").to(device)
-    outputs = model.generate(inputs)
-    pretty_out = tokenizer.decode(outputs[0])
+
+    input_ids = tokenizer(collated_in, return_tensors="pt")["input_ids"].to("cuda")
+    output = model.generate(
+        input_ids,
+        max_new_tokens=200,
+    )
+    output = output[0].to("cpu")
+
+    only_output = tokenizer.decode(output[input_ids.shape[1]:], skip_special_tokens=True)
     response = {
-        "output": pretty_out
+        "output": only_output 
     }
     return json.dumps(response, indent=2)
 
