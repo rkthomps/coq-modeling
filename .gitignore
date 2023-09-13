@@ -16,3 +16,6 @@ __pycache__
 # IDE files
 mypy.ini
 .vscode
+
+# Proof search files
+.proof-search

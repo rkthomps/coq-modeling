@@ -262,6 +262,8 @@ class DatasetFile:
         seen_terms: set[Term] = set() 
         cur_term = steps[0].term
         seen_terms.add(cur_term)
+        cur_proof_steps.append(steps[0])
+
         for step in steps[1:]:
             if step.term == cur_term:
                 cur_proof_steps.append(step)
@@ -271,7 +273,8 @@ class DatasetFile:
             assert step.term not in seen_terms
             seen_terms.add(step.term)
             cur_term = step.term
-            cur_proof_steps = []
+            cur_proof_steps = [step]
+        proofs.append(Proof(cur_term, cur_proof_steps))
         return proofs
 
 
