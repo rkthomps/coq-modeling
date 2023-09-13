@@ -1,6 +1,8 @@
 
 from typing import Any 
 import sys, os
+import requests
+import json
 
 import jsonlines
 
@@ -78,6 +80,8 @@ SEARCH_DIR = ".proof-search"
 EXAMPLE_LOC = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
 TIMEOUT = 60
 
+SERVER_URL = "http://127.0.0.1:5000/codellama"
+
 # Assume the proof is "stuck on the last step of the last proof."
 with CoqFile(EXAMPLE_LOC, timeout=TIMEOUT) as coq_file:
     with ProofState(coq_file) as proof_state:
@@ -98,6 +102,10 @@ with CoqFile(EXAMPLE_LOC, timeout=TIMEOUT) as coq_file:
         example = examples[0]
         print("input:", example.input)
         print("output:", example.output)
+        request_data = example.to_json()
+        model_response = requests.post(SERVER_URL, request_data)
+        response_dic = json.loads(model_response.content)
+        print(response_dic["output"])
 
 
 

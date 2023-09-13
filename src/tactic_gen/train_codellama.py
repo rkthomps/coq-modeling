@@ -136,8 +136,10 @@ def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
 RESPONSE_TEMPLATE = "<TACTIC>"
 NEWLINE_RESPONSE_TEMPLATE = f"\n{RESPONSE_TEMPLATE}\n"
 
+
 def collate_input(input: str) -> str:
-    return "f{input}{NEWLINE_RESPONSE_TEMPLATE}"
+    return f"{input}{NEWLINE_RESPONSE_TEMPLATE}"
+
 
 def formatting_examples_func(examples: dict[str, list[str]]) -> list[str]: 
     """NOTE: THE TYPE ANNOTATION FOR EXAMPLES MAY NOT BE EXACTLY RIGHT BUT

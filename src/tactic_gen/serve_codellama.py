@@ -14,12 +14,15 @@ from tactic_gen.train_codellama import (collate_input, CONF_NAME, load_config,
 
 app = Flask(__name__) 
 
-MODEL_LOC = "/home/ubuntu/coq-modeling/models/codellama-7b-hf-test/checkpoint-1100"
+MODEL_LOC = "/home/ubuntu/coq-modeling/models/codellama-7b-hf-test"
+CHECKPOINT_NUM = 1100
+
+model_path = os.path.join(MODEL_LOC, f"checkpoint-{CHECKPOINT_NUM}")
 model_conf = load_config(os.path.join(MODEL_LOC, CONF_NAME))
 
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 model = LlamaForCausalLM.from_pretrained(
-    MODEL_LOC, quantization_config=quantization_config
+    model_path, quantization_config=quantization_config
 )
 tokenizer = get_tokenizer(model_conf) 
 device = "cuda" 
