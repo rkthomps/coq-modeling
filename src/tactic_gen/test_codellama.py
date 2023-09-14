@@ -15,7 +15,6 @@ from data_management.dataset_file import STEPS_NAME, FILE_CONTEXT_NAME, DatasetF
 from data_management.lm_example import LmExample, BasicLmExample
 
 
-
 def proc_file_path(file_path: str) -> str:
     if file_path.startswith("/home"):
         return "/".join(file_path.split("/")[3:])

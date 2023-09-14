@@ -77,7 +77,7 @@ def parse_train_longs(json_list: list[Any]) -> list[TrainLog]:
 
 def parse_eval_logs(json_list: list[Any]) -> list[EvalLog]:
     assert type(json_list) == list
-    eval_logs: list[TrainLog] = []
+    eval_logs: list[EvalLog] = []
     for entry in json_list:
         log = parse_log_entry(entry)
         if isinstance(log, EvalLog):
