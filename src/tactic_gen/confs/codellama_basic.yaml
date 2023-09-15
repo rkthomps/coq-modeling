@@ -5,6 +5,7 @@ output_dir: "/home/ubuntu/coq-modeling/models/codellama-7b-basic"
 
 # Training Args
 max_seq_len: 512
+max_input_len: 448 
 per_device_train_batch_size: 4
 learning_rate: 1.0e-4 
 num_train_epochs: 1

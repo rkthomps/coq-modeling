@@ -85,7 +85,7 @@ def update_search_dir(search_dir: str,
     
 
 SEARCH_DIR = ".proof-search"
-EXAMPLE_LOC = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
+EXAMPLE_LOC = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 TIMEOUT = 60
 
 SERVER_URL = "http://127.0.0.1:5000/codellama"
@@ -108,13 +108,12 @@ with CoqFile(EXAMPLE_LOC, timeout=TIMEOUT) as coq_file:
         examples = BasicLmExample.from_dataset_file(dataset_obj)
         example = examples[-1]
         
-        print(f"Input:\n------------\n{example.input}")
-        print(f"Output:\n-------------\n{example.output}")
         request_data = example.to_json()
         model_response = requests.post(SERVER_URL, request_data)
         response_dic = json.loads(model_response.content)
-        output = response_dic["output"] 
-        print(f"Response:\n-------------\n{output}")
+        model_in = response_dic["input"]
+        model_out = response_dic["output"]
+        print(f"Input:\n----------{model_in}\n\nOutput:\n------------{model_out}")
 
 
 

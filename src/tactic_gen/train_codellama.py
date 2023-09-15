@@ -4,6 +4,7 @@ import sys, os
 import shutil
 import re
 import argparse
+import functools
 
 from yaml import load, Loader
 import jsonlines
@@ -115,6 +116,51 @@ def dataset_gen(dataset_path: str, split: str, limit: int) -> Iterable[dict[str,
             yield obj 
             num_examples += 1
 
+# FROM HERE: https://huggingface.co/docs/trl/sft_trainer#train-on-completions-only
+RESPONSE_TEMPLATE = "<TACTIC>"
+NEWLINE_RESPONSE_TEMPLATE = f"\n{RESPONSE_TEMPLATE}\n"
+
+
+def collate_input(tokenizer: CodeLlamaTokenizer, max_input_len: int, input: str) -> str:
+    whole_input_string = f"{input}{NEWLINE_RESPONSE_TEMPLATE}"
+    input_suffix = tokenizer.tokenize(whole_input_string)[(-1 * max_input_len):]
+    ret_str = tokenizer.convert_tokens_to_string(input_suffix)
+    assert type(ret_str) == str
+    return ret_str 
+
+
+# def formatting_examples_func(tokenizer: CodeLlamaTokenizer,
+#                              max_input_len: int, 
+#                              examples: dict[str, list[str]]) -> list[str]: 
+#     """NOTE: THE TYPE ANNOTATION FOR EXAMPLES MAY NOT BE EXACTLY RIGHT BUT
+#        MATCHES MY MENTAL MODEL OF THE DATA STRUCTURE"""
+#     output_strs: list[str] = []
+#     for i in range(len(examples["input"])):
+#         example_in = examples["input"][i]
+#         example_out = examples["output"][i]
+#         collated_input = collate_input(tokenizer, max_input_len, example_in)
+#         collated_str = f"{collated_input}{example_out}"
+#         output_strs.append(collated_str) 
+#     return output_strs
+
+
+def formatting_examples_func(examples: dict[str, list[str]], **kwargs: Any) -> list[str]: 
+    """NOTE: THE TYPE ANNOTATION FOR EXAMPLES MAY NOT BE EXACTLY RIGHT BUT
+       MATCHES MY MENTAL MODEL OF THE DATA STRUCTURE"""
+    assert "tokenizer" in kwargs
+    assert "max_input_len" in kwargs
+    tokenizer = kwargs["tokenizer"]
+    max_input_len = kwargs["max_input_len"]
+    output_strs: list[str] = []
+    for i in range(len(examples["input"])):
+        example_in = examples["input"][i]
+        example_out = examples["output"][i]
+        collated_input = collate_input(tokenizer, max_input_len, example_in)
+        collated_str = f"{collated_input}{example_out}"
+        output_strs.append(collated_str) 
+    return output_strs
+
+
 
 def get_datasets(conf: dict[str, Any]) -> tuple[Dataset, Dataset]:
     data_path = __get_required_arg("data_path", conf)
@@ -137,38 +183,26 @@ def get_datasets(conf: dict[str, Any]) -> tuple[Dataset, Dataset]:
 def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
     model_name = __get_required_arg("model_name", conf)
     seq_len = __get_required_arg("max_seq_len", conf)
-    tokenizer = CodeLlamaTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "left"
-    tokenizer.truncation_side = "left"
+    tokenizer: CodeLlamaTokenizer = CodeLlamaTokenizer.from_pretrained(model_name)
+    tokenizer.add_eos_token = True
+    
+    pad_token = "<PRE>" 
+    encoded_ids = tokenizer.encode(pad_token)
+    assert len(encoded_ids) == 3
+    assert encoded_ids[0] == tokenizer.bos_token_id
+    assert encoded_ids[2] == tokenizer.eos_token_id
+
+    tokenizer.pad_token = pad_token
+    tokenizer.pad_token_id = encoded_ids[1] 
+    tokenizer.padding_side = "right"
+    tokenizer.truncation_side = "right"
     tokenizer.model_max_length = seq_len 
     return tokenizer
 
 
-# FROM HERE: https://huggingface.co/docs/trl/sft_trainer#train-on-completions-only
-RESPONSE_TEMPLATE = "<TACTIC>"
-NEWLINE_RESPONSE_TEMPLATE = f"\n{RESPONSE_TEMPLATE}\n"
-
-
-def collate_input(input: str) -> str:
-    return f"{input}{NEWLINE_RESPONSE_TEMPLATE}"
-
-
-def formatting_examples_func(examples: dict[str, list[str]]) -> list[str]: 
-    """NOTE: THE TYPE ANNOTATION FOR EXAMPLES MAY NOT BE EXACTLY RIGHT BUT
-       MATCHES MY MENTAL MODEL OF THE DATA STRUCTURE"""
-    output_strs: list[str] = []
-    for i in range(len(examples["input"])):
-        example_in = examples["input"][i]
-        example_out = examples["output"][i]
-        collated_input = collate_input(example_in)
-        collated_str = f"{collated_input}{example_out}"
-        output_strs.append(collated_str) 
-    return output_strs
-
-
 def get_trainer(conf: dict[str, Any]) -> SFTTrainer:
     max_seq_len = __get_required_arg("max_seq_len", conf)
+    max_input_len = __get_required_arg("max_input_len", conf)
 
     print("\n\nBuilding Training Config...")
     training_args = get_training_args(conf)
@@ -185,6 +219,10 @@ def get_trainer(conf: dict[str, Any]) -> SFTTrainer:
     collator = DataCollatorForCompletionOnlyLM(
         response_template_ids, tokenizer=tokenizer)
 
+    formatting_func = functools.partial(formatting_examples_func, 
+                                        tokenizer=tokenizer,
+                                        max_input_len=max_input_len)
+
     print("\n\nBuilding Trainer...")
     return SFTTrainer(
         model=model,
@@ -192,7 +230,7 @@ def get_trainer(conf: dict[str, Any]) -> SFTTrainer:
         max_seq_length=max_seq_len,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        formatting_func=formatting_examples_func,
+        formatting_func=formatting_func,
         data_collator=collator,
         peft_config=peft_config,
         tokenizer=tokenizer,
