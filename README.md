@@ -21,5 +21,6 @@ Once you have composed your LmExample subclass, you can use the file [create_lm_
   `python3 src/data_management/create_lm_dataset.py /raw/data/location-split /processed/data/location basic`. As a result, you should see a new directory named "/processed/data/location" with the files "train-shuffled.jsonl", "val-shuffled.jsonl", and "test-shuffled.jsonl". Each line of one of the .jsonl files represents one example. The examples are shuffled within their respective splits.
 
 ## Finetuning Code Llama
-To finetune Code Llama, you can use either the notebook [train_code_llama.ipynb](notebooks/tactic_gen/train_code_llama.ipynb) or the script [train.py](src/tactic_gen/train.py). In either case, you will need to modify the `DATA_PATH` variable to reflect the location of "/processed/data/location". You will also need to set the value of `OUTPUT_LOC` to the location where you want checkpoints to be saved. 
-  
+To finetune Code Llama, you can run\
+`CUDA_VISIBLE_DEVICES=0 python3 train_codellama.py src/tactic_gen/confs/codellama_basic.yaml`.\
+The value of `CUDA_VISIBLE_DEVICES` indicates the machine to be used for training. Currently, only single-gpu training is supported. You can configure the training by providing a .yaml config file. The file [codellama_basic.yaml](src/tactic_gen/confs/codellama_basic.yaml) is an example. 
