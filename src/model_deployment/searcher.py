@@ -10,6 +10,7 @@ import jsonlines
 
 from data_management.lm_example import LmExample 
 from data_management.dataset_file import STEPS_NAME, FILE_CONTEXT_NAME, DatasetFile
+from model_deployment.model_wrapper import ModelWrapper, ModelResult, NodeScore
 
 from coqlspclient.coq_file import CoqFile
 from coqlspclient.proof_state import ProofState, ProofTerm
@@ -85,7 +86,7 @@ def __get_last_proof_data_points(proof: ProofTerm) -> Any:
 class ProofSearchTree:
     def __init__(self, valid: bool):
         self.valid = valid
-        self.score = 0
+        self.score = 0 
         scores: list[float] = []
         tactics: list[str] = []
         children: list[ProofSearchTree] = []
