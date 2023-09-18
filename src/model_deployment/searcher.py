@@ -4,7 +4,6 @@ from typing import Optional, Type, Any
 from enum import Enum
 import heapq 
 import time
-from treelib import Node, Tree
 
 import sys, os
 import shutil
@@ -108,7 +107,7 @@ class ProofSearchTree:
     def pretty_print(self, start_marker: str="", indent: str="") -> None:
         start = indent + start_marker + (self.sideways_bar * 2) + " "
         clean_tactic = self.__clean_tactic(self.tactic)
-        clean_score = "{:5.3f}".format(self.score.compute())
+        clean_score = "{:7.6f}".format(self.score.compute())
         message = f"{start}{clean_score} {clean_tactic}"
         if not self.valid:
             message = colored(message, "red")
@@ -189,7 +188,7 @@ class SearchTreeManager:
         result = self.model_wrapper.get_recs(example, self.max_branch)
         children: list[ProofSearchTree] = []
         for tactic, score in zip(result.next_tactic_list, result.score_list):
-            proof_script = leaf_subtree.combined_tactics + tactic
+            proof_script = leaf_subtree.combined_tactics + " " + tactic
             tactic_result = self.proof_manager.check_proof(proof_script) 
             if tactic_result == TacticResult.COMPLETE:
                 valid = True

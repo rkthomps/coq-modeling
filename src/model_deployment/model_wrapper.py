@@ -14,6 +14,9 @@ class NodeScore:
     def __le__(self, other: NodeScore) -> bool:
         return self.compute() <= other.compute()
 
+    def __lt__(self, other: NodeScore) -> bool:
+        return self.compute() < other.compute()
+
     def agg(self, other: NodeScore) -> NodeScore:
         raise NotImplementedError
 
@@ -90,7 +93,7 @@ class CodeLLamaServer(ModelWrapper):
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
         request_data = example.to_json()
         request_data["n"] = n
-        response = requests.post(self.server_url, example.to_json())
+        response = requests.post(self.server_url, request_data)
         response_data = json.loads(response.content)
         next_tactic_list = response_data["tactics"]
         score_list = response_data["scores"]

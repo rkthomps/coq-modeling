@@ -5,7 +5,7 @@ import json
 from flask import Flask, request
 from transformers import (LlamaForCausalLM, CodeLlamaTokenizer,
                           BitsAndBytesConfig)
-from transformers.generation.utils import BeamSampleDecoderOnlyOutput
+from transformers.generation.utils import BeamSearchDecoderOnlyOutput 
 import torch
 
 from data_management.lm_example import LmExample 
@@ -33,7 +33,7 @@ device = "cuda"
 
 @app.route("/codellama", methods=["POST"])
 def codellama() -> str:
-    n = request.form["n"]
+    n = int(request.form["n"])
     example = LmExample.from_json(request.form)
     collated_in = collate_input(tokenizer, max_input_len, example.input)
 
@@ -49,19 +49,19 @@ def codellama() -> str:
         return_dict_in_generate=True,
         pad_token_id=tokenizer.pad_token_id,
     )
-    output = output[0].to("cpu")
-    assert type(output) == BeamSampleDecoderOnlyOutput
+    assert type(output) == BeamSearchDecoderOnlyOutput 
     num_padding_tokens = (output.sequences == tokenizer.pad_token_id).sum(axis=1)
-    seq_lens = list(output.sequences.shape[1] - input_ids.shape[1] - num_padding_tokens)
+    seq_lens = (output.sequences.shape[1] - input_ids.shape[1] - num_padding_tokens).to("cpu")
     tactics = tokenizer.batch_decode(output.sequences[:, input_ids.shape[1]:], skip_special_tokens=True) 
-    scores = list(output.sequence_scores)
+    scores = (output.sequences_scores).to("cpu")
+    del output
 
-    only_output = tokenizer.decode(output[input_ids.shape[1]:], skip_special_tokens=True)
     response = {
-        "tactics": tactics,
-        "scores": scores,
-        "num_tokens": seq_lens,
+        "tactics": list(tactics),
+        "scores": scores.tolist(),
+        "num_tokens": seq_lens.tolist(),
     }
+    print(response)
     return json.dumps(response, indent=2)
 
 

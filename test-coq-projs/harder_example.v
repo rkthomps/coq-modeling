@@ -2,4 +2,7 @@ Require Import Nat.
 
 Lemma leb_refl: forall (n : nat), (n <=? n) = true.
 Proof.
-<prove>
+intros. induction n as [|n' IHn']. 
+- reflexivity. 
+- simpl. apply IHn'. 
+Qed. 
