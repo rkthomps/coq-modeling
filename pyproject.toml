@@ -22,7 +22,8 @@ dependencies = [
     "pytest",
     "evaluate",
     "numpy",
+    "termcolor",
 ]
  
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "coq-lsp-pyclient"]

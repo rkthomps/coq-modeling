@@ -55,7 +55,7 @@ class ModelResult:
                  next_tactic_list: list[str], 
                  score_list: [list[NodeScore]]) -> None:
         assert all([type(t) == str for t in next_tactic_list])
-        assert all([type(s) == float for s in score_list]) 
+        assert all([isinstance(s, NodeScore) for s in score_list]) 
         assert len(next_tactic_list) == len(score_list)
         self.next_tactic_list = next_tactic_list
         self.score_list = score_list
@@ -89,7 +89,7 @@ class CodeLLamaServer(ModelWrapper):
 
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
         request_data = example.to_json()
-        request_data["n": n]
+        request_data["n"] = n
         response = requests.post(self.server_url, example.to_json())
         response_data = json.loads(response.content)
         next_tactic_list = response_data["tactics"]
