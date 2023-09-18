@@ -2,6 +2,13 @@
 Language models for Coq based on data collected from the coq lsp. 
 
 ## Setup
+- **Install Dependencies:**
+    - Install opam (Ocaml package manager):
+      - `sudo apt-get update && sudo apt-get install opam`.
+      - `opam init`
+      - `eval $(opam env --switch=default)`
+    - Install coq-lsp:
+      - `opam install coq-lsp` 
 - **Install Project:** Change to project directory and run `python3 -m pip install --editable .`
 
 ## Dowloading and Partitioning Data
