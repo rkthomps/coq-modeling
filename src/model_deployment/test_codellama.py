@@ -20,7 +20,7 @@ if __name__ == "__main__":
     node_score_type = CodeLLamaNodeScore
     tree_manager = SearchTreeManager(
         CodeLLamaServer(server_url), proof_manager, node_score_type,
-        4, 30 
+        4, 30, 100
     )
     result = tree_manager.search()
     proof_manager.close()

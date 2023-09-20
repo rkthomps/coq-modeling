@@ -151,11 +151,19 @@ class SearchTreeManager:
                  proof_manager: ProofManager,
                  score_type: Type[NodeScore],
                  max_branch: int,
-                 max_num_leaf_expansions: int) -> None:
+                 max_num_leaf_expansions: int,
+                 timeout: int) -> None:
+        assert isinstance(model_wrapper, ModelWrapper)
+        assert type(proof_manager) == ProofManager
+        assert type(score_type) == type
+        assert type(max_branch) == int
+        assert type(max_num_leaf_expansions) == int
+        assert type(timeout) == int
         self.model_wrapper = model_wrapper
         self.proof_manager = proof_manager
         self.max_branch = max_branch
         self.max_num_leaf_expansions = max_num_leaf_expansions
+        self.timeout = timeout
         initial_validity = True
         final_tactic = False
         initial_tactic = ""
@@ -171,7 +179,11 @@ class SearchTreeManager:
         return self.proof_manager.get_example(partial_proof)
 
     def search(self) -> SearchResult:
+        start = time.time_ns()
         for i in range(self.max_num_leaf_expansions):
+            cur = time.time_ns()
+            if ((cur - start) / 1e9) > self.timeout:
+                break
             print(f"Beginning iteration {i + 1} of search.")
             possible_complete_node = self.search_step()
             self.search_tree.pretty_print()

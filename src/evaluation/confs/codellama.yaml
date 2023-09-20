@@ -1,0 +1,18 @@
+
+
+
+assignment_loc: /home/ubuntu/coq-modeling/raw-data/data-points-split/assignments.json
+file_tree_loc: /home/ubuntu/coq-modeling/raw-data/data-points-tree
+example_type: basic # From lmexample.py 
+node_score: codellama-node-score # From node_score.py 
+model_wrapper: codellama-server # From model_wrapper.py 
+branching_factor: 5 # Number of recommendations from the model
+max_leaf_expansions: 100 # Number of queries to the model
+split: val
+num_proofs: 100 
+timeout: 1000 # Per-proof time limit
+
+codellama-server:
+  server_url: http://127.0.0.1:5000/codellama
+
+

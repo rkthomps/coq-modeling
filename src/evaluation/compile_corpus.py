@@ -25,7 +25,7 @@ def get_coq_project_contents(dir_loc: str) -> str:
     return f"-R {dir_name} MyProject\n{dir_name}"
 
 
-def compile_directory(dir_loc: str) -> None:
+def compile_directory(dir_loc: str, num_cores: int) -> None:
     clean_directory(dir_loc)
     parent_dir = os.path.dirname(dir_loc)
     os.chdir(parent_dir)
@@ -34,18 +34,24 @@ def compile_directory(dir_loc: str) -> None:
         fout.write(get_coq_project_contents(dir_loc))
     p_create_make = subprocess.run(["coq_makefile", "-f", PROJECT_NAME, "-o", MAKEFILE_NAME])
     assert p_create_make.returncode == 0
-    p_make = subprocess.run(["make", "-f", MAKEFILE_NAME])
+    p_make = subprocess.run(["make", "-j", str(num_cores), "-f", MAKEFILE_NAME])
     if p_make.returncode != 0:
         for subdir_name in os.listdir(dir_loc):
             subdir_loc = os.path.join(dir_loc, subdir_name)
             if os.path.isdir(subdir_loc):
-                compile_directory(subdir_loc)
+                compile_directory(subdir_loc, num_cores)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Compile a set of coq repos.")
     parser.add_argument("tree_parent_loc", help="Location of the output directory from impose_file_hierarchy.py.")
+    parser.add_argument("--num_cores", "-n", type=int, help="Number of jobs to use when running make.")
     args = parser.parse_args(sys.argv[1:])
+
+    num_cores = 1
+    if args.num_cores is not None:
+        num_cores = args.num_cores
+
     compile_target = os.path.join(args.tree_parent_loc, NEW_ROOT_NAME)
     compile_target_full_path = os.path.abspath(compile_target)
-    compile_directory(compile_target_full_path)
+    compile_directory(compile_target_full_path, num_cores)

@@ -1,4 +1,6 @@
 
+from typing import Any
+
 import sys, os
 import shutil
 import argparse
@@ -11,8 +13,15 @@ from tqdm import tqdm
 NEW_ROOT_NAME = "coq-repos"
 FILE_MAPPING_NAME = "mapping.json"
 
-class FileTree:
+def mapping_shape_correct(mapping: Any) -> bool:
+    assert type(mapping) == dict
+    for k, v in mapping.items():
+        assert type(k) == str
+        assert type(v) == str
+    return True
 
+
+class FileTree:
     def __init__(self, value: str) -> None:
         self.value = value
         self.children: list[FileTree] = []
@@ -67,7 +76,7 @@ def create_heirarchy(data_loc: str, hierarchy_loc: str) -> None:
             continue
         dir_list = prep_file_name(orig_name)
         file_path = ftree.get_path(dir_list)
-        full_file_path = os.path.join(hierarchy_loc, file_path) 
+        full_file_path = os.path.abspath(os.path.join(hierarchy_loc, file_path))
         path_mappings[orig_name] = full_file_path
         squeezed_dirname = os.path.dirname(full_file_path)
         if not os.path.exists(squeezed_dirname):

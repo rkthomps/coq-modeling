@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Type
 
 import sys, os
 import pdb
@@ -36,6 +36,10 @@ class LmExample:
         output = json_data["output"]
         return cls(input, output)
 
+    @staticmethod
+    def get_alias() -> str:
+        raise NotImplementedError
+
 
 
 class BasicLmExample(LmExample):
@@ -61,6 +65,13 @@ class BasicLmExample(LmExample):
                 basic_lm_examples.append(cls.__example_from_step(step, proof))
         return basic_lm_examples
 
+    @staticmethod
+    def get_alias() -> str:
+        return "basic"
+
+LMEXAMPLE_ALIASES: dict[str, Type[LmExample]] = {
+    BasicLmExample.get_alias(): BasicLmExample, 
+}
 
 
 if __name__ == "__main__":

@@ -6,14 +6,11 @@ import argparse
 import jsonlines
 from tqdm import tqdm
 
-from data_management.lm_example import LmExample, BasicLmExample
+from data_management.lm_example import LmExample, BasicLmExample, LMEXAMPLE_ALIASES
 from data_management.split_raw_data import data_shape_expected, SPLITS
 from data_management.jsonl_utils import shuffle
 from data_management.dataset_file import DatasetFile
 
-EXAMPLE_FORMATS: dict[str, Type[LmExample]] = {
-    "basic": BasicLmExample,
-}
 
 def split_file_path(parent_dir: str, split: str, shuffled: bool=True) -> str:
     if shuffled:
@@ -50,18 +47,18 @@ def create_lm_dataset(partitioned_dataset_loc: str,
 
 
 if __name__ == "__main__":
-    format_options = ", ".join(EXAMPLE_FORMATS.keys())
+    format_options = ", ".join(LMEXAMPLE_ALIASES.keys())
     parser = argparse.ArgumentParser("Create a jsonl dataset from the data collected by the coq lsp.")
     parser.add_argument("partitioned_dataset_loc", help=f"Location of partitioned dataset.")
     parser.add_argument("output_dataset_loc", help=f"Location to save resulting dataset.")
     parser.add_argument("example_format", help=f"Format of LM example. Options: {format_options}")
     args = parser.parse_args(sys.argv[1:])
 
-    if args.example_format not in EXAMPLE_FORMATS:
+    if args.example_format not in LMEXAMPLE_ALIASES:
         print(f"{args.example_format} is not one of {format_options}.", file=sys.stderr)
         exit(1)
 
-    example_format = EXAMPLE_FORMATS[args.example_format]
+    example_format = LMEXAMPLE_ALIASES[args.example_format]
     create_lm_dataset(args.partitioned_dataset_loc, 
                       example_format, 
                       args.output_dataset_loc)
