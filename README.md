@@ -31,3 +31,15 @@ Once you have composed your LmExample subclass, you can use the file [create_lm_
 To finetune Code Llama, you can run\
 `CUDA_VISIBLE_DEVICES=0 python3 train_codellama.py src/tactic_gen/confs/codellama_basic.yaml`.\
 The value of `CUDA_VISIBLE_DEVICES` indicates the machine to be used for training. Currently, only single-gpu training is supported. You can configure the training by providing a .yaml config file. The file [codellama_basic.yaml](src/tactic_gen/confs/codellama_basic.yaml) is an example. 
+
+## Evaluation
+To evaluate 
+- **Compiling Corpus**
+  - Each directory in "/raw/data/location" has three files - "steps.jsonl", "file_context.jsonl", and "<file>.v". Our first step is extracting the heirarchy of coq files from the
+    flat directory structure of "/raw/data/location". We accomplish this by:\
+    `python3 src/evaluation/impose_file_hierarchy /raw/data/location /raw/data/hierarchy`\
+    As a result, we will have a hierarchy of coq files rooted at "/raw/data/hierarchy"
+  - To compile the files of "/raw/data/hierarchy", simply run\
+    `python3 src/evaluation/compile_corpus.py /raw/data/hierarchy [-n <num processes>]`\
+    This will compile all coq files in the hierarchy. `num processes` indicates what to pass to the `-j` option of `make`.
+  - _I was able to compile 2246 of the 2593 files this way. I am still unsure why not all files compile._
