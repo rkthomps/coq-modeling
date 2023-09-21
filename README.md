@@ -3,6 +3,8 @@ Language models for Coq based on data collected from the coq lsp.
 
 ## Setup
 - **Install Dependencies:**
+    - Install repo:
+      - `git clone --recurse-submodules https://github.com/rkthomps/coq-modeling`
     - Install opam (Ocaml package manager):
       - `sudo apt-get update && sudo apt-get install opam`.
       - `opam init`
@@ -43,3 +45,7 @@ To evaluate
     `python3 src/evaluation/compile_corpus.py /raw/data/hierarchy [-n <num processes>]`\
     This will compile all coq files in the hierarchy. `num processes` indicates what to pass to the `-j` option of `make`.
   - _I was able to compile 2246 of the 2593 files this way. I am still unsure why not all files compile._
+- **Running Evaluation**
+  - Run evaluation on a hold-out set of theorems with\
+    `python3 src/evaluation/evaluate.py src/evaluation/confs/codellama.yaml`\
+    Note, [codellama.yaml](src/evaluation/confs/codellama.yaml) is a configuration file, and can be replaced with any .yaml file of the same format. 
