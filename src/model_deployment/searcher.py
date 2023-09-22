@@ -4,6 +4,7 @@ from typing import Optional, Type, Any
 from enum import Enum
 import heapq 
 import time
+import re
 
 import sys, os
 import shutil
@@ -14,8 +15,10 @@ from termcolor import colored
 from data_management.lm_example import LmExample 
 from data_management.dataset_file import STEPS_NAME, FILE_CONTEXT_NAME, DatasetFile
 from model_deployment.model_wrapper import ModelWrapper, ModelResult, NodeScore
+from model_deployment.goal_comparer import NodeGoal
 
-from coqlspclient.coq_file import CoqFile
+from coqlspclient.coq_file import CoqFile, GoalAnswer
+from coqlspclient.coq_lsp_structs import Goal
 from coqlspclient.proof_state import ProofState, ProofTerm
 from coqlspclient.coq_structs import Term
 from coqlspclient.coq_structs import FileContext
@@ -92,10 +95,17 @@ class ProofSearchTree:
     uni_l = u"\u2514"
     vert_bar = u"\u2502"
 
-    def __init__(self, valid: bool, final_tactic: bool, tactic: str, 
-                 combined_tactics: str, score: NodeScore) -> None:
+    def __init__(self, valid: bool, final_tactic: bool, makes_progress: bool,
+                 tactic: str, combined_tactics: str, score: NodeScore) -> None:
+        assert type(valid) == bool
+        assert type(final_tactic) == bool
+        assert type(makes_progress) == bool
+        assert type(tactic) == str
+        assert type(combined_tactics) == str
+        assert isinstance(score, NodeScore) 
         self.valid = valid
         self.final_tactic = final_tactic
+        self.makes_progress = makes_progress
         self.tactic = tactic
         self.combined_tactics = combined_tactics
         self.score = score 
@@ -123,8 +133,10 @@ class ProofSearchTree:
             message = message.replace(" " * expanded_len, str(self.expanded), 1)
         if not self.valid:
             message = colored(message, "red")
-        if self.final_tactic:
+        elif self.final_tactic:
             message = colored(message, "green")
+        elif not self.makes_progress:
+            message = colored(message, "yellow")
         print(message)
         if last_child:
             new_indent = indent + " "  * (len(line_start))
@@ -140,10 +152,30 @@ class ProofSearchTree:
                 child.pretty_print(start_marker, new_indent, last_child=True)
 
 
+    def to_json(self) -> Any:
+        return {
+            "valid": self.valid,
+            "final_tactic": self.final_tactic,
+            "makes_progress": self.makes_progress,
+            "tactic": self.tactic,
+            "combined_tactics": self.combined_tactics,
+            "score": self.score.to_json(),
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> ProofSearchTree:
+        valid = json_data["valid"]
+        final_tactic = json_data["final_tactic"]
+        makes_progress = json_data["makes_progress"]
+        tactic = json_data["tactic"]
+        combined_tactics = json_data["combined_tactics"]
+        score = NodeScore.from_json(json_data["score"])
+        return cls(valid, final_tactic, makes_progress, tactic,
+                   combined_tactics, score)
+
     @staticmethod
     def __clean_tactic(tactic: str) -> str:
         return "\"" + tactic.replace("\n", r"\n") + "\""
-
 
 
 class SearchResult:
@@ -183,17 +215,25 @@ class SearchTreeManager:
         self.timeout = timeout
         initial_validity = True
         final_tactic = False
+        makes_progress = True
         initial_tactic = ""
         combined_tactics = ""
+        initial_tactic_result, goals = proof_manager.check_proof(combined_tactics)
+        assert initial_tactic_result == TacticResult.VALID
+        assert goals is not None
+        node_goal = self.__get_goals(goals)
         initial_score = score_type.get_initial_score() 
         self.search_tree = ProofSearchTree(
-            initial_validity, final_tactic, initial_tactic, 
+            initial_validity, final_tactic, makes_progress, initial_tactic, 
             combined_tactics, initial_score)
         self.frontier: list[ProofSearchTree] = []
+        self.seen_goals: list[NodeGoal] = [node_goal]
         heapq.heappush(self.frontier, self.search_tree)
+
 
     def __get_request_contents(self, partial_proof: str) -> LmExample:
         return self.proof_manager.get_example(partial_proof)
+
 
     def search(self) -> SearchResult:
         start = time.time_ns()
@@ -221,34 +261,55 @@ class SearchTreeManager:
         children: list[ProofSearchTree] = []
         for tactic, score in zip(result.next_tactic_list, result.score_list):
             proof_script = leaf_subtree.combined_tactics + " " + tactic
-            tactic_result = self.proof_manager.check_proof(proof_script) 
+            tactic_result, goals = self.proof_manager.check_proof(proof_script) 
             if tactic_result == TacticResult.COMPLETE:
+                assert goals is None
                 valid = True
                 final_tactic = True
+                makes_progress = True 
                 complete_node = ProofSearchTree(
-                    valid, final_tactic, tactic, proof_script,
+                    valid, final_tactic, makes_progress, tactic, proof_script,
                     leaf_subtree.score.agg(score)
                 )
                 children.append(complete_node)
                 leaf_subtree.children = children
                 return complete_node
             if tactic_result == TacticResult.INVALID:
+                assert goals is None
                 valid = False
                 final_tactic = False
+                makes_progress = False
                 children.append(ProofSearchTree(
-                    valid, final_tactic, tactic, proof_script, 
+                    valid, final_tactic, makes_progress, tactic, proof_script, 
                     leaf_subtree.score.agg(score)
                 ))
             if tactic_result == TacticResult.VALID:
+                assert goals is not None
+                node_goal = self.__get_goals(goals) 
+                goal_progress = node_goal.makes_progress(self.seen_goals)
+                is_bullet = re.search(r"\s+[-+*]+", tactic) is not None
+                makes_progress = goal_progress or is_bullet
                 valid = True
                 final_tactic = False
                 new_leaf = ProofSearchTree(
-                    valid, final_tactic, tactic, proof_script, 
+                    valid, final_tactic, makes_progress, tactic, proof_script, 
                     leaf_subtree.score.agg(score))
                 children.append(new_leaf)
-                heapq.heappush(self.frontier, new_leaf)
+                if makes_progress:
+                    self.seen_goals.append(node_goal)
+                    heapq.heappush(self.frontier, new_leaf)
         leaf_subtree.children = children
         return None 
+
+    @staticmethod
+    def __get_goals(goal_answer: GoalAnswer) -> NodeGoal: 
+        fg_goals = goal_answer.goals.goals
+        bg_goals: list[Goal] = []
+        for goal_list1, goal_list2 in goal_answer.goals.stack:
+            bg_goals.extend(goal_list1 + goal_list2)
+        node_goal = NodeGoal(fg_goals + bg_goals) 
+        return node_goal
+
 
 
 class TacticResult(Enum):
@@ -278,18 +339,19 @@ class ProofManager:
                 self.__cached_file_context = proof_state.coq_file.context
 
 
-    def check_proof(self, partial_proof: str) -> TacticResult:
+    def check_proof(self, partial_proof: str
+                    ) -> tuple[TacticResult, Optional[GoalAnswer]]:
         if "Admitted" in partial_proof:
-            return TacticResult.INVALID
+            return TacticResult.INVALID, None
         partial_proof_file = f"{self.__file_prefix}{partial_proof}"
         self.__update_hidden_file(partial_proof_file)
         with CoqFile(self.__hidden_file_path, timeout=self.TIMEOUT) as hidden_coq_file:
             hidden_coq_file.run()
             if not hidden_coq_file.is_valid:
-                return TacticResult.INVALID 
+                return TacticResult.INVALID, None
             if not hidden_coq_file.in_proof:
-                return TacticResult.COMPLETE
-            return TacticResult.VALID
+                return TacticResult.COMPLETE, None
+            return TacticResult.VALID, hidden_coq_file.current_goals()
 
 
     def get_example(self, partial_proof: str) -> LmExample:
