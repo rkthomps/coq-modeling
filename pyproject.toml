@@ -23,6 +23,7 @@ dependencies = [
     "evaluate",
     "numpy",
     "termcolor",
+    "openai",
 ]
  
 [tool.setuptools.packages.find]

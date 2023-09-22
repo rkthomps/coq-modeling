@@ -90,6 +90,7 @@ class ProofSearchTree:
     uni_sideways_t = u"\u251c"
     sideways_bar = u"\u2500"
     uni_l = u"\u2514"
+    vert_bar = u"\u2502"
 
     def __init__(self, valid: bool, final_tactic: bool, tactic: str, 
                  combined_tactics: str, score: NodeScore) -> None:
@@ -98,29 +99,45 @@ class ProofSearchTree:
         self.tactic = tactic
         self.combined_tactics = combined_tactics
         self.score = score 
+        self.expanded: Optional[int] = None
         self.children: list[ProofSearchTree] = []
+
     
     def __lt__(self, other: ProofSearchTree) -> bool:
         return other.score <= self.score
 
 
-    def pretty_print(self, start_marker: str="", indent: str="") -> None:
-        start = indent + start_marker + (self.sideways_bar * 2) + " "
+    def set_expanded_num(self, expanded_num: int) -> None:
+        self.expanded = expanded_num
+
+
+    def pretty_print(self, start_marker: str=uni_l, indent: str="", 
+                     last_child: bool=True) -> None:
+        line_start = start_marker + (self.sideways_bar * 2) + " "
+        start = indent + line_start 
         clean_tactic = self.__clean_tactic(self.tactic)
         clean_score = "{:7.6f}".format(self.score.compute())
         message = f"{start}{clean_score} {clean_tactic}"
+        if self.expanded is not None and self.expanded > 0:
+            expanded_len = len(str(self.expanded))
+            message = message.replace(" " * expanded_len, str(self.expanded), 1)
         if not self.valid:
             message = colored(message, "red")
         if self.final_tactic:
             message = colored(message, "green")
         print(message)
+        if last_child:
+            new_indent = indent + " "  * (len(line_start))
+        else:
+            new_indent = indent + self.vert_bar + " " * (len(line_start) - 1)
+
         for i, child in enumerate(self.children):
             if i < (len(self.children) - 1):
                 start_marker = self.uni_sideways_t
+                child.pretty_print(start_marker, new_indent, last_child=False)
             else:
                 start_marker = self.uni_l
-            indent = " " * len(start)
-            child.pretty_print(start_marker, indent)
+                child.pretty_print(start_marker, new_indent, last_child=True)
 
 
     @staticmethod
@@ -184,18 +201,21 @@ class SearchTreeManager:
             cur = time.time_ns()
             if ((cur - start) / 1e9) > self.timeout:
                 break
+            if len(self.frontier) == 0:
+                break
             print(f"Beginning iteration {i + 1} of search.")
-            possible_complete_node = self.search_step()
+            possible_complete_node = self.search_step(i)
             self.search_tree.pretty_print()
             if possible_complete_node is not None:
                 return SearchResult(self.search_tree, possible_complete_node)
         return SearchResult(self.search_tree, None)
 
 
-    def search_step(self) -> Optional[ProofSearchTree]: 
+    def search_step(self, step_num: int) -> Optional[ProofSearchTree]: 
         """If the search is completed, return the resulting node in
            the proof search tree."""
         leaf_subtree = heapq.heappop(self.frontier)
+        leaf_subtree.set_expanded_num(step_num)
         example = self.__get_request_contents(leaf_subtree.combined_tactics)
         result = self.model_wrapper.get_recs(example, self.max_branch)
         children: list[ProofSearchTree] = []

@@ -41,7 +41,6 @@ class LmExample:
         raise NotImplementedError
 
 
-
 class BasicLmExample(LmExample):
     def __init__(self, input: str, output: str) -> None:
         super(BasicLmExample, self).__init__(input, output)
@@ -69,8 +68,47 @@ class BasicLmExample(LmExample):
     def get_alias() -> str:
         return "basic"
 
+
+class GPT4BasicLmExample(LmExample):
+    SCRIPT_TAG = "<PSCRIPT>"
+    STATE_TAG = "<STATE>"
+    SYS_MSG = ("You are given a partial coq proof following "
+               f"the {SCRIPT_TAG} tag. You are given the proof "
+               f"state of the partial proof following the {STATE_TAG} "
+               "tag. You respond with the next coq command to use "
+               "in order to eventually complete the proof. ") 
+    def __init__(self, input: str, output: str) -> None:
+        super(GPT4BasicLmExample, self).__init__(input, output)
+
+    @classmethod
+    def __example_from_step(cls, step: FocusedStep, proof: Proof) -> GPT4BasicLmExample:
+        goal_strings: list[str] = []
+        for i, goal in enumerate(step.goals):
+            goal_strings.append(f"Goal {i + 1}\n{goal.to_string()}")
+        partial_proof_string = proof.proof_prefix_to_string(step)
+        final_goal_string = "\n".join(goal_strings)
+        input = f"{cls.SCRIPT_TAG}\n{partial_proof_string}\n{cls.STATE_TAG}\n{final_goal_string}"
+        output = step.step.text
+        return cls(input, output)
+
+
+    @classmethod
+    def from_dataset_file(cls, dataset_file: DatasetFile) -> list[GPT4BasicLmExample]:
+        gpt4_examples: list[GPT4BasicLmExample] = []
+        for proof in dataset_file.proofs:
+            for step in proof.steps:
+                gpt4_examples.append(cls.__example_from_step(step, proof))
+        return gpt4_examples
+
+
+    @staticmethod
+    def get_alias() -> str:
+        return "gpt4-basic"
+
+
 LMEXAMPLE_ALIASES: dict[str, Type[LmExample]] = {
     BasicLmExample.get_alias(): BasicLmExample, 
+    GPT4BasicLmExample.get_alias(): GPT4BasicLmExample,
 }
 
 

@@ -44,7 +44,7 @@ def codellama() -> str:
         input_ids,
         num_beams=n,
         num_return_sequences=n,
-        max_new_tokens=200,
+        max_new_tokens=64,
         output_scores=True,
         return_dict_in_generate=True,
         pad_token_id=tokenizer.pad_token_id,
