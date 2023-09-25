@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Type, Any
+from typing import Type, Any, Union
 
 class NodeScore:
     def __init__(self) -> None:
@@ -37,9 +37,10 @@ class NodeScore:
 
 
 class CodeLLamaNodeScore(NodeScore):
-    def __init__(self, sequence_score: float, 
+    def __init__(self, sequence_score: Union[int, float], 
                  sequence_num_tokens: int) -> None:
-        assert type(sequence_score) == float
+        assert (type(sequence_score) == float or
+                type(sequence_score) == int)
         assert type(sequence_num_tokens) == int
         self.sequence_score = sequence_score
         self.sequence_num_tokens = sequence_num_tokens

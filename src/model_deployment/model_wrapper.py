@@ -7,7 +7,7 @@ import requests
 import json
 import math
 
-from data_management.lm_example import LmExample, GPT4BasicLmExample
+from tactic_gen.lm_example import LmExample, GPT4BasicLmExample
 from model_deployment.node_score import NodeScore, CodeLLamaNodeScore
 
 import openai

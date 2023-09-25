@@ -6,7 +6,7 @@ import argparse
 import jsonlines
 from tqdm import tqdm
 
-from data_management.lm_example import LmExample, BasicLmExample, LMEXAMPLE_ALIASES
+from tactic_gen.lm_example import LmExample, BasicLmExample, LMEXAMPLE_ALIASES
 from data_management.split_raw_data import data_shape_expected, SPLITS
 from data_management.jsonl_utils import shuffle
 from data_management.dataset_file import DatasetFile

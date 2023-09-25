@@ -6,6 +6,8 @@ models
 # Config files
 src/tactic_gen/confs/**
 !src/tactic_gen/confs/codellama_basic.yaml
+src/data_management/confs/**
+!src/data_management/confs/premise_basic.yaml
 
 # Python files
 venv
@@ -19,3 +21,6 @@ mypy.ini
 
 # Proof search files
 .proof-search
+
+# Temporary/Throw-away python scripts
+src/throw_away

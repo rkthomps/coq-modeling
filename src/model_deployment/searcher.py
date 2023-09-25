@@ -12,7 +12,7 @@ import shutil
 import jsonlines
 from termcolor import colored
 
-from data_management.lm_example import LmExample 
+from tactic_gen.lm_example import LmExample 
 from data_management.dataset_file import STEPS_NAME, FILE_CONTEXT_NAME, DatasetFile
 from model_deployment.model_wrapper import ModelWrapper, ModelResult, NodeScore
 from model_deployment.goal_comparer import NodeGoal

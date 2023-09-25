@@ -24,6 +24,7 @@ dependencies = [
     "numpy",
     "termcolor",
     "openai",
+    "pytorch-lightning",
 ]
  
 [tool.setuptools.packages.find]

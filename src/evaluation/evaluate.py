@@ -9,7 +9,7 @@ import random
 from coqlspclient.coq_file import CoqFile
 from coqlspclient.coq_lsp_structs import Position
 
-from data_management.lm_example import LmExample, LMEXAMPLE_ALIASES
+from tactic_gen.lm_example import LmExample, LMEXAMPLE_ALIASES
 from data_management.split_raw_data import SPLITS, assignment_shape_expected
 from model_deployment.searcher import ProofManager, SearchTreeManager, get_fresh_path, TacticResult, ProofSearchTree
 from model_deployment.model_wrapper import ModelWrapper, MODEL_WRAPPER_ALIASES 
