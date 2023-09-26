@@ -12,6 +12,7 @@ import torch
 from data_management.split_raw_data import SPLITS, TRAIN_NAME, VAL_NAME, TEST_NAME
 from data_management.create_lm_dataset import split_file_path
 from premise_selection.premise_example import PremiseTrainingExample
+from premise_selection.training_types import PremiseBatch
 
 
 class PremiseSelectionDataset(Dataset):
@@ -41,13 +42,13 @@ class PremiseSelectionDataset(Dataset):
     def __getitem__(self, index: int) -> PremiseTrainingExample:
         return self.examples[index]
 
-    def collate(self, examples: list[PremiseTrainingExample]) -> dict[str, Any]:
+    def collate(self, examples: list[PremiseTrainingExample]) -> PremiseBatch:
         batch_size = len(examples)
         assert len(examples) > 0
         num_positives = 1
         num_negatives = len(examples[0].neg_premises)
         total_num_prems = batch_size * (num_positives + num_negatives)
-        label = torch.zeros((batch_size, total_num_prems), dtype=torch.int32)
+        label = torch.zeros((batch_size, total_num_prems), dtype=torch.float32)
         for i, example in enumerate(examples):
             for j in range(total_num_prems):
                 cur_prem_example = examples[j % batch_size] 
@@ -80,16 +81,17 @@ class PremiseSelectionDataset(Dataset):
             return_tensors="pt",
         )
 
-        return {
-            "context_ids": tokenized_contexts.input_ids,
-            "context_mask": tokenized_contexts.attention_mask,
-            "prem_ids": tokenized_prems.input_ids,
-            "prem_mask": tokenized_prems.attention_mask,
-            "label": label,
-        }
+        context_ids = tokenized_contexts.input_ids
+        context_mask = tokenized_contexts.attention_mask
+        prem_ids = tokenized_prems.input_ids
+        prem_mask = tokenized_prems.attention_mask
+        label = label
+
+        return PremiseBatch(
+            context_ids, context_mask, prem_ids, prem_mask, label)
 
 
-class GeneratorDataModule(pl.LightningDataModule):
+class PremiseDataModule(pl.LightningDataModule):
     def __init__(self,
                  premise_data_path: str,
                  model_name: str,
@@ -98,6 +100,7 @@ class GeneratorDataModule(pl.LightningDataModule):
                  eval_batch_size: int,
                  num_workers: int,
                  ) -> None: 
+        super(PremiseDataModule, self).__init__()
         assert type(premise_data_path) == str
         assert type(model_name) == str
         assert type(max_seq_len) == int
@@ -112,6 +115,7 @@ class GeneratorDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
 
         self.tokenizer = ByT5Tokenizer.from_pretrained(model_name) 
+
 
 
     def setup(self, stage: Optional[str]) -> None:
@@ -133,6 +137,14 @@ class GeneratorDataModule(pl.LightningDataModule):
             self.tokenizer,
             self.max_seq_len,
         )
+
+    def prepare_data(self) -> None:
+        """
+        Not downloading anything so I don't believe I need
+        to worry about corruption
+        """
+        pass
+
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return DataLoader(

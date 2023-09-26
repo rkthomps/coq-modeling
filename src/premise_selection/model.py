@@ -1,44 +1,56 @@
 
-from transformers import ByT5Tokenizer, T5EncoderModel
+import pdb
+from typing import Any
+from pytorch_lightning.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
+from transformers import (ByT5Tokenizer, T5EncoderModel, 
+                          get_cosine_schedule_with_warmup,
+                          T5ForConditionalGeneration)
 import pytorch_lightning as pl  
 import torch
 import torch.nn.functional as F
+
+
+from premise_selection.training_types import PremiseBatch
+
 
 class PremiseRetriever(pl.LightningModule):
     def __init__(self,
                  model_name: str,
                  lr: float,
                  warmup_steps: int,
-                 max_seq_len: int,
-                 num_retrieved: int):
+                 max_steps: int,
+                 max_seq_len: int):
+        super(PremiseRetriever, self).__init__()
         assert type(model_name) == str
         assert type(lr) == float
         assert type(warmup_steps) == int
+        assert type(max_steps) == int
         assert type(max_seq_len) == int
-        assert type(num_retrieved) == int
         self.model_name = model_name
         self.lr = lr
         self.warmup_steps = warmup_steps
+        self.max_steps = max_steps
         self.max_seq_len = max_seq_len
-        self.num_retrieved = num_retrieved
 
         self.tokenizer = ByT5Tokenizer.from_pretrained(model_name)
         self.encoder = T5EncoderModel.from_pretrained(model_name)
+        
 
 
     def _encode(self, input_ids: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         ## TODO: COULD ADD SOME SORT OF "CPU CHECKPOINTING"
+        cuda_input_ids = input_ids.to(self.device)
+        cuda_mask = mask.to(self.device)
         hidden_states = self.encoder(
-            input_ids=input_ids,
-            attention_mask=mask,
+            input_ids=cuda_input_ids,
+            attention_mask=cuda_mask,
             return_dict=True,
         ).last_hidden_state
-
-        lens = mask.sum(axis=1)
-        raise ValueError("Examine shapes")
-        features = hidden_states * mask 
-        # get some sort of avg
-
+        per_batch_counts = cuda_mask.sum(axis=1) 
+        masked_hidden_states = hidden_states * cuda_mask[:, :, None]
+        summed_hidden_states = masked_hidden_states.sum(axis=1)
+        averaged_states = summed_hidden_states / per_batch_counts[:, None]
+        return F.normalize(averaged_states, dim=1) 
 
     def forward(self,
                 context_ids: torch.Tensor,
@@ -50,8 +62,52 @@ class PremiseRetriever(pl.LightningModule):
         context_embs = self._encode(context_ids, context_mask)
         premise_embs = self._encode(premise_ids, premise_mask)
         similarity = torch.mm(context_embs, premise_embs.t())
-        assert -1 <= similarity.min() <= similarity.max() <= 1
-        loss = F.mse_loss(similarity, label) 
+        epsilon = 1e-4
+        assert (-1 - epsilon) <= similarity.min() <= similarity.max() <= (1 + epsilon)
+        cuda_label = label.to(self.device) 
+        loss = F.mse_loss(similarity, cuda_label) 
         return loss
+
+    
+    def training_step(self, premise_batch: PremiseBatch) -> STEP_OUTPUT:
+        loss = self.forward(
+            premise_batch.context_ids,
+            premise_batch.context_mask,
+            premise_batch.prem_ids,
+            premise_batch.prem_mask,
+            premise_batch.label,
+        )
+        batch_size = premise_batch.context_ids.shape[0]
+        self.log("loss", loss, batch_size=batch_size)
+        return loss
+
+    
+    def validation_step(self, premise_batch: PremiseBatch, batch_idx: int) -> STEP_OUTPUT:
+        loss = self.forward(
+            premise_batch.context_ids,
+            premise_batch.context_mask,
+            premise_batch.prem_ids,
+            premise_batch.prem_mask,
+            premise_batch.label,
+        )
+        batch_size = premise_batch.context_ids.shape[0]
+        self.log("eval_loss", loss, batch_size=batch_size)
+        return loss
+
+    
+    def configure_optimizers(self) -> OptimizerLRScheduler:
+        # TODO: LeanDojo doesn't only use Adam
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer, self.warmup_steps, self.max_steps) 
+        return {
+            "optimizer": optimizer, 
+            "lr_scheduler": {
+                "scheduler": scheduler, 
+                "interval": "step"
+            }
+        } 
+
+
 
     
