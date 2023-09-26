@@ -34,6 +34,12 @@ Once you have composed your LmExample subclass, you can use the file [create_lm_
 - Then, you can simply run the script\
   `python3 src/data_management/create_lm_dataset.py /raw/data/location-split /processed/data/location basic`. As a result, you should see a new directory named "/processed/data/location" with the files "train-shuffled.jsonl", "val-shuffled.jsonl", and "test-shuffled.jsonl". Each line of one of the .jsonl files represents one example. The examples are shuffled within their respective splits.
 
+## Training a Premise Selection Model
+You can train a premise selection model using [Pytorch Lightning](https://lightning.ai/). Specifically, run\
+`CUDA_VISIBLE_DEVICES=4 python3 src/premise_selection/main.py fit -c src/premise_selection/confs/premise_train_basic.yaml`\
+where [premise_train_basic.yaml](src/premise_selection/confs/premise_train_basic.yaml) is configuration file for training and can be substituted with a custom configuration file. 
+**Acknowledgement:** Our premise selection model and its integration is heavily inspired by the great work on [LeanDojo](https://leandojo.org/).
+
 ## Finetuning Code Llama
 To finetune Code Llama, you can run\
 `CUDA_VISIBLE_DEVICES=0 python3 train_codellama.py src/tactic_gen/confs/codellama_basic.yaml`.\
