@@ -19,7 +19,12 @@ Language models for Coq based on data collected from the coq lsp.
   `python3 src/data_management/split_raw_data.py --assignment assignment.json /raw/data/location`.\
   Alternatively, you can create your own splits with\
   `python3 src/data_management/split_raw_data.py --train_prop 0.8 --val_prop 0.1 --test_prop 0.1 /raw/data/location`.
-- After running this script, there should be a new directory called "/raw/data/location-split" containing the subdirectories "train", "val", "test". 
+- After running this script, there should be a new directory called "/raw/data/location-split" containing the subdirectories "train", "val", "test".
+
+## Creating Premise Selection Training Data
+A training example for premise selection is associated with a single premise used in a single tactic. The example also contains a number of "negative premises" - premises that were not used in the tactic. These negative premises may be "in-file" negatives - premises from the same file as the proof, or "out-of-file" negatives - premises from a dependency of the proof. You can mine a premise selection dataset with\
+`python3 src/data_management/create_premise_dataset.py src/data_management/confs/premise_basic.yaml`\
+where [premise_basic.yaml](src/data_management/premise_basic.yaml) is a configuration file for creating the premise selection dataset.
 
 ## Creating Tactic Generation Training Data
 Since we use Language Models to predict tactics, both the input and target of our examples are strings. The interface [LmExample](src/data_management/lm_example.py) represents such an example. To define how input and target strings are composed, create a subclass of LmExample. The subclass simply needs to define how to create a list of examples given a [DatasetFile](src/data_management/dataset_file.py) object. A DatasetFile object is just a representation of the json-format of the raw data. 
