@@ -19,7 +19,12 @@ Language models for Coq based on data collected from the coq lsp.
   `python3 src/data_management/split_raw_data.py --assignment assignment.json /raw/data/location`.\
   Alternatively, you can create your own splits with\
   `python3 src/data_management/split_raw_data.py --train_prop 0.8 --val_prop 0.1 --test_prop 0.1 /raw/data/location`.
-- After running this script, there should be a new directory called "/raw/data/location-split" containing the subdirectories "train", "val", "test". 
+- After running this script, there should be a new directory called "/raw/data/location-split" containing the subdirectories "train", "val", "test".
+
+## Creating Premise Selection Training Data
+A training example for premise selection is associated with a single premise used in a single tactic. The example also contains a number of "negative premises" - premises that were not used in the tactic. These negative premises may be "in-file" negatives - premises from the same file as the proof, or "out-of-file" negatives - premises from a dependency of the proof. You can mine a premise selection dataset with\
+`python3 src/data_management/create_premise_dataset.py src/data_management/confs/premise_basic.yaml`\
+where [premise_basic.yaml](src/data_management/premise_basic.yaml) is a configuration file for creating the premise selection dataset.
 
 ## Creating Tactic Generation Training Data
 Since we use Language Models to predict tactics, both the input and target of our examples are strings. The interface [LmExample](src/data_management/lm_example.py) represents such an example. To define how input and target strings are composed, create a subclass of LmExample. The subclass simply needs to define how to create a list of examples given a [DatasetFile](src/data_management/dataset_file.py) object. A DatasetFile object is just a representation of the json-format of the raw data. 
@@ -28,6 +33,12 @@ Once you have composed your LmExample subclass, you can use the file [create_lm_
 - First, if you created a new subclass of LmExample, give it an alias and add it to the dictionary `EXAMPLE_FORMATS`. For purposes of this document, assume we have a subclass of LmExample called BasicLmExample. We would add `"basic": BasicLmExample"` to the `EXAMPLE_FORMATS` dictionary.
 - Then, you can simply run the script\
   `python3 src/data_management/create_lm_dataset.py /raw/data/location-split /processed/data/location basic`. As a result, you should see a new directory named "/processed/data/location" with the files "train-shuffled.jsonl", "val-shuffled.jsonl", and "test-shuffled.jsonl". Each line of one of the .jsonl files represents one example. The examples are shuffled within their respective splits.
+
+## Training a Premise Selection Model
+You can train a premise selection model using [Pytorch Lightning](https://lightning.ai/). Specifically, run\
+`CUDA_VISIBLE_DEVICES=4 python3 src/premise_selection/main.py fit -c src/premise_selection/confs/premise_train_basic.yaml`\
+where [premise_train_basic.yaml](src/premise_selection/confs/premise_train_basic.yaml) is configuration file for training and can be substituted with a custom configuration file. 
+**Acknowledgement:** Our premise selection model and its integration is heavily inspired by the great work on [LeanDojo](https://leandojo.org/).
 
 ## Finetuning Code Llama
 To finetune Code Llama, you can run\
