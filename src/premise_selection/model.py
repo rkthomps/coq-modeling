@@ -1,6 +1,9 @@
 
-import pdb
+from __future__ import annotations
 from typing import Any
+
+import sys, os
+import pdb
 from pytorch_lightning.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from transformers import (ByT5Tokenizer, T5EncoderModel, 
                           get_cosine_schedule_with_warmup,
@@ -8,9 +11,10 @@ from transformers import (ByT5Tokenizer, T5EncoderModel,
 import pytorch_lightning as pl  
 import torch
 import torch.nn.functional as F
-
+from yaml import load, Loader
 
 from premise_selection.training_types import PremiseBatch
+from premise_selection.datamodule import tokenize_strings
 
 
 class PremiseRetriever(pl.LightningModule):
@@ -69,6 +73,17 @@ class PremiseRetriever(pl.LightningModule):
         return loss
 
     
+    def encode_str(self, to_encode: str) -> torch.Tensor:
+        with torch.no_grad():
+            tokens = tokenize_strings(
+                self.tokenizer, [to_encode], self.max_seq_len) 
+            input_ids = tokens.input_ids 
+            input_masks = tokens.attention_mask
+            encoding = self._encode(input_ids, input_masks) # shape should be 1 x h_dim
+            assert encoding.shape[0] == 1
+            return encoding 
+
+    
     def training_step(self, premise_batch: PremiseBatch) -> STEP_OUTPUT:
         loss = self.forward(
             premise_batch.context_ids,
@@ -107,6 +122,26 @@ class PremiseRetriever(pl.LightningModule):
                 "interval": "step"
             }
         } 
+
+
+    @classmethod
+    def load_from_conf_and_checkpoint(cls, model_loc: str, checkpoint_name: str
+                                      ) -> PremiseRetriever:
+        config_loc = os.path.join(model_loc, "config.yaml")
+        with open(config_loc, "r") as fin:
+            conf = load(fin, Loader=Loader) 
+        model_args = conf["model"]
+        model_args["max_steps"] = conf["trainer"]["max_steps"]
+        model_args["max_seq_len"] = conf["data"]["max_seq_len"]
+        checkpoint_loc = os.path.join(
+            model_loc, "lightning_logs", "version_0", 
+            "checkpoints", checkpoint_name)
+
+        return cls.load_from_checkpoint(
+            checkpoint_loc,
+            **model_args,
+        )
+
 
 
 

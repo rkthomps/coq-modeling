@@ -40,6 +40,12 @@ class Sentence:
         tup_module = tuple(self.module)
         return hash((self.text, self.file_path, tup_module, self.sentence_type, self.line))
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Sentence):
+            return False
+        return hash(self) == hash(other)
+
+
     @classmethod
     def from_json(cls, json_data: Any) -> Sentence:
         text = json_data["text"]
@@ -238,7 +244,7 @@ class DatasetFile:
             if premise.file_path == proof.theorem.term.file_path:
                 if premise.line >= proof.theorem.term.line:
                     continue
-                premises_before.append(premise)
+            premises_before.append(premise)
         return premises_before
 
 

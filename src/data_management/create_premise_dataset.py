@@ -15,6 +15,8 @@ from data_management.create_lm_dataset import split_file_path
 from data_management.split_raw_data import SPLITS, data_shape_expected
 from data_management.jsonl_utils import shuffle
 
+
+PREMISE_CONFIG_NAME = "config.yaml"
 def get_examples_from_project(project_obj: DatasetFile,
                               num_negatives_per_positive: int,
                               num_in_file_negatives_per_positive: int,
@@ -96,6 +98,7 @@ if __name__ == "__main__":
         context_format_type,
         premise_format_type,
     )
+
 
 
     
