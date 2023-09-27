@@ -15,6 +15,16 @@ from premise_selection.premise_example import PremiseTrainingExample
 from premise_selection.training_types import PremiseBatch
 
 
+def tokenize_strings(tokenizer: ByT5Tokenizer, strings: list[str], max_seq_len: int) -> Any:
+    return tokenizer(
+        strings,
+        padding="longest",
+        max_length=max_seq_len,
+        truncation=True,
+        return_tensors="pt",
+    )
+
+
 class PremiseSelectionDataset(Dataset):
     def __init__(self,
                  premise_data_path: str,
@@ -64,22 +74,13 @@ class PremiseSelectionDataset(Dataset):
         for i in range(num_negatives):
             ith_negative_premises = [e.neg_premises[i] for e in examples] 
             all_batch_premises.extend(ith_negative_premises)
-        
-        tokenized_contexts = self.tokenizer(
-            [e.context for e in examples],
-            padding="longest",
-            max_length=self.max_seq_len,
-            truncation=True,
-            return_tensors="pt",
-        )
 
-        tokenized_prems = self.tokenizer(
-            all_batch_premises,
-            padding="longest",
-            max_length=self.max_seq_len,
-            truncation=True,
-            return_tensors="pt",
-        )
+        context_list = [e.context for e in examples]
+        tokenized_contexts = tokenize_strings(
+            self.tokenizer, context_list, self.max_seq_len)
+
+        tokenized_prems = tokenize_strings(
+            self.tokenizer, all_batch_premises, self.max_seq_len)
 
         context_ids = tokenized_contexts.input_ids
         context_mask = tokenized_contexts.attention_mask

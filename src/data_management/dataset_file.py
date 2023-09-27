@@ -226,9 +226,21 @@ class DatasetFile:
         self.avail_premises = avail_premises 
         self.proofs = proofs 
 
+
     def proofs_to_string(self) -> str:
         proof_strings = [p.proof_text_to_string() for p in self.proofs]
         return "\n\n".join(proof_strings)
+
+
+    def get_premises_before(self, proof: Proof) -> list[Sentence]:
+        premises_before: list[Sentence] = []
+        for premise in self.avail_premises:
+            if premise.file_path == proof.theorem.term.file_path:
+                if premise.line >= proof.theorem.term.line:
+                    continue
+                premises_before.append(premise)
+        return premises_before
+
 
     @classmethod
     def __get_file_data(cls, file_context_loc: str) -> tuple[str, list[Sentence]]:
