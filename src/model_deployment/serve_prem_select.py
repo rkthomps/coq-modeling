@@ -6,6 +6,8 @@ import sys, os
 import json
 
 from premise_selection.model import PremiseRetriever
+from model_deployment.serve_prem_utils import (
+    FormatResponse, PremiseRequest, PremiseResponse, FORMAT_ENDPOINT, PREMISE_ENDPOINT)
 from data_management.create_premise_dataset import PREMISE_CONFIG_NAME 
 
 from yaml import load, Loader
@@ -30,58 +32,29 @@ with open(data_preparation_conf, "r") as fin:
 premise_format_alias = premise_conf["premise_format_alias"]
 context_format_alias = premise_conf["context_format_alias"]
 
-class FormatResponse:
-    def __init__(self, premise_format_alias: str, context_format_alias: str) -> None:
-        assert type(premise_format_alias) == str
-        assert type(context_format_alias) == str
-        self.preise_format_alias = premise_format_alias
-        self.context_format_alias = context_format_alias
 
-    def to_json(self) -> Any:
-        return {
-            "premise_format_alias": self.preise_format_alias,
-            "context_format_alias": self.context_format_alias,
-        }
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> FormatResponse:
-        premise_format_alias = json_data["premise_format_alias"]
-        context_format_alias = json_data["context_format_alias"]
-        return cls(premise_format_alias, context_format_alias)
-
-
-FORMAT_ENDPOINT = "/formatters"
 @app.route(FORMAT_ENDPOINT, methods=["POST"])
 def formatters() -> str:
     format_response = FormatResponse(premise_format_alias, context_format_alias)
     return json.dumps(format_response.to_json(), indent=2)
 
 
-class PremiseResponse:
-    def __init__(self, premise_scores: list[float]) -> None:
-        assert type(premise_scores) == list
-        assert(all([float(p) for p in premise_scores]))
-        self.premise_scores = premise_scores
+embedding_cache: dict[str, torch.Tensor] = {}
 
-    def to_json(self) -> Any:
-        return {"premise_scores": self.premise_scores}
+def get_encoding(to_encode: str) -> torch.Tensor:
+    if to_encode in embedding_cache:
+        return embedding_cache[to_encode]
+    encoding = model.encode_str(to_encode)
+    embedding_cache[to_encode] = encoding
+    return encoding 
 
-    @classmethod
-    def from_json(cls, json_data: Any) -> PremiseResponse:
-        premise_scores = json_data["premise_scores"]
-        return cls(premise_scores)
-
-
-PREMISE_ENDPOINT = "/premise"
 @app.route(PREMISE_ENDPOINT, methods=["POST"])
 def premise() -> str:
-    context_str = request.form["context"]
-    premise_list_json_str = request.form["premise_list"]
-    premise_list = json.loads(premise_list_json_str)
-    context_encoding = model.encode_str(context_str)
+    selection_request = PremiseRequest.from_request_data(request.form)
+    context_encoding = get_encoding(selection_request.context)
     premise_encodings: list[torch.Tensor] = []
-    for premise_str in premise_list:
-        premise_encoding = model.encode_str(premise_str)
+    for premise_str in selection_request.premises:
+        premise_encoding = get_encoding(premise_str)
         premise_encodings.append(premise_encoding)
     premise_matrix = torch.cat(premise_encodings)
     premise_scores = torch.mm(context_encoding, premise_matrix.t()) 

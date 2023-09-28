@@ -20,11 +20,11 @@ EXAMPLE_TYPE = BasicLmExample
 NODE_SCORE_TYPE = CodeLLamaNodeScore
 
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 TIMEOUT = 1000
-BRANCH = 5 
+BRANCH = 3
 EXPANSIONS = 30
 
 proof_manager = ProofManager(TEST_FILE, EXAMPLE_TYPE)

@@ -239,13 +239,13 @@ class DatasetFile:
 
 
     def get_premises_before(self, proof: Proof) -> list[Sentence]:
-        premises_before: list[Sentence] = []
+        premises_before: set[Sentence] = set()
         for premise in self.avail_premises:
             if premise.file_path == proof.theorem.term.file_path:
                 if premise.line >= proof.theorem.term.line:
                     continue
-            premises_before.append(premise)
-        return premises_before
+            premises_before.add(premise)
+        return list(premises_before)
 
 
     @classmethod

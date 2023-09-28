@@ -76,9 +76,12 @@ class EvalData:
 
 
     def to_json(self) -> Any:
+        eval_result_json_list: list[Any] = []
+        for eval_result in self.eval_result_list:
+            eval_result_json_list.append(eval_result.to_json())
         return {
             "num_steps": self.num_steps,
-            "eval_result_list": self.eval_result_list,
+            "eval_result_list": eval_result_json_list,
         }
 
     @classmethod
