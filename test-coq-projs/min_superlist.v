@@ -277,16 +277,16 @@ Proof.
       + intros H. reflexivity. 
   Qed. 
 
-Theorem min_superlist_less: forall (l : (list nat)) (n1 n2 x1 x2: nat),
+(* Theorem min_superlist_less: forall (l : (list nat)) (n1 n2 x1 x2: nat),
     min (n2 :: l) = Some x1 -> 
     min (n1 :: n2 :: l) = Some x2 ->
     x2 <=? x1 = true. 
 Proof. 
     intros. rewrite min_rewrite in H0. rewrite H in H0.  
     destruct (n1 <? x1) eqn:E.
-    - injection H0 as H0. rewrite H0 in E. <prove>
+    - injection H0 as H0. rewrite H0 in E. <prove> *)
 
-(* Theorem min_superlist_less: forall (l : (list nat)) (n1 n2 x1 x2: nat),
+Theorem min_superlist_less: forall (l : (list nat)) (n1 n2 x1 x2: nat),
     min (n2 :: l) = Some x1 -> 
     min (n1 :: n2 :: l) = Some x2 ->
     x2 <=? x1 = true. 
@@ -296,4 +296,4 @@ Proof.
     - injection H0 as H0. rewrite H0 in E. apply if_ltb_then_leb.  
       apply E. 
     - injection H0 as H0. rewrite H0. apply leb_refl. 
-Qed.  *)
+Qed. 
