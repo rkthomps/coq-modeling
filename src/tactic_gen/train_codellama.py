@@ -10,6 +10,7 @@ from yaml import load, Loader
 import jsonlines
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from peft import LoraConfig
+import transformers
 from transformers import (
     LlamaForCausalLM, CodeLlamaTokenizer,
     BitsAndBytesConfig, TrainingArguments)
@@ -241,9 +242,17 @@ if __name__=="__main__":
     parser.add_argument("yaml_config", help="yaml config file to use for training.")
     args = parser.parse_args(sys.argv[1:])
     conf = load_config(args.yaml_config)
-    __copy_config(args.yaml_config, conf)
     trainer = get_trainer(conf)
-    trainer.train()
+    train_from_checkpoint = "checkpoint_name" in conf
+    if train_from_checkpoint:
+        checkpoint_name = conf["checkpoint_name"]
+        print(f"Training from checkpoint {checkpoint_name}")
+        transformers.logging.set_verbosity_info()
+        trainer.train(checkpoint_name)
+    else:
+        __copy_config(args.yaml_config, conf)
+        print("Training from scratch")
+        trainer.train()
 
 
 
