@@ -25,8 +25,8 @@ def data_shape_expected(raw_data_loc: str) -> bool:
             print(f"{project_loc} is not a directory.", file=sys.stderr)
             exit(1)
         project_files = set(os.listdir(project_loc))
-        if not project_files == set([STEPS_NAME, FILE_CONTEXT_NAME]):
-            print(f"{project_loc} does not exclusively contain files {STEPS_NAME} and {FILE_CONTEXT_NAME}")
+        if not ((STEPS_NAME in project_files) and (FILE_CONTEXT_NAME in project_files)):
+            print(f"{project_loc} does not contain files {STEPS_NAME} and {FILE_CONTEXT_NAME}")
             exit(1)
     return True
 

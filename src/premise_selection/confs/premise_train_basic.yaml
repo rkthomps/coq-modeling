@@ -1,0 +1,32 @@
+seed_everything: 3407  # https://arxiv.org/abs/2109.08203
+trainer:
+  accelerator: gpu
+  devices: 1
+  #precision: bf16-mixed
+  gradient_clip_val: 1.0
+  #val_check_interval: 0.5
+  max_steps: 500000
+  default_root_dir: /home/ubuntu/coq-modeling/models/premise_selection_basic
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.LearningRateMonitor
+      init_args: 
+        logging_interval: step
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        verbose: true
+        save_top_k: 1
+        save_last: true
+        monitor: eval_loss 
+        mode: min 
+
+model:
+  model_name: google/byt5-small
+  lr: 1e-4
+  warmup_steps: 2000
+
+data:
+  premise_data_path: /home/ubuntu/coq-modeling/data/prem-select
+  max_seq_len: 128 
+  batch_size: 4 
+  eval_batch_size: 64 
+  num_workers: 4

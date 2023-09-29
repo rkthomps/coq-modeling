@@ -1,0 +1,20 @@
+
+# Location of partitioned files from coq-lsp raw data
+partitioned_data_loc: "/home/ubuntu/coq-modeling/raw-data/data-points-split"
+
+# Directory to save the processed premise selection data
+output_dataset_loc: "/home/ubuntu/coq-modeling/data/prem-select"
+
+# Number of negative premises to use per positive premise
+num_negatives_per_positive: 3
+
+# Number of the negative premises that should come from the same 
+# file as the theorem 
+num_in_file_negatives_per_positive: 1
+
+# String format of context. Defined in premise_formatter.py 
+context_format_alias: "basic-context-format"
+
+# String format of premises. Defined in premise_formatter.py 
+premise_format_alias: "basic-premise-format"
+

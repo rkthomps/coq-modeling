@@ -24,6 +24,9 @@ dependencies = [
     "numpy",
     "termcolor",
     "openai",
+    "pytorch-lightning",
+    "jsonargparse[signatures]",
+    "pandas",
 ]
  
 [tool.setuptools.packages.find]

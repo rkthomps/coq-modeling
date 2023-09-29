@@ -1,6 +1,6 @@
 
 
-from data_management.lm_example import LmExample, BasicLmExample
+from tactic_gen.lm_example import LmExample, BasicLmExample
 from model_deployment.model_wrapper import ModelResult, ModelWrapper, CodeLLamaNodeScore
 from model_deployment.searcher import SearchTreeManager
 from model_deployment.searcher import ProofManager 

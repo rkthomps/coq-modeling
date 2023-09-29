@@ -12,7 +12,7 @@ import shutil
 import jsonlines
 from termcolor import colored
 
-from data_management.lm_example import LmExample 
+from tactic_gen.lm_example import LmExample 
 from data_management.dataset_file import STEPS_NAME, FILE_CONTEXT_NAME, DatasetFile
 from model_deployment.model_wrapper import ModelWrapper, ModelResult, NodeScore
 from model_deployment.goal_comparer import NodeGoal
@@ -369,6 +369,19 @@ class ProofManager:
                 example = examples[-1]
                 return example
 
+    def get_dataset_file(self, partial_proof: str) -> DatasetFile:
+        partial_proof_file = f"{self.__file_prefix}{partial_proof} Admitted."
+        self.__update_hidden_file(partial_proof_file)
+        time1 = time.time_ns()
+        with CoqFile(self.__hidden_file_path, timeout=self.TIMEOUT) as coq_file:
+            time2 = time.time_ns()
+            with ProofState(coq_file, self.__cached_file_context) as proof_state:
+                time3 = time.time_ns()
+                print(f"Coqfile: {(time2 - time1) / 1e9}; State: {(time3 - time2) / 1e9}")
+                self.__update_search_dir(proof_state)
+                dataset_obj = DatasetFile.from_directory(self.__search_dir_path)
+                return dataset_obj
+
 
     def __update_search_dir(self, proof_state: ProofState) -> None:
         last_proof = proof_state.proofs[-1]
@@ -395,7 +408,12 @@ class ProofManager:
     def __update_hidden_file(self, contents: str) -> None:
         with open(self.__hidden_file_path, "w") as fout:
             fout.write(contents)
+        
+    def __enter__(self) -> ProofManager:
+        return self
 
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
     def close(self) -> None:
         shutil.rmtree(self.__search_dir_path)

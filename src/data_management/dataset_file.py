@@ -40,6 +40,12 @@ class Sentence:
         tup_module = tuple(self.module)
         return hash((self.text, self.file_path, tup_module, self.sentence_type, self.line))
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Sentence):
+            return False
+        return hash(self) == hash(other)
+
+
     @classmethod
     def from_json(cls, json_data: Any) -> Sentence:
         text = json_data["text"]
@@ -216,19 +222,31 @@ class Proof:
 
 class DatasetFile:
     def __init__(self, file: str,
-                 sentences: list[Sentence],
+                 avail_premises: list[Sentence],
                  proofs: list[Proof]) -> None:
         # TODO: Turn into list of proofs. 
         assert type(file) == str
-        assert all([type(s) == Sentence for s in sentences]) 
+        assert all([type(p) == Sentence for p in avail_premises]) 
         assert all([type(p) == Proof for p in proofs])
         self.file = file
-        self.sentences = sentences
+        self.avail_premises = avail_premises 
         self.proofs = proofs 
+
 
     def proofs_to_string(self) -> str:
         proof_strings = [p.proof_text_to_string() for p in self.proofs]
         return "\n\n".join(proof_strings)
+
+
+    def get_premises_before(self, proof: Proof) -> list[Sentence]:
+        premises_before: set[Sentence] = set()
+        for premise in self.avail_premises:
+            if premise.file_path == proof.theorem.term.file_path:
+                if premise.line >= proof.theorem.term.line:
+                    continue
+            premises_before.add(premise)
+        return list(premises_before)
+
 
     @classmethod
     def __get_file_data(cls, file_context_loc: str) -> tuple[str, list[Sentence]]:
@@ -241,11 +259,11 @@ class DatasetFile:
 
         file = file_context_json_data["file"]
 
-        sentences: list[Sentence] = []
+        avail_premises: list[Sentence] = []
         for sentence_data in file_context_json_data["context"]:
-            sentences.append(Sentence.from_json(sentence_data))
+            avail_premises.append(Sentence.from_json(sentence_data))
 
-        return file, sentences
+        return file, avail_premises 
 
     @classmethod
     def __get_proofs(cls, steps_loc: str) -> list[Proof]:
@@ -285,10 +303,10 @@ class DatasetFile:
         assert os.path.exists(file_context_loc)
         assert os.path.exists(steps_loc)
         
-        file, sentences = cls.__get_file_data(file_context_loc)
+        file, avail_premises = cls.__get_file_data(file_context_loc)
         proofs = cls.__get_proofs(steps_loc)
 
-        return cls(file, sentences, proofs)
+        return cls(file, avail_premises, proofs)
 
 
 if __name__ == "__main__":

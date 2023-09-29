@@ -8,7 +8,7 @@ from transformers import (LlamaForCausalLM, CodeLlamaTokenizer,
 from transformers.generation.utils import BeamSearchDecoderOnlyOutput 
 import torch
 
-from data_management.lm_example import LmExample 
+from tactic_gen.lm_example import LmExample 
 from tactic_gen.train_codellama import (collate_input, CONF_NAME, load_config,
                                         get_tokenizer)
 
