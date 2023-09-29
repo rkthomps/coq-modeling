@@ -23,3 +23,5 @@ logging_steps: 10
 save_steps: 100 
 save_total_limit: 5
 
+# Train from checkpoint
+#checkpoint_name: "/path/to/checkpoint"
