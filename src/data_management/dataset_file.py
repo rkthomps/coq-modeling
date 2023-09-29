@@ -1,6 +1,9 @@
 
 from __future__ import annotations
-from typing import Any
+from typing import Any  
+from enum import Enum
+
+from coqlspclient.coq_structs import TermType
 
 import sys, os
 import jsonlines
@@ -17,7 +20,7 @@ class Sentence:
                  text: str,
                  file_path: str,
                  module: list[str],
-                 sentence_type: str,
+                 sentence_type: TermType,
                  line: int):
         assert type(text) == str
         try:
@@ -28,7 +31,7 @@ class Sentence:
                 print(f"{file_path}:{line} Not Sentence: {text.strip()}")
         assert type(file_path) == str
         assert all([type(m) == str for m in module])
-        assert type(sentence_type) == str
+        assert type(sentence_type) == TermType 
         assert type(line) == int
         self.text = text
         self.file_path = file_path
@@ -51,7 +54,7 @@ class Sentence:
         text = json_data["text"]
         file_path = json_data["file_path"]
         module = json_data["module"]
-        sentence_type = json_data["type"]
+        sentence_type = TermType[json_data["type"].split(".")[1]]
         line = json_data["line"]
         return cls(text, file_path, module, sentence_type, line)
 

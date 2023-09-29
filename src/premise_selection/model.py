@@ -4,6 +4,7 @@ from typing import Any
 
 import sys, os
 import pdb
+import re
 from pytorch_lightning.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from transformers import (ByT5Tokenizer, T5EncoderModel, 
                           get_cosine_schedule_with_warmup,
@@ -123,26 +124,34 @@ class PremiseRetriever(pl.LightningModule):
             }
         } 
 
+    @staticmethod
+    def get_model_loc(checkpoint_loc: str) -> str:
+        checkpoint_basename = os.path.basename(checkpoint_loc)
+        path_suffix = os.path.join(
+            "lightning_logs", "version_0", "checkpoints", checkpoint_basename)
+        path_disection = re.match(r"(.*?)[\/]" + re.escape(path_suffix), checkpoint_loc)
+        if path_disection is None:
+            print(f"Checkpoint path doesn't have expected suffix: {path_suffix}")
+        model_loc, = path_disection.groups()
+        return model_loc
+    
 
     @classmethod
-    def load_from_conf_and_checkpoint(cls, model_loc: str, checkpoint_name: str
-                                      ) -> PremiseRetriever:
-        config_loc = os.path.join(model_loc, "config.yaml")
-        with open(config_loc, "r") as fin:
-            conf = load(fin, Loader=Loader) 
+    def get_model_config(cls, checkpoint_loc: str) -> Any:
+        model_loc = cls.get_model_loc(checkpoint_loc) 
+        model_config_loc = os.path.join(model_loc, "config.yaml")
+        with open(model_config_loc, "r") as fin:
+            conf = load(fin, Loader=Loader)
+        return conf
+        
+
+    @classmethod
+    def load_from_checkpoint_loc(cls, checkpoint_loc: str) -> PremiseRetriever:
+        conf = cls.get_model_config(checkpoint_loc)
         model_args = conf["model"]
         model_args["max_steps"] = conf["trainer"]["max_steps"]
         model_args["max_seq_len"] = conf["data"]["max_seq_len"]
-        checkpoint_loc = os.path.join(
-            model_loc, "lightning_logs", "version_0", 
-            "checkpoints", checkpoint_name)
-
-        return cls.load_from_checkpoint(
-            checkpoint_loc,
-            **model_args,
-        )
-
-
+        return cls.load_from_checkpoint(checkpoint_loc, **model_args)
 
 
     

@@ -1,5 +1,6 @@
 
 import sys, os
+import shutil
 import argparse
 from typing import Type, Any
 
@@ -11,6 +12,7 @@ from data_management.dataset_file import DatasetFile
 from premise_selection.premise_formatter import (
     PREMISE_ALIASES, CONTEXT_ALIASES, ContextFormat, PremiseFormat)
 from premise_selection.premise_example import PremiseTrainingExample
+from premise_selection.premise_filter import PremiseFilter
 from data_management.create_lm_dataset import split_file_path
 from data_management.split_raw_data import SPLITS, data_shape_expected
 from data_management.jsonl_utils import shuffle
@@ -21,7 +23,8 @@ def get_examples_from_project(project_obj: DatasetFile,
                               num_negatives_per_positive: int,
                               num_in_file_negatives_per_positive: int,
                               context_format: Type[ContextFormat],
-                              premise_format: Type[PremiseFormat]
+                              premise_format: Type[PremiseFormat],
+                              premise_filter: PremiseFilter,
                               ) -> list[Any]:
     training_examples: list[Any] = []
     for proof in project_obj.proofs:
@@ -29,7 +32,7 @@ def get_examples_from_project(project_obj: DatasetFile,
             step_examples = PremiseTrainingExample.from_focused_step(
                 step, proof, project_obj, num_negatives_per_positive,
                 num_in_file_negatives_per_positive, context_format,
-                premise_format
+                premise_format, premise_filter
             )
             json_examples = [e.to_json() for e in step_examples]
             training_examples.extend(json_examples)
@@ -42,6 +45,7 @@ def create_premise_dataset(partitioned_dataset_loc: str,
                            num_in_file_negatives_per_positive: int,
                            context_format: Type[ContextFormat],
                            premise_format: Type[PremiseFormat],
+                           premise_filter: PremiseFilter,
                            ) -> None: 
     if os.path.exists(output_dataset_loc):
         print(f"Dataset already exists at {output_dataset_loc}", file=sys.stderr)
@@ -62,7 +66,7 @@ def create_premise_dataset(partitioned_dataset_loc: str,
             training_json_examples = get_examples_from_project(
                 project_obj, num_negatives_per_positive, 
                 num_in_file_negatives_per_positive, context_format,
-                premise_format)
+                premise_format, premise_filter)
             output_writer.write_all(training_json_examples)
         output_writer.close()
         shuffled_output_path = split_file_path(output_dataset_loc, split, shuffled=True)
@@ -89,6 +93,7 @@ if __name__ == "__main__":
     context_format_type = CONTEXT_ALIASES[context_format_alias]
     premise_format_alias = conf["premise_format_alias"]
     premise_format_type = PREMISE_ALIASES[premise_format_alias]
+    premise_filter = PremiseFilter.from_json(conf["premise_filter"])
 
     create_premise_dataset(
         partitioned_data_loc,
@@ -97,7 +102,11 @@ if __name__ == "__main__":
         num_in_file_negatives_per_positive,
         context_format_type,
         premise_format_type,
+        premise_filter,
     )
+
+    config_destination = os.path.join(args.output_dataset_loc, PREMISE_CONFIG_NAME)
+    shutil.copy(args.yaml_config, config_destination)
 
 
 

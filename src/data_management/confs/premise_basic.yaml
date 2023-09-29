@@ -18,3 +18,8 @@ context_format_alias: "basic-context-format"
 # String format of premises. Defined in premise_formatter.py 
 premise_format_alias: "basic-premise-format"
 
+# Which kinds of premises to exclude from the dataset. 
+premise_filter:
+  coq_excludes: ["NOTATION", "TACTIC"]
+  non_coq_excludes: [] 
+  general_excludes: []

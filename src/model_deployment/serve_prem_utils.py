@@ -7,23 +7,28 @@ import json
 
 FORMAT_ENDPOINT = "/formatters"
 class FormatResponse:
-    def __init__(self, premise_format_alias: str, context_format_alias: str) -> None:
-        assert type(premise_format_alias) == str
+    def __init__(self, context_format_alias: str, 
+                 premise_format_alias: str,
+                 premise_filter_data: Any) -> None:
         assert type(context_format_alias) == str
-        self.preise_format_alias = premise_format_alias
+        assert type(premise_format_alias) == str
         self.context_format_alias = context_format_alias
+        self.preise_format_alias = premise_format_alias
+        self.premise_filter_data = premise_filter_data
 
     def to_json(self) -> Any:
         return {
-            "premise_format_alias": self.preise_format_alias,
             "context_format_alias": self.context_format_alias,
+            "premise_format_alias": self.preise_format_alias,
+            "premise_filter_data": self.premise_filter_data,
         }
 
     @classmethod
     def from_json(cls, json_data: Any) -> FormatResponse:
-        premise_format_alias = json_data["premise_format_alias"]
         context_format_alias = json_data["context_format_alias"]
-        return cls(premise_format_alias, context_format_alias)
+        premise_format_alias = json_data["premise_format_alias"]
+        premise_filter_data = json_data["premise_filter_data"]
+        return cls(context_format_alias, premise_format_alias, premise_filter_data)
 
 
 PREMISE_ENDPOINT = "/premise"
@@ -65,7 +70,7 @@ class PremiseRequest:
         return cls.from_json(json_data)
 
     @classmethod
-    def from_json(cls, json_data) -> PremiseRequest:
+    def from_json(cls, json_data: Any) -> PremiseRequest:
         context = json_data["context"]
         premises = json_data["premises"]
         return cls(context, premises)
