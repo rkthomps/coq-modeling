@@ -17,7 +17,9 @@ import torch
 
 app = Flask(__name__) 
 
-CHECKPOINT_LOC = "/home/ubuntu/coq-modeling/models/premise_selection_basic/lightning_logs/version_0/checkpoints/epoch=2-step=55287.ckpt"
+#CHECKPOINT_LOC = "/home/ubuntu/coq-modeling/models/premise_selection_basic/lightning_logs/version_0/checkpoints/epoch=2-step=55287.ckpt"
+CHECKPOINT_LOC = "/home/ubuntu/coq-modeling/models/premise_selection_no_coq_notation_tac/lightning_logs/version_0/checkpoints/epoch=2-step=44628.ckpt" 
+
 
 model_wrapper = LocalPremiseModelWrapper.from_checkpoint(CHECKPOINT_LOC)
 

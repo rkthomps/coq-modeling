@@ -105,7 +105,7 @@ if __name__ == "__main__":
         premise_filter,
     )
 
-    config_destination = os.path.join(args.output_dataset_loc, PREMISE_CONFIG_NAME)
+    config_destination = os.path.join(output_dataset_loc, PREMISE_CONFIG_NAME)
     shutil.copy(args.yaml_config, config_destination)
 
 
