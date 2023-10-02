@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-from typing import Type, Iterable
+from typing import Type, Iterable, Any
 
 import sys, os
 import json
@@ -56,15 +56,18 @@ class PremiseModelWrapper:
             yield premises[idx]
 
 
+
 class LocalPremiseModelWrapper(PremiseModelWrapper):
     MAX_CACHE_SIZE = 50000
     def __init__(self, retriever: PremiseRetriever,
                  context_format: Type[ContextFormat],
                  premise_format: Type[PremiseFormat],
-                 premise_filter: PremiseFilter) -> None:
+                 premise_filter: PremiseFilter,
+                 checkpoint_loc: str) -> None:
         super(LocalPremiseModelWrapper, self).__init__(
             context_format, premise_format, premise_filter)
         self.retriever = retriever
+        self.checkpoint_loc = checkpoint_loc
         self.encoding_cache: dict[str, torch.Tensor] = {}
 
 
@@ -92,6 +95,14 @@ class LocalPremiseModelWrapper(PremiseModelWrapper):
         return similarities.squeeze().tolist()
 
 
+    def to_json(self) -> Any:
+        return {"checkpoint_path", self.checkpoint_loc}
+    
+    @classmethod
+    def from_json(cls, json_data: Any) -> LocalPremiseModelWrapper:
+        checkpoint_loc = json_data["checkpoint_path"]
+        return cls.from_checkpoint(checkpoint_loc)
+
     @classmethod
     def from_checkpoint(cls, checkpoint_loc: str) -> LocalPremiseModelWrapper:
         model_conf = PremiseRetriever.get_model_config(checkpoint_loc)
@@ -105,7 +116,7 @@ class LocalPremiseModelWrapper(PremiseModelWrapper):
         context_format = CONTEXT_ALIASES[context_format_alias]
         premise_filter = PremiseFilter.from_json(premise_conf["premise_filter"])
         retriever = PremiseRetriever.load_from_checkpoint_loc(checkpoint_loc)
-        return cls(retriever, context_format, premise_format, premise_filter)
+        return cls(retriever, context_format, premise_format, premise_filter, checkpoint_loc)
 
         
 
@@ -134,9 +145,9 @@ class PremiseServerModelWrapper(PremiseModelWrapper):
         format_endpoint = url.rstrip("/") + FORMAT_ENDPOINT
         format_response = requests.post(format_endpoint, {})
         format_data = json.loads(format_response.content)
-        format_response = FormatResponse.from_json(format_data)
-        context_format = CONTEXT_ALIASES[format_response.context_format_alias]
-        premise_format = PREMISE_ALIASES[format_response.preise_format_alias]
-        premise_filter = PremiseFilter.from_json(format_response.premise_filter_data)
+        format_response_obj = FormatResponse.from_json(format_data)
+        context_format = CONTEXT_ALIASES[format_response_obj.context_format_alias]
+        premise_format = PREMISE_ALIASES[format_response_obj.preise_format_alias]
+        premise_filter = PremiseFilter.from_json(format_response_obj.premise_filter_data)
         return cls(url, context_format, premise_format, premise_filter)
         

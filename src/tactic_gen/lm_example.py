@@ -1,12 +1,13 @@
 from __future__ import annotations
-from typing import Any, Type
+from typing import Any, Type, Optional
 
 import sys, os
 import pdb
 import jsonlines
 
 from data_management.dataset_file import (
-    DatasetFile, FocusedStep, Proof)
+    DatasetFile, FocusedStep, Proof, Sentence)
+from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper 
 
 
 class LmExample:
@@ -23,11 +24,13 @@ class LmExample:
         }
 
     @classmethod
-    def json_from_dataset_file(cls, dataset_file: DatasetFile) -> list[dict[str, str]]:
-        return [example.to_json() for example in cls.from_dataset_file(dataset_file)]
+    def json_from_dataset_file(cls, dataset_file: DatasetFile,
+                               premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[dict[str, str]]:
+        return [example.to_json() for example in cls.from_dataset_file(dataset_file, premise_model_wrapper)]
 
     @classmethod
-    def from_dataset_file(cls, dataset_file: DatasetFile) -> list[LmExample]:
+    def from_dataset_file(cls, dataset_file: DatasetFile,
+                          premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[LmExample]:
         raise NotImplementedError
 
     @classmethod
@@ -57,7 +60,8 @@ class BasicLmExample(LmExample):
         return cls(input, output)
 
     @classmethod
-    def from_dataset_file(cls, dataset_file: DatasetFile) -> list[LmExample]:
+    def from_dataset_file(cls, dataset_file: DatasetFile,
+                          premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[LmExample]:
         basic_lm_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
             for step in proof.steps:
@@ -67,6 +71,66 @@ class BasicLmExample(LmExample):
     @staticmethod
     def get_alias() -> str:
         return "basic"
+
+
+class PremiseLmExample(LmExample):
+    MAX_N_EXAMPLES = 100
+
+    def __init__(self, input: str, output: str) -> None:
+        super(PremiseLmExample, self).__init__(input, output)
+
+
+    @classmethod
+    def __get_premise_str(cls, step: FocusedStep, 
+                          proof: Proof, 
+                          dset_obj: DatasetFile,
+                          premise_model_wrapper: LocalPremiseModelWrapper) -> str:
+        filtered_result = premise_model_wrapper.premise_filter.get_pos_and_avail_premises(
+            step, proof, dset_obj)
+        ranked_premises = premise_model_wrapper.get_ranked_premise_generator(
+            step, proof, filtered_result.avail_premises)
+        top_premises: list[Sentence] = []
+        for premise in ranked_premises:
+            if len(top_premises) >= cls.MAX_N_EXAMPLES:
+                break
+            top_premises.append(premise)
+
+        premise_strs: list[str] = []
+        for i, premise in enumerate(top_premises):
+            premise_strs.append(f"Premise {i + 1}: {premise.text}")
+        
+        premise_strs.reverse()
+        return "\n".join(premise_strs)
+
+
+    @classmethod
+    def __example_from_step(cls, step: FocusedStep, 
+                            proof: Proof, 
+                            dset_obj: DatasetFile,
+                            premise_model_wrapper: LocalPremiseModelWrapper) -> PremiseLmExample:
+        basic_example = BasicLmExample.__example_from_step(step, proof)
+        premise_str = cls.__get_premise_str(step, proof, dset_obj, premise_model_wrapper)
+        example_input = f"{premise_str}<PREM-SEP>{basic_example.input}"
+        example_output = basic_example.output
+        return cls(example_input, example_output) 
+
+    
+    @classmethod
+    def from_dataset_file(cls, dataset_file: DatasetFile, 
+                          premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[LmExample]:
+        assert premise_model_wrapper is not None
+        premise_examples: list[LmExample] = []
+        for proof in dataset_file.proofs:
+            for step in proof.steps:
+                premise_example = cls.__example_from_step(
+                    step, proof, dataset_file, premise_model_wrapper)
+                premise_examples.append(premise_example)
+        return premise_examples
+
+
+    @staticmethod
+    def get_alias() -> str:
+        return "premise"
 
 
 class GPT4BasicLmExample(LmExample):
@@ -79,6 +143,7 @@ class GPT4BasicLmExample(LmExample):
                "in order to eventually complete the proof. ") 
     def __init__(self, input: str, output: str) -> None:
         super(GPT4BasicLmExample, self).__init__(input, output)
+
 
     @classmethod
     def __example_from_step(cls, step: FocusedStep, proof: Proof) -> GPT4BasicLmExample:
@@ -93,8 +158,9 @@ class GPT4BasicLmExample(LmExample):
 
 
     @classmethod
-    def from_dataset_file(cls, dataset_file: DatasetFile) -> list[GPT4BasicLmExample]:
-        gpt4_examples: list[GPT4BasicLmExample] = []
+    def from_dataset_file(cls, dataset_file: DatasetFile,
+                          premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[LmExample]:
+        gpt4_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
             for step in proof.steps:
                 gpt4_examples.append(cls.__example_from_step(step, proof))
@@ -109,6 +175,7 @@ class GPT4BasicLmExample(LmExample):
 LMEXAMPLE_ALIASES: dict[str, Type[LmExample]] = {
     BasicLmExample.get_alias(): BasicLmExample, 
     GPT4BasicLmExample.get_alias(): GPT4BasicLmExample,
+    PremiseLmExample.get_alias(): PremiseLmExample,
 }
 
 
@@ -118,7 +185,8 @@ if __name__ == "__main__":
     for dirname in os.listdir(TEST_PATH):
         absolute_dirname = os.path.join(TEST_PATH, dirname)
         obj = DatasetFile.from_directory(absolute_dirname)
-        examples = BasicLmExample.from_dataset_file(obj)
+        premise_wrapper: Optional[LocalPremiseModelWrapper] = None
+        examples = BasicLmExample.from_dataset_file(obj, premise_wrapper)
         all_examples.extend(examples)
 
     with jsonlines.open("test_examples.jsonl", "w") as fout:

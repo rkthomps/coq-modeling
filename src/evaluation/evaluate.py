@@ -4,6 +4,7 @@ import json
 import sys, os
 import argparse
 import random
+import traceback
 
 
 from coqlspclient.coq_file import CoqFile
@@ -118,9 +119,9 @@ class Evaluator:
             try:
                 proof_manager = ProofManager(psuedo_file, self.example_type)
             except Exception as e:
-                print(e.with_traceback())
+                traceback.print_exc()
                 continue
-            empty_result = proof_manager.check_proof("") 
+            empty_result, goal_answer = proof_manager.check_proof("") 
             if empty_result == TacticResult.INVALID:
                 continue
             if empty_result == TacticResult.COMPLETE:

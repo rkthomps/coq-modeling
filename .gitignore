@@ -4,12 +4,19 @@ data
 models
 
 # Config files
-src/tactic_gen/confs/**
-!src/tactic_gen/confs/codellama_basic.yaml
-src/data_management/confs/**
-!src/data_management/confs/premise_basic.yaml
+# - Creating premise and tactic datasets 
+src/data_management/premise-confs/**
+!src/data_management/premise-confs/premise_basic.yaml
+src/data_management/tactic-confs/**
+!src/data_management/tactic-confs/premise_tactic.yaml
+
+# - Training premise dataset
 src/premise_selection/confs/**
 !src/premise_selection/confs/premise_train_basic.yaml
+
+# - Training tactic dataset
+src/tactic_gen/confs/**
+!src/tactic_gen/confs/codellama_basic.yaml
 
 
 # Python files

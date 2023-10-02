@@ -20,8 +20,7 @@ from evaluate import EvaluationModule
 import numpy as np 
 
 from tactic_gen.lm_example import LmExample
-from data_management.create_lm_dataset import split_file_path
-from data_management.split_raw_data import TRAIN_NAME, VAL_NAME
+from data_management.split_raw_data import TRAIN_NAME, VAL_NAME, split_file_path
 
 
 # This doc details how to finetune codellama:

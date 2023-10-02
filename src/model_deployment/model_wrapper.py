@@ -15,7 +15,7 @@ import openai
 class ModelResult:
     def __init__(self, 
                  next_tactic_list: list[str], 
-                 score_list: [list[NodeScore]]) -> None:
+                 score_list: list[NodeScore]) -> None:
         assert all([type(t) == str for t in next_tactic_list])
         assert all([isinstance(s, NodeScore) for s in score_list]) 
         assert len(next_tactic_list) == len(score_list)
@@ -61,7 +61,7 @@ class CodeLLamaServer(ModelWrapper):
 
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
         request_data = example.to_json()
-        request_data["n"] = n
+        request_data["n"] = "n"
         response = requests.post(self.server_url, request_data)
         response_data = json.loads(response.content)
         next_tactic_list = response_data["tactics"]
@@ -98,7 +98,7 @@ class GPT4Wrapper(ModelWrapper):
         assert type(completion) == dict
         seen_tactics: set[str] = set()
         tactics: list[str] = []
-        scores: list[CodeLLamaNodeScore] = []
+        scores: list[NodeScore] = []
         for choice in completion["choices"]:
             assert type(choice) == dict
             assert type(choice["message"]) == dict
@@ -132,7 +132,7 @@ class GPT4Wrapper(ModelWrapper):
                 raw_tactic_map[stripped_msg] = raw_msg
         sum_responses = len(completion["choices"])
         tactics: list[str] = []
-        scores: list[CodeLLamaNodeScore] = []
+        scores: list[NodeScore] = []
         sorted_tactics = sorted(tactic_freqs.items(), 
                                 key=lambda tup: -1 * tup[1])
         for tactic, freq in sorted_tactics[:n]: 
@@ -169,7 +169,7 @@ class GPT4Wrapper(ModelWrapper):
         return "gpt4"
 
 
-MODEL_WRAPPER_ALIASES: dict[str, ModelWrapper] = {
+MODEL_WRAPPER_ALIASES: dict[str, Type[ModelWrapper]] = {
     CodeLLamaServer.get_alias(): CodeLLamaServer,
     GPT4Wrapper.get_alias(): GPT4Wrapper,
 }

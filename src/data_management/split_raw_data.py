@@ -8,7 +8,7 @@ import shutil
 import json
 from tqdm import tqdm
 
-from data_management.dataset_file import STEPS_NAME, FILE_CONTEXT_NAME
+from data_management.dataset_file import data_shape_expected
 
 TRAIN_NAME = "train"
 VAL_NAME = "val"
@@ -18,17 +18,11 @@ ASSIGNMENT_NAME = "assignments.json"
 SPLITS = [TRAIN_NAME, VAL_NAME, TEST_NAME]
 
 
-def data_shape_expected(raw_data_loc: str) -> bool:
-    for project in os.listdir(raw_data_loc):
-        project_loc = os.path.join(raw_data_loc, project)
-        if not os.path.isdir(project_loc):
-            print(f"{project_loc} is not a directory.", file=sys.stderr)
-            exit(1)
-        project_files = set(os.listdir(project_loc))
-        if not ((STEPS_NAME in project_files) and (FILE_CONTEXT_NAME in project_files)):
-            print(f"{project_loc} does not contain files {STEPS_NAME} and {FILE_CONTEXT_NAME}")
-            exit(1)
-    return True
+def split_file_path(parent_dir: str, split: str, shuffled: bool=True) -> str:
+    if shuffled:
+        return os.path.join(parent_dir, f"{split}-shuffled.jsonl")
+    else:
+        return os.path.join(parent_dir, f"{split}-unshuffled.jsonl")
 
 
 def assignment_shape_expected(assignment: Any) -> bool:

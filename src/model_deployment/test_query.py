@@ -8,7 +8,8 @@ import pdb
 import jsonlines
 
 from model_deployment.searcher import ProofManager, SearchTreeManager
-from model_deployment.model_wrapper import CodeLLamaNodeScore, CodeLLamaServer, ModelWrapper, GPT4Wrapper 
+from model_deployment.model_wrapper import CodeLLamaServer, ModelWrapper, GPT4Wrapper 
+from model_deployment.node_score import CodeLLamaNodeScore, NodeScore 
 from tactic_gen.lm_example import LmExample, BasicLmExample, GPT4BasicLmExample
 
 # WRAPPER = GPT4Wrapper() 

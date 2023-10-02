@@ -14,6 +14,18 @@ import re
 STEPS_NAME = "steps.jsonl"
 FILE_CONTEXT_NAME = "file_context.jsonl"
 
+def data_shape_expected(raw_data_loc: str) -> bool:
+    for project in os.listdir(raw_data_loc):
+        project_loc = os.path.join(raw_data_loc, project)
+        if not os.path.isdir(project_loc):
+            print(f"{project_loc} is not a directory.", file=sys.stderr)
+            exit(1)
+        project_files = set(os.listdir(project_loc))
+        if not ((STEPS_NAME in project_files) and (FILE_CONTEXT_NAME in project_files)):
+            print(f"{project_loc} does not contain files {STEPS_NAME} and {FILE_CONTEXT_NAME}")
+            exit(1)
+    return True
+
 class Sentence:
     bad_sentence_endings: set[str] = set()
     def __init__(self, 

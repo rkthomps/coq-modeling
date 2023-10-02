@@ -5,8 +5,8 @@ import argparse
 
 from tqdm import tqdm
 
-from data_management.dataset_file import DatasetFile 
-from data_management.split_raw_data import SPLITS, data_shape_expected
+from data_management.dataset_file import DatasetFile, data_shape_expected
+from data_management.split_raw_data import SPLITS 
 
 
 def get_counts(partitioned_dataset_loc: str) -> None:

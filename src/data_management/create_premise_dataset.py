@@ -8,13 +8,12 @@ import jsonlines
 from tqdm import tqdm
 from yaml import load, Loader
 
-from data_management.dataset_file import DatasetFile
+from data_management.dataset_file import DatasetFile, data_shape_expected
 from premise_selection.premise_formatter import (
     PREMISE_ALIASES, CONTEXT_ALIASES, ContextFormat, PremiseFormat)
 from premise_selection.premise_example import PremiseTrainingExample
 from premise_selection.premise_filter import PremiseFilter
-from data_management.create_lm_dataset import split_file_path
-from data_management.split_raw_data import SPLITS, data_shape_expected
+from data_management.split_raw_data import SPLITS, split_file_path
 from data_management.jsonl_utils import shuffle
 
 

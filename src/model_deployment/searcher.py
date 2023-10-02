@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 from typing import Optional, Type, Any
+from types import TracebackType
 from enum import Enum
 import heapq 
 import time
@@ -12,9 +13,11 @@ import shutil
 import jsonlines
 from termcolor import colored
 
-from tactic_gen.lm_example import LmExample 
+from tactic_gen.lm_example import LmExample
+from data_management.create_lm_dataset import LmExampleConfig
 from data_management.dataset_file import STEPS_NAME, FILE_CONTEXT_NAME, DatasetFile
-from model_deployment.model_wrapper import ModelWrapper, ModelResult, NodeScore
+from model_deployment.model_wrapper import ModelWrapper, ModelResult
+from model_deployment.node_score import NodeScore
 from model_deployment.goal_comparer import NodeGoal
 
 from coqlspclient.coq_file import CoqFile, GoalAnswer
@@ -222,6 +225,7 @@ class SearchTreeManager:
         makes_progress = True
         initial_tactic = ""
         combined_tactics = ""
+        initial_goal = ""
         initial_tactic_result, goals = proof_manager.check_proof(combined_tactics)
         assert initial_tactic_result == TacticResult.VALID
         assert goals is not None
@@ -229,7 +233,7 @@ class SearchTreeManager:
         initial_score = score_type.get_initial_score() 
         self.search_tree = ProofSearchTree(
             initial_validity, final_tactic, makes_progress, initial_tactic, 
-            combined_tactics, initial_score)
+            combined_tactics, initial_goal, initial_score)
         self.frontier: list[ProofSearchTree] = []
         self.seen_goals: list[NodeGoal] = [node_goal]
         heapq.heappush(self.frontier, self.search_tree)
@@ -268,12 +272,13 @@ class SearchTreeManager:
             tactic_result, goals = self.proof_manager.check_proof(proof_script) 
             if tactic_result == TacticResult.COMPLETE:
                 assert goals is None
+                pretty_goal = "complete"
                 valid = True
                 final_tactic = True
                 makes_progress = True 
                 complete_node = ProofSearchTree(
                     valid, final_tactic, makes_progress, tactic, proof_script,
-                    leaf_subtree.score.agg(score)
+                    pretty_goal, leaf_subtree.score.agg(score)
                 )
                 children.append(complete_node)
                 leaf_subtree.children = children
@@ -283,12 +288,14 @@ class SearchTreeManager:
                 valid = False
                 final_tactic = False
                 makes_progress = False
+                pretty_goal = "error"
                 children.append(ProofSearchTree(
                     valid, final_tactic, makes_progress, tactic, proof_script, 
-                    leaf_subtree.score.agg(score)
+                    pretty_goal, leaf_subtree.score.agg(score)
                 ))
             if tactic_result == TacticResult.VALID:
                 assert goals is not None
+                pretty_goal = repr(goals.goals.goals)
                 node_goal = self.__get_goals(goals) 
                 goal_progress = node_goal.makes_progress(self.seen_goals)
                 is_bullet = re.search(r"\s+[-+*]+", tactic) is not None
@@ -297,7 +304,7 @@ class SearchTreeManager:
                 final_tactic = False
                 new_leaf = ProofSearchTree(
                     valid, final_tactic, makes_progress, tactic, proof_script, 
-                    leaf_subtree.score.agg(score))
+                    pretty_goal, leaf_subtree.score.agg(score))
                 children.append(new_leaf)
                 if makes_progress:
                     self.seen_goals.append(node_goal)
@@ -326,10 +333,10 @@ class ProofManager:
     SEARCH_TOKEN = "<prove>"
     TIMEOUT = 60
 
-    def __init__(self, file_path: str, 
-                 example_type: Type[LmExample]) -> None:
+    def __init__(self, file_path: str, lm_example_config: LmExampleConfig) -> None:
         file_dir = os.path.dirname(file_path) 
-        self.example_type = example_type
+        self.example_type = lm_example_config.format_type
+        self.premise_wrapper = lm_example_config.premise_wrapper
         self.__orig_file_path = file_path 
         self.__search_dir_path = get_fresh_path(file_dir, ".proof-search")
         self.__hidden_file_path = get_fresh_path(file_dir, os.path.basename(file_path))
@@ -369,9 +376,10 @@ class ProofManager:
                 print(f"Coqfile: {(time2 - time1) / 1e9}; State: {(time3 - time2) / 1e9}")
                 self.__update_search_dir(proof_state)
                 dataset_obj = DatasetFile.from_directory(self.__search_dir_path)
-                examples = self.example_type.from_dataset_file(dataset_obj)
+                examples = self.example_type.from_dataset_file(dataset_obj, self.premise_wrapper)
                 example = examples[-1]
                 return example
+
 
     def get_dataset_file(self, partial_proof: str) -> DatasetFile:
         partial_proof_file = f"{self.__file_prefix}{partial_proof} Admitted."
@@ -416,7 +424,9 @@ class ProofManager:
     def __enter__(self) -> ProofManager:
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type: type[BaseException], 
+                 exc_value: BaseException | None, 
+                 traceback: TracebackType | None) -> None:
         self.close()
 
     def close(self) -> None:

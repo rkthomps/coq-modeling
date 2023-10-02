@@ -5,6 +5,7 @@ import json
 
 from premise_selection.premise_filter import PremiseFilter, FilteredResult
 from data_management.dataset_file import Sentence
+from data_management.create_lm_dataset import LmExampleConfig
 from tactic_gen.lm_example import BasicLmExample
 from model_deployment.premise_model_wrapper import PremiseServerModelWrapper
 from model_deployment.searcher import ProofManager
@@ -16,9 +17,10 @@ FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
 N = 20
 
 premise_server = PremiseServerModelWrapper.from_url(URL)
+void_lm_config = LmExampleConfig.void_config()
 
 # TODO: ACCESS context through proof manager to get premise selection ex.
-with ProofManager(FILE, BasicLmExample) as pm:
+with ProofManager(FILE, void_lm_config) as pm:
     dset_obj = pm.get_dataset_file("")
     last_proof = dset_obj.proofs[-1]
     last_step = last_proof.steps[-1]

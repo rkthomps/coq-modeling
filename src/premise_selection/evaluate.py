@@ -16,8 +16,7 @@ from tqdm import tqdm
 
 
 from data_management.split_raw_data import SPLITS
-from data_management.split_raw_data import data_shape_expected
-from data_management.dataset_file import DatasetFile, Sentence
+from data_management.dataset_file import DatasetFile, Sentence, data_shape_expected
 from premise_selection.model import PremiseRetriever
 from model_deployment.premise_model_wrapper import (
     PremiseModelWrapper, PremiseServerModelWrapper, LocalPremiseModelWrapper)
@@ -164,7 +163,7 @@ class Evaluator:
 
 
 
-def get_save_loc(checkpoint_loc) -> str:
+def get_save_loc(checkpoint_loc: str) -> str:
     checkpoint_basename = os.path.basename(args.checkpoint_loc)
     checkpoint_suffix = ".ckpt"
     assert type(checkpoint_basename) == str

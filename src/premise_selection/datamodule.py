@@ -9,8 +9,7 @@ from transformers import AutoTokenizer, ByT5Tokenizer
 from torch.utils.data import Dataset, DataLoader 
 import torch
 
-from data_management.split_raw_data import SPLITS, TRAIN_NAME, VAL_NAME, TEST_NAME
-from data_management.create_lm_dataset import split_file_path
+from data_management.split_raw_data import SPLITS, TRAIN_NAME, VAL_NAME, TEST_NAME, split_file_path
 from premise_selection.premise_example import PremiseTrainingExample
 from premise_selection.training_types import PremiseBatch
 
