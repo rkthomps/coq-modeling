@@ -82,6 +82,7 @@ class PremiseLmExample(LmExample):
     
     @staticmethod
     def get_predicted_logical_path(premise_file_path: str, cur_file_path: str) -> str:
+        """Helpful: https://coq.inria.fr/refman/practical-tools/utilities.html?highlight=imports"""
         coq_lib_str = os.path.join("lib", "coq", "theories") + "/"
         if coq_lib_str in premise_file_path:
             coq_lib_str_idx = premise_file_path.index(coq_lib_str) 
