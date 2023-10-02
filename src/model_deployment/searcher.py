@@ -96,18 +96,20 @@ class ProofSearchTree:
     vert_bar = u"\u2502"
 
     def __init__(self, valid: bool, final_tactic: bool, makes_progress: bool,
-                 tactic: str, combined_tactics: str, score: NodeScore) -> None:
+                 tactic: str, combined_tactics: str, goal: str, score: NodeScore) -> None:
         assert type(valid) == bool
         assert type(final_tactic) == bool
         assert type(makes_progress) == bool
         assert type(tactic) == str
         assert type(combined_tactics) == str
+        assert type(goal) == str
         assert isinstance(score, NodeScore) 
         self.valid = valid
         self.final_tactic = final_tactic
         self.makes_progress = makes_progress
         self.tactic = tactic
         self.combined_tactics = combined_tactics
+        self.goal = goal
         self.score = score 
         self.expanded: Optional[int] = None
         self.children: list[ProofSearchTree] = []
@@ -159,6 +161,7 @@ class ProofSearchTree:
             "makes_progress": self.makes_progress,
             "tactic": self.tactic,
             "combined_tactics": self.combined_tactics,
+            "goal": self.goal,
             "score": self.score.to_json(),
         }
 
@@ -169,9 +172,10 @@ class ProofSearchTree:
         makes_progress = json_data["makes_progress"]
         tactic = json_data["tactic"]
         combined_tactics = json_data["combined_tactics"]
+        goal = json_data["goal"]
         score = NodeScore.from_json(json_data["score"])
         return cls(valid, final_tactic, makes_progress, tactic,
-                   combined_tactics, score)
+                   combined_tactics, goal, score)
 
     @staticmethod
     def __clean_tactic(tactic: str) -> str:

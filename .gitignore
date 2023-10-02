@@ -11,11 +11,13 @@ src/data_management/confs/**
 src/premise_selection/confs/**
 !src/premise_selection/confs/premise_train_basic.yaml
 
+
 # Python files
 venv
 *.egg-info
 build
 __pycache__
+.DS_STORE
 
 # IDE files
 mypy.ini
