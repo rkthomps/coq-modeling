@@ -2,7 +2,7 @@
 import sys, os
 import shutil
 import argparse
-from typing import Type, Any
+from typing import Any
 
 import jsonlines
 from tqdm import tqdm
@@ -21,8 +21,8 @@ PREMISE_CONFIG_NAME = "config.yaml"
 def get_examples_from_project(project_obj: DatasetFile,
                               num_negatives_per_positive: int,
                               num_in_file_negatives_per_positive: int,
-                              context_format: Type[ContextFormat],
-                              premise_format: Type[PremiseFormat],
+                              context_format: type[ContextFormat],
+                              premise_format: type[PremiseFormat],
                               premise_filter: PremiseFilter,
                               ) -> list[Any]:
     training_examples: list[Any] = []
@@ -42,8 +42,8 @@ def create_premise_dataset(partitioned_dataset_loc: str,
                            output_dataset_loc: str,
                            num_negatives_per_positive: int,
                            num_in_file_negatives_per_positive: int,
-                           context_format: Type[ContextFormat],
-                           premise_format: Type[PremiseFormat],
+                           context_format: type[ContextFormat],
+                           premise_format: type[PremiseFormat],
                            premise_filter: PremiseFilter,
                            ) -> None: 
     if os.path.exists(output_dataset_loc):

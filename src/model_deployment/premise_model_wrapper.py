@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-from typing import Type, Iterable, Any
+from typing import Iterable, Any
 
 import sys, os
 import json
@@ -23,8 +23,8 @@ from data_management.create_premise_dataset import PREMISE_CONFIG_NAME
 
 class PremiseModelWrapper:
     def __init__(self, 
-                 context_format: Type[ContextFormat],
-                 premise_format: Type[PremiseFormat],
+                 context_format: type[ContextFormat],
+                 premise_format: type[PremiseFormat],
                  premise_filter: PremiseFilter) -> None:
         assert type(context_format) == type
         assert type(premise_format) == type
@@ -60,8 +60,8 @@ class PremiseModelWrapper:
 class LocalPremiseModelWrapper(PremiseModelWrapper):
     MAX_CACHE_SIZE = 50000
     def __init__(self, retriever: PremiseRetriever,
-                 context_format: Type[ContextFormat],
-                 premise_format: Type[PremiseFormat],
+                 context_format: type[ContextFormat],
+                 premise_format: type[PremiseFormat],
                  premise_filter: PremiseFilter,
                  checkpoint_loc: str) -> None:
         super(LocalPremiseModelWrapper, self).__init__(
@@ -122,8 +122,8 @@ class LocalPremiseModelWrapper(PremiseModelWrapper):
 
 class PremiseServerModelWrapper(PremiseModelWrapper):
     def __init__(self, url: str, 
-                 context_format: Type[ContextFormat], 
-                 premise_format: Type[PremiseFormat],
+                 context_format: type[ContextFormat], 
+                 premise_format: type[PremiseFormat],
                  premise_filter: PremiseFilter) -> None:
         super(PremiseServerModelWrapper, self).__init__(
             context_format, premise_format, premise_filter)

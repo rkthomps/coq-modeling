@@ -1,5 +1,5 @@
 
-from typing import Any, Type, Iterable
+from typing import Any, Iterable
 import json
 import sys, os
 import argparse
@@ -32,8 +32,8 @@ class Evaluator:
                  branching_factor: int,
                  max_leaf_expansions: int,
                  model_wrapper: ModelWrapper,
-                 node_score_type: Type[NodeScore],
-                 example_type: Type[LmExample],
+                 node_score_type: type[NodeScore],
+                 example_type: type[LmExample],
                  coq_file_timeout: int=60,
                  ) -> None:
         assert type(assignment_loc) == str

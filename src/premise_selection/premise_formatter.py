@@ -1,6 +1,4 @@
 
-from typing import Type
-
 from data_management.dataset_file import Proof, FocusedStep, Sentence
 
 class ContextFormat:
@@ -28,7 +26,7 @@ class BasicContextFormat(ContextFormat):
         return "basic-context-format"
 
 
-CONTEXT_ALIASES: dict[str, Type[ContextFormat]] = {
+CONTEXT_ALIASES: dict[str, type[ContextFormat]] = {
     BasicContextFormat.get_alias(): BasicContextFormat,
 }
 
@@ -53,7 +51,7 @@ class BasicPremiseFormat(PremiseFormat):
         return "basic-premise-format"
 
 
-PREMISE_ALIASES: dict[str, Type[PremiseFormat]] = {
+PREMISE_ALIASES: dict[str, type[PremiseFormat]] = {
     BasicPremiseFormat.get_alias(): BasicPremiseFormat,
 }
 

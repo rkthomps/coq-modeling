@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Type, Any
+from typing import Any
 import pdb
 
 import sys, os
@@ -169,7 +169,7 @@ class GPT4Wrapper(ModelWrapper):
         return "gpt4"
 
 
-MODEL_WRAPPER_ALIASES: dict[str, Type[ModelWrapper]] = {
+MODEL_WRAPPER_ALIASES: dict[str, type[ModelWrapper]] = {
     CodeLLamaServer.get_alias(): CodeLLamaServer,
     GPT4Wrapper.get_alias(): GPT4Wrapper,
 }

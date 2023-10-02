@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-from typing import Optional, Type, Any
+from typing import Optional, Any
 from types import TracebackType
 from enum import Enum
 import heapq 
@@ -205,7 +205,7 @@ class SearchTreeManager:
     def __init__(self, 
                  model_wrapper: ModelWrapper, 
                  proof_manager: ProofManager,
-                 score_type: Type[NodeScore],
+                 score_type: type[NodeScore],
                  max_branch: int,
                  max_num_leaf_expansions: int,
                  timeout: int) -> None:

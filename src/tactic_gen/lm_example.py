@@ -49,7 +49,7 @@ class BasicLmExample(LmExample):
         super(BasicLmExample, self).__init__(input, output)
 
     @classmethod
-    def __example_from_step(cls, step: FocusedStep, proof: Proof) -> BasicLmExample:
+    def example_from_step(cls, step: FocusedStep, proof: Proof) -> BasicLmExample:
         goal_strings: list[str] = []
         for goal in step.goals:
             goal_strings.append(goal.to_string())
@@ -65,7 +65,7 @@ class BasicLmExample(LmExample):
         basic_lm_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
             for step in proof.steps:
-                basic_lm_examples.append(cls.__example_from_step(step, proof))
+                basic_lm_examples.append(cls.example_from_step(step, proof))
         return basic_lm_examples
 
     @staticmethod
@@ -78,6 +78,37 @@ class PremiseLmExample(LmExample):
 
     def __init__(self, input: str, output: str) -> None:
         super(PremiseLmExample, self).__init__(input, output)
+
+    
+    @staticmethod
+    def get_predicted_logical_path(premise_file_path: str, cur_file_path: str) -> str:
+        coq_lib_str = os.path.join("lib", "coq", "theories") + "/"
+        if coq_lib_str in premise_file_path:
+            coq_lib_str_idx = premise_file_path.index(coq_lib_str) 
+            start_idx = coq_lib_str_idx + len(coq_lib_str) 
+            log_path = premise_file_path[start_idx:].replace("/", ".").rstrip(".v")
+            return f"Coq.{log_path}"
+
+        coq_contrib_str = os.path.join("lib", "user-contrib") + "/"
+        if coq_contrib_str in premise_file_path:
+            coq_contrib_str_idx = premise_file_path.index(coq_contrib_str)
+            start_idx = coq_contrib_str_idx + len(coq_contrib_str)
+            log_path = premise_file_path[start_idx:].replace("/", ".").rstrip(".v")
+            return log_path
+
+        prefix = ""
+        first_tok = cur_file_path[0]
+        split_toks = cur_file_path[1:].split("/")
+        split_toks[0] = first_tok + split_toks[0]
+        i = 0
+        proposed_prefix = os.path.join(prefix, split_toks[i])
+        raise NotImplementedError
+        while premise_file_path.startswith(proposed_prefix) and i < len(split_toks):
+            prefix = proposed_prefix 
+            i += 1
+            proposed_prefix = os.path.join(prefix, split_toks[i])
+            #### TODOTODOTODOTODO
+        
 
 
     @classmethod
@@ -104,11 +135,11 @@ class PremiseLmExample(LmExample):
 
 
     @classmethod
-    def __example_from_step(cls, step: FocusedStep, 
+    def example_from_step(cls, step: FocusedStep, 
                             proof: Proof, 
                             dset_obj: DatasetFile,
                             premise_model_wrapper: LocalPremiseModelWrapper) -> PremiseLmExample:
-        basic_example = BasicLmExample.__example_from_step(step, proof)
+        basic_example = BasicLmExample.example_from_step(step, proof)
         premise_str = cls.__get_premise_str(step, proof, dset_obj, premise_model_wrapper)
         example_input = f"{premise_str}<PREM-SEP>{basic_example.input}"
         example_output = basic_example.output
@@ -122,7 +153,7 @@ class PremiseLmExample(LmExample):
         premise_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
             for step in proof.steps:
-                premise_example = cls.__example_from_step(
+                premise_example = cls.example_from_step(
                     step, proof, dataset_file, premise_model_wrapper)
                 premise_examples.append(premise_example)
         return premise_examples
@@ -146,7 +177,7 @@ class GPT4BasicLmExample(LmExample):
 
 
     @classmethod
-    def __example_from_step(cls, step: FocusedStep, proof: Proof) -> GPT4BasicLmExample:
+    def example_from_step(cls, step: FocusedStep, proof: Proof) -> GPT4BasicLmExample:
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):
             goal_strings.append(f"Goal {i + 1}\n{goal.to_string()}")
@@ -163,7 +194,7 @@ class GPT4BasicLmExample(LmExample):
         gpt4_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
             for step in proof.steps:
-                gpt4_examples.append(cls.__example_from_step(step, proof))
+                gpt4_examples.append(cls.example_from_step(step, proof))
         return gpt4_examples
 
 

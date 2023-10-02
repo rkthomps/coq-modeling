@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Type, Any, Union
+from typing import Any
 
 class NodeScore:
     def __init__(self) -> None:
@@ -37,7 +37,7 @@ class NodeScore:
 
 
 class CodeLLamaNodeScore(NodeScore):
-    def __init__(self, sequence_score: Union[int, float], 
+    def __init__(self, sequence_score: int | float, 
                  sequence_num_tokens: int) -> None:
         assert (type(sequence_score) == float or
                 type(sequence_score) == int)
@@ -80,6 +80,6 @@ class CodeLLamaNodeScore(NodeScore):
         return "codellama-node-score"
 
 
-NODE_SCORE_ALIASES: dict[str, Type[NodeScore]] = {
+NODE_SCORE_ALIASES: dict[str, type[NodeScore]] = {
     CodeLLamaNodeScore.get_alias(): CodeLLamaNodeScore,
 }
