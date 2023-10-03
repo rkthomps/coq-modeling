@@ -55,7 +55,7 @@ class PremiseRetriever(pl.LightningModule):
         masked_hidden_states = hidden_states * cuda_mask[:, :, None]
         summed_hidden_states = masked_hidden_states.sum(axis=1)
         averaged_states = summed_hidden_states / per_batch_counts[:, None]
-        return F.normalize(averaged_states, dim=1) 
+        return averaged_states 
 
     def forward(self,
                 context_ids: torch.Tensor,
@@ -64,13 +64,20 @@ class PremiseRetriever(pl.LightningModule):
                 premise_mask: torch.Tensor,
                 label: torch.Tensor,
                 ) -> torch.Tensor: 
+        # Loss comes from eq. 2 here: https://proceedings.neurips.cc/paper_files/paper/2020/file/d89a66c7c80a29b1bdbab0f2a1a94af8-Paper.pdf
         context_embs = self._encode(context_ids, context_mask)
         premise_embs = self._encode(premise_ids, premise_mask)
-        similarity = torch.mm(context_embs, premise_embs.t())
-        epsilon = 1e-4
-        assert (-1 - epsilon) <= similarity.min() <= similarity.max() <= (1 + epsilon)
-        cuda_label = label.to(self.device) 
-        loss = F.mse_loss(similarity, cuda_label) 
+        batch_size = context_ids.shape[0]
+        temp = 1
+        dots = torch.mm(context_embs, premise_embs.t())
+        cooled_dots = dots / temp
+        dot_probs = cooled_dots - torch.logsumexp(cooled_dots, dim=1)[:, None]
+        cuda_label = label.to(self.device)
+        num_posities = cuda_label.sum(axis=1) 
+        pos_sum = (dot_probs * cuda_label).sum(axis=1)
+        pos_avg = pos_sum / num_posities
+        batch_avg = pos_avg.sum() / batch_size 
+        loss = -1 * batch_avg 
         return loss
 
     
