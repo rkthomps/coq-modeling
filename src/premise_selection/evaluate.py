@@ -186,8 +186,8 @@ if __name__=="__main__":
 
     args = parser.parse_args(sys.argv[1:])
 
-    model_wrapper = PremiseServerModelWrapper.from_url("http://127.0.0.1:5000")
-    #model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
+    #model_wrapper = PremiseServerModelWrapper.from_url("http://127.0.0.1:5000")
+    model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
 
     evaluator = Evaluator(model_wrapper, args.partitioned_data_loc, args.split)
     save_loc = get_save_loc(args.checkpoint_loc)
