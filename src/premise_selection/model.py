@@ -68,7 +68,7 @@ class PremiseRetriever(pl.LightningModule):
         context_embs = self._encode(context_ids, context_mask)
         premise_embs = self._encode(premise_ids, premise_mask)
         batch_size = context_ids.shape[0]
-        temp = 1
+        temp = 0.1
         dots = torch.mm(context_embs, premise_embs.t())
         cooled_dots = dots / temp
         dot_probs = cooled_dots - torch.logsumexp(cooled_dots, dim=1)[:, None]
