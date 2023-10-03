@@ -5,6 +5,7 @@ import sys, os
 import argparse
 import json
 import re
+from multiprocessing import Pool
 
 from tqdm import tqdm
 
@@ -78,6 +79,24 @@ class PremTableAggregator:
         num_tables = json_data["num_tables"]
         return cls(table_counts, num_tables)
 
+
+    @classmethod
+    def merge(cls, pta1: PremTableAggregator, pta2: PremTableAggregator) -> PremTableAggregator:
+        merged_table_counts = {}
+        merged_num_tables = pta1.num_tables + pta2.num_tables
+        for term_type, count in pta1.table_counts.type_freqs.items():
+            if term_type not in merged_table_counts:
+                merged_table_counts[term_type] = 0
+            merged_table_counts[term_type] += count
+
+        for term_type, count in pta2.table_counts.type_freqs.items():
+            if term_type not in merged_table_counts:
+                merged_table_counts[term_type] = 0
+            merged_table_counts[term_type] += count
+        merged_table = PremTypeTable(merged_table_counts)
+        return cls(merged_table, merged_num_tables)
+
+
     @classmethod
     def get_empty(cls) -> PremTableAggregator:
         table_counts = PremTypeTable({})
@@ -130,9 +149,10 @@ class PosPremiseAggregator(PremTableAggregator):
 
 
     def to_json(self) -> Any:
-        parent_json_dict = super().to_json()
+        parent_json_dict = super(PosPremiseAggregator, self).to_json()
         parent_json_dict["num_nonempty_premises"] = self.num_nonempty_premises
         parent_json_dict["num_has_period"] = self.num_has_period
+        return parent_json_dict
 
 
     @classmethod
@@ -147,6 +167,25 @@ class PosPremiseAggregator(PremTableAggregator):
             num_has_period)
 
 
+    @classmethod
+    def merge_pos(cls, ppa1: PosPremiseAggregator, ppa2: PosPremiseAggregator) -> PosPremiseAggregator:
+        merged_parent = PremTableAggregator.merge(ppa1, ppa2)
+        merged_nonempty_prems = ppa1.num_nonempty_premises + ppa2.num_nonempty_premises
+        merged_has_period = ppa1.num_has_period + ppa2.num_has_period
+        return cls(merged_parent.table_counts, 
+                   merged_parent.num_tables,
+                   merged_nonempty_prems,
+                   merged_has_period) 
+
+    @classmethod
+    def get_empty(cls) -> PosPremiseAggregator:
+        table_counts = PremTypeTable({})
+        num_tables = 0
+        nonempty_prems = 0
+        has_period = 0
+        return cls(table_counts, num_tables, nonempty_prems, has_period)
+
+
 class FileResult:
     def __init__(self, num_proofs: int, num_steps: int, num_files: int,
                  avail_aggregator: PremTableAggregator,
@@ -157,44 +196,120 @@ class FileResult:
         self.avail_aggregator = avail_aggregator
         self.pos_aggregator = pos_aggregator
 
+    @classmethod
+    def merge(cls, fr1: FileResult, fr2: FileResult) -> FileResult:
+        num_proofs = fr1.num_proofs + fr2.num_proofs
+        num_steps = fr1.num_steps + fr2.num_steps
+        num_files = fr1.num_files + fr2.num_files
+        merged_avail = PremTableAggregator.merge(
+            fr1.avail_aggregator, fr2.avail_aggregator)
+        merged_pos = PosPremiseAggregator.merge_pos(
+            fr1.pos_aggregator, fr2.pos_aggregator)
+        return cls(num_proofs, num_steps, num_files, merged_avail, merged_pos)
+
+    def to_json(self) -> Any:
+        return {
+            "num_proofs": self.num_proofs,
+            "num_steps": self.num_steps,
+            "num_files": self.num_files,
+            "avail_aggregator": self.avail_aggregator.to_json(),
+            "pos_aggregator": self.pos_aggregator.to_json(),
+        }
+
+    def save(self, file_path: str) -> None:
+        json_rep = self.to_json()
+        with open(file_path, "w") as fout:
+            fout.write(json.dumps(json_rep, indent=2))
+
+    @classmethod
+    def load(cls, file_path: str) -> FileResult:
+        with open(file_path, "r") as fin:
+            file_result_data = json.load(fin)
+        return cls.from_json(file_result_data)
+
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> FileResult:
+        num_proofs = json_data["num_proofs"]
+        num_steps = json_data["num_steps"]
+        num_files = json_data["num_files"]
+        avail_aggregator_data = json_data["avail_aggregator"]
+        avail_aggregator = PremTableAggregator.from_json(avail_aggregator_data)
+        pos_aggregator_data = json_data["pos_aggregator"]
+        pos_aggregator = PosPremiseAggregator.from_json(pos_aggregator_data)
+        return cls(num_proofs, num_steps, num_files, avail_aggregator, pos_aggregator)
+
+    @classmethod
+    def from_file(cls, dset_file: DatasetFile) -> FileResult:
+        premise_filter = PremiseFilter()
+        avail_aggregator = PremTableAggregator.get_empty()
+        pos_aggregator = PosPremiseAggregator.get_empty()
+        num_steps = 0
+        for proof in dset_file.proofs:
+            for step in proof.steps:
+                filter_result = premise_filter.get_pos_and_avail_premises(
+                    step, proof, dset_file)
+                avail_table = PremTypeTable.from_premises(filter_result.avail_premises)
+                avail_aggregator.add_table(avail_table)
+                pos_aggregator.add_premise_step(
+                    step.step.text, filter_result.pos_premises)
+            num_steps += len(proof.steps)
+        num_proofs = len(dset_file.proofs)
+        num_files = 1
+        return cls(num_proofs, num_steps, num_files, avail_aggregator, pos_aggregator)
+
+    @classmethod
+    def get_empty(cls) -> FileResult:
+        num_proofs = 0
+        num_steps = 0
+        num_files = 0
+        avail_aggregator = PremTableAggregator.get_empty()
+        pos_aggregator = PosPremiseAggregator.get_empty()
+        return cls(num_proofs, num_steps, num_files, avail_aggregator, pos_aggregator)
 
 
 
-def get_counts(partitioned_dataset_loc: str) -> None:
-    num_proofs = 0
-    num_steps = 0
-    pos_premise_aggregator = PosPremiseAggregator() 
-    avail_premise_aggregator = PremTableAggregator()
+def get_file_aggregator(file_dirname: str) -> FileResult:
+    dset_file = DatasetFile.from_directory(file_dirname)
+    return FileResult.from_file(dset_file)
 
-    premise_filter = PremiseFilter()
 
-#    for split in SPLITS:
-    for split in ["val"]:
+def get_arguments(partitioned_dataset_loc: str) -> list[tuple[str]]:
+    args: list[tuple[str]] = []
+    for split in SPLITS:
         split_loc = os.path.join(partitioned_dataset_loc, split)
         assert data_shape_expected(split_loc) 
         print(f"Getting Counts for {split}...")
-        for coq_file_dir in tqdm(os.listdir(split_loc)[:10]):
+        for coq_file_dir in tqdm(os.listdir(split_loc)):
             coq_file_dir_loc = os.path.join(split_loc, coq_file_dir)
-            dset_file = DatasetFile.from_directory(coq_file_dir_loc) 
-            for proof in dset_file.proofs:
-                num_proofs += 1
-                for step in proof.steps:
-                    filter_result = premise_filter.get_pos_and_avail_premises(
-                        step, proof, dset_file)
-                    pos_premise_aggregator.add_premise_step(step.step.text, filter_result.pos_premises)
-                    avail_table = PremTypeTable.from_premises(filter_result.avail_premises)
-                    avail_premise_aggregator.add_table(avail_table)
-                    num_steps += 1
-
-    print(f"Num Proofs: {num_proofs}")
-    print(f"Num Steps: {num_steps}")
-    print(f"Avail Premises: \n{repr(avail_premise_aggregator)}")
-    print(f"Positive Premises: \n{repr(pos_premise_aggregator)}")
+            args.append((coq_file_dir_loc,))
+    return args
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("partitioned_dataset_loc", type=str,
                         help="Location of partitioned raw data.")
+    parser.add_argument("--num_procs", "-n", type=int, 
+                        help="Number of cores to use to calc result")
     args = parser.parse_args(sys.argv[1:])
-    get_counts(args.partitioned_dataset_loc)
+    out_loc = os.path.join(args.partitioned_dataset_loc, "analysis.json")
+    if os.path.exists(out_loc):
+        print(f"{out_loc} exists.", sys.stderr)
+        exit(1)
+    
+    n_procs = 1
+    if args.num_procs is not None:
+        n_procs = args.num_procs
+    arguments = get_arguments(args.partitioned_dataset_loc)
+
+    print("Processing")
+    with Pool(n_procs) as pool:
+        results = pool.starmap(get_file_aggregator, arguments)
+
+    print("Aggregating...")
+    cur_file_aggregator = FileResult.get_empty()
+    for result in results:
+        cur_file_aggregator = FileResult.merge(cur_file_aggregator, result)
+
+    cur_file_aggregator.save(out_loc)
