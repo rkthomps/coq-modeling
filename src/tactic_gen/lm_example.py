@@ -73,6 +73,7 @@ class BasicLmExample(LmExample):
         return "basic"
 
 
+
 class PremiseLmExample(LmExample):
     MAX_N_EXAMPLES = 100
 
@@ -164,6 +165,34 @@ class PremiseLmExample(LmExample):
     def get_alias() -> str:
         return "premise"
 
+class BaseCodeLLamaLmExample(LmExample):
+    def __init__(self, input: str, output: str) -> None:
+        super(BaseCodeLLamaLmExample, self).__init__(input, output)
+    
+    @classmethod
+    def example_from_step(cls, step: FocusedStep, proof: Proof) -> BaseCodeLLamaLmExample:
+        goal_strings: list[str] = []
+        for i, goal in enumerate(step.goals):
+            goal_strings.append(f"Goal {i + 1}:\n{goal.to_string()}")
+        partial_proof_string = proof.proof_prefix_to_string(step)
+        final_goal_string = "\n\n".join(goal_strings)
+        input = f"{final_goal_string}\n\n{partial_proof_string}"
+        output = step.step.text
+        return cls(input, output)
+
+    @classmethod
+    def from_dataset_file(cls, dataset_file: DatasetFile, premise_model_wrapper: LocalPremiseModelWrapper | None) -> list[LmExample]:
+        code_llama_examples: list[LmExample] = []
+        for proof in dataset_file.proofs:
+            for step in proof.steps:
+                code_llama_examples.append(cls.example_from_step(step, proof))
+        return code_llama_examples 
+
+    @staticmethod
+    def get_alias() -> str:
+        return "codellama-base"
+
+
 
 class GPT4BasicLmExample(LmExample):
     SCRIPT_TAG = "<PSCRIPT>"
@@ -208,6 +237,7 @@ LMEXAMPLE_ALIASES: dict[str, Type[LmExample]] = {
     BasicLmExample.get_alias(): BasicLmExample, 
     GPT4BasicLmExample.get_alias(): GPT4BasicLmExample,
     PremiseLmExample.get_alias(): PremiseLmExample,
+    BaseCodeLLamaLmExample.get_alias(): BaseCodeLLamaLmExample,
 }
 
 

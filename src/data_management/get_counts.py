@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any
 
 import sys, os
+import enum
 import argparse
 import json
 import re
@@ -16,31 +17,91 @@ from data_management.dataset_file import DatasetFile, Sentence, data_shape_expec
 from data_management.split_raw_data import SPLITS 
 
 
+class Origin(enum.Enum):
+    COQ_STD_LIB = 1
+    COQ_USER_CONTRIB = 2
+    LOCAL = 3 
+
+
+class PremTypeKey:
+    def __init__(self, term_type: TermType, origin: Origin) -> None:
+        assert type(term_type) == TermType
+        assert type(origin) == Origin
+        self.term_type = term_type
+        self.origin = origin
+
+    def __hash__(self) -> int:
+        return hash((self.term_type, self.origin))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PremTypeKey):
+            return False
+        return hash(self) == hash(other)
+
+    def to_json(self) -> Any:
+        return {
+            "term_type": self.term_type.name,
+            "origin": self.origin.name,
+        }
+    
+    def __repr__(self) -> str:
+        return f"Origin: {self.origin.name}; Type: {self.term_type.name}."
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> PremTypeKey:
+        term_type = TermType[json_data["term_type"]]
+        origin = Origin[json_data["origin"]]
+        return cls(term_type, origin)
+
 
 class PremTypeTable:
-    def __init__(self, type_freqs: dict[TermType, int]) -> None:
+    def __init__(self, type_freqs: dict[PremTypeKey, int]) -> None:
         assert type(type_freqs) == dict 
-        assert all([(type(k) == TermType and type(v) == int) for k, v in type_freqs.items()])
+        for k, v in type_freqs.items():
+            assert type(k) == PremTypeKey 
+            assert type(v) == int
         self.type_freqs = type_freqs
 
     def to_json(self) -> Any:
-        return {"type_freqs": dict((t.name, v) for t, v in self.type_freqs.items())}
-
-    @classmethod
-    def from_premises(cls, premises: list[Sentence]) -> PremTypeTable:
-        type_counts: dict[TermType, int] = {}
-        for premise in premises:
-            if premise.sentence_type not in type_counts:
-                type_counts[premise.sentence_type] = 0
-            type_counts[premise.sentence_type] += 1
-        return cls(type_counts)
+        json_type_freqs: dict[str, int] = {}
+        for k, v in self.type_freqs.items():
+            str_key = json.dumps(k.to_json())
+            json_type_freqs[str_key] = v
+        return {"type_freqs": json_type_freqs}
 
     @classmethod
     def from_json(cls, json_data: Any) -> PremTypeTable:
         type_freqs_dict = json_data["type_freqs"]
         assert type(type_freqs_dict) == dict
-        type_freqs = dict((TermType[k], v) for k, v in type_freqs_dict.items())
+        type_freqs: dict[PremTypeKey, int] = {}
+        for k, v in type_freqs_dict.items():
+            obj_key = PremTypeKey.from_json(json.loads(k)) 
+            type_freqs[obj_key] = v
         return cls(type_freqs)
+
+    @staticmethod
+    def get_origin(premise: Sentence) -> Origin:
+        coq_lib_str = os.path.join("lib", "coq", "theories") + "/"
+        if coq_lib_str in premise.file_path:
+            return Origin.COQ_STD_LIB
+        coq_contrib_str = os.path.join("lib", "user-contrib") + "/"
+        if coq_contrib_str in premise.file_path:
+            return Origin.COQ_USER_CONTRIB
+        return Origin.LOCAL
+
+
+    @classmethod
+    def from_premises(cls, premises: list[Sentence]) -> PremTypeTable:
+        type_counts: dict[PremTypeKey, int] = {}
+        for premise in premises:
+            origin = cls.get_origin(premise)
+            term_type = premise.sentence_type
+            premise_key = PremTypeKey(term_type, origin)
+            if premise_key not in type_counts:
+                type_counts[premise_key] = 0
+            type_counts[premise_key] += 1
+        return cls(type_counts)
+
 
 
 class PremTableAggregator:
@@ -57,14 +118,15 @@ class PremTableAggregator:
             self.table_counts.type_freqs[term_type] += term_count
         self.num_tables += 1
 
-    def compute(self) -> dict[str, float]:
+    def compute_by_key(self) -> dict[str, float]:
         return_table: dict[str, float] = {} 
-        for term_type, term_count in self.table_counts.type_freqs.items():
-            return_table[term_type.name] = term_count / self.num_tables
+        for premise_key, count in self.table_counts.type_freqs.items():
+            str_key = repr(premise_key)
+            return_table[str_key] = count / self.num_tables
         return return_table
 
     def __repr__(self) -> str:
-        return json.dumps(self.compute(), indent=2)
+        return json.dumps(self.compute_by_key(), indent=2)
 
     def to_json(self) -> Any:
         return {
@@ -130,10 +192,11 @@ class PosPremiseAggregator(PremTableAggregator):
             self.num_has_period += 1
 
 
-    def compute(self) -> dict[str, float]:
+    def compute_by_key(self) -> dict[str, float]:
         return_table: dict[str, float] = {}
-        for term_type, term_count in self.table_counts.type_freqs.items():
-            return_table[term_type.name] = term_count / self.num_nonempty_premises 
+        for key, count in self.table_counts.type_freqs.items():
+            str_key = repr(key)
+            return_table[str_key] = count / self.num_nonempty_premises 
         return return_table
 
 
@@ -143,7 +206,7 @@ class PosPremiseAggregator(PremTableAggregator):
         strs: list[str] = [
             f"Step Needs Premise Freq: {step_needs_premise_freq}",
             f"Steps w/ pos prem & period: {w_pos_prem_and_period}",
-            f"Steps w/ pos prem term type freqs:\n{json.dumps(self.compute(), indent=2)}"
+            f"Steps w/ pos prem term type freqs:\n{json.dumps(self.compute_by_key(), indent=2)}"
         ]
         return "\n".join(strs)
 
@@ -268,7 +331,6 @@ class FileResult:
         return cls(num_proofs, num_steps, num_files, avail_aggregator, pos_aggregator)
 
 
-
 def get_file_aggregator(file_dirname: str) -> FileResult:
     dset_file = DatasetFile.from_directory(file_dirname)
     return FileResult.from_file(dset_file)
@@ -286,6 +348,8 @@ def get_arguments(partitioned_dataset_loc: str) -> list[tuple[str]]:
     return args
 
 
+ANALYSIS_NAME = "analysis.json"
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("partitioned_dataset_loc", type=str,
@@ -293,7 +357,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_procs", "-n", type=int, 
                         help="Number of cores to use to calc result")
     args = parser.parse_args(sys.argv[1:])
-    out_loc = os.path.join(args.partitioned_dataset_loc, "analysis.json")
+    out_loc = os.path.join(args.partitioned_dataset_loc, ANALYSIS_NAME)
     if os.path.exists(out_loc):
         print(f"{out_loc} exists.", sys.stderr)
         exit(1)

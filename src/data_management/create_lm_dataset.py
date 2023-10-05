@@ -78,7 +78,18 @@ class LmExampleConfig:
 
     @classmethod
     def void_config(cls) -> LmExampleConfig:
-        return cls("", "", LmExample, None)
+        partitioned_dataset_loc = ""
+        output_dataset_loc = "" 
+        format_type = LmExample
+        premise_wrapper = None
+        return cls(partitioned_dataset_loc, output_dataset_loc, format_type, premise_wrapper)
+
+    @classmethod
+    def from_example_type(cls, example_type: type[LmExample]) -> LmExampleConfig:
+        partitioned_dataset_loc = ""
+        output_dataset_loc = "" 
+        premise_wrapper = None
+        return cls(partitioned_dataset_loc, output_dataset_loc, example_type, premise_wrapper)
 
 
 LM_CONFIG_NAME = "lm-example-conf.yaml"
