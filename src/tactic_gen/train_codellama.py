@@ -39,7 +39,7 @@ def load_config(path: str) -> dict[str, Any]:
     return conf
 
 TRAINING_CONF_NAME = "training_conf.yaml"
-def __copy_config(conf_path: str, conf: dict[str, Any]) -> None:
+def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
     output_dir = __get_required_arg("output_dir", conf)
     if os.path.exists(output_dir):
         print(f"{output_dir} already exists.")
