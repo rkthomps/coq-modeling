@@ -18,7 +18,7 @@ from premise_selection.premise_filter import PremiseFilter
 from model_deployment.serve_prem_utils import (
     FORMAT_ENDPOINT, PREMISE_ENDPOINT, FormatResponse, PremiseRequest, PremiseResponse)
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
-from data_management.create_premise_dataset import PREMISE_CONFIG_NAME
+from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME
 
 
 class PremiseModelWrapper:
@@ -138,9 +138,8 @@ class LocalPremiseModelWrapper(PremiseModelWrapper):
 
     @classmethod
     def from_checkpoint(cls, checkpoint_loc: str) -> LocalPremiseModelWrapper:
-        model_conf = PremiseRetriever.get_model_config(checkpoint_loc)
-        training_data_loc = model_conf["data"]["premise_data_path"]
-        data_preparation_conf = os.path.join(training_data_loc, PREMISE_CONFIG_NAME)
+        model_loc = PremiseRetriever.get_model_loc(checkpoint_loc)
+        data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
         with open(data_preparation_conf, "r") as fin:
             premise_conf = load(fin, Loader=Loader)
         premise_format_alias = premise_conf["premise_format_alias"]

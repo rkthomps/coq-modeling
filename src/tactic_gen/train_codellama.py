@@ -21,6 +21,7 @@ import numpy as np
 
 from tactic_gen.lm_example import LmExample
 from data_management.split_raw_data import TRAIN_NAME, VAL_NAME, split_file_path
+from data_management.create_lm_dataset import DATA_CONF_NAME
 
 
 # This doc details how to finetune codellama:
@@ -37,14 +38,18 @@ def load_config(path: str) -> dict[str, Any]:
     assert all(type(s) == str for s in conf.keys())
     return conf
 
-CONF_NAME = "training_conf.yaml"
+TRAINING_CONF_NAME = "training_conf.yaml"
 def __copy_config(conf_path: str, conf: dict[str, Any]) -> None:
     output_dir = __get_required_arg("output_dir", conf)
     if os.path.exists(output_dir):
         print(f"{output_dir} already exists.")
         exit(1)
     os.makedirs(output_dir)
-    shutil.copy(conf_path, os.path.join(output_dir, CONF_NAME))
+
+    data_path = __get_required_arg("data_path", conf)
+    data_conf_loc = os.path.join(data_path, DATA_CONF_NAME)
+    shutil.copy(conf_path, os.path.join(output_dir, TRAINING_CONF_NAME))
+    shutil.copy(data_conf_loc, os.path.join(output_dir, DATA_CONF_NAME))
 
 def __get_required_arg(key: str, conf: dict[str, Any]) -> Any:
     if key not in conf:
@@ -127,21 +132,6 @@ def collate_input(tokenizer: CodeLlamaTokenizer, max_input_len: int, input: str)
     ret_str = tokenizer.convert_tokens_to_string(input_suffix)
     assert type(ret_str) == str
     return ret_str 
-
-
-# def formatting_examples_func(tokenizer: CodeLlamaTokenizer,
-#                              max_input_len: int, 
-#                              examples: dict[str, list[str]]) -> list[str]: 
-#     """NOTE: THE TYPE ANNOTATION FOR EXAMPLES MAY NOT BE EXACTLY RIGHT BUT
-#        MATCHES MY MENTAL MODEL OF THE DATA STRUCTURE"""
-#     output_strs: list[str] = []
-#     for i in range(len(examples["input"])):
-#         example_in = examples["input"][i]
-#         example_out = examples["output"][i]
-#         collated_input = collate_input(tokenizer, max_input_len, example_in)
-#         collated_str = f"{collated_input}{example_out}"
-#         output_strs.append(collated_str) 
-#     return output_strs
 
 
 def formatting_examples_func(examples: dict[str, list[str]], **kwargs: Any) -> list[str]: 
@@ -249,7 +239,7 @@ if __name__=="__main__":
         transformers.logging.set_verbosity_info()
         trainer.train(checkpoint_name)
     else:
-        __copy_config(args.yaml_config, conf)
+        __copy_configs(args.yaml_config, conf)
         print("Training from scratch")
         trainer.train()
 

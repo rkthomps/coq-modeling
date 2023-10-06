@@ -95,7 +95,7 @@ class LmExampleConfig:
         return cls(partitioned_dataset_loc, output_dataset_loc, example_type, premise_wrapper)
 
 
-LM_CONFIG_NAME = "lm-example-conf.yaml"
+DATA_CONF_NAME = "lm-example-conf.yaml"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Create a jsonl dataset from the data collected by the coq lsp.")
@@ -104,6 +104,6 @@ if __name__ == "__main__":
 
     example_config = LmExampleConfig.load(args.lm_data_config_loc)
     create_lm_dataset(example_config)
-    conf_out_loc = os.path.join(example_config.output_dataset_loc, LM_CONFIG_NAME)
+    conf_out_loc = os.path.join(example_config.output_dataset_loc, DATA_CONF_NAME)
     shutil.copy(args.lm_data_config_loc, conf_out_loc)
 

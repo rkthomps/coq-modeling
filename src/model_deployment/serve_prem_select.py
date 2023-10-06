@@ -9,7 +9,7 @@ from premise_selection.model import PremiseRetriever
 from model_deployment.serve_prem_utils import (
     FormatResponse, PremiseRequest, PremiseResponse, FORMAT_ENDPOINT, PREMISE_ENDPOINT)
 from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
-from data_management.create_premise_dataset import PREMISE_CONFIG_NAME 
+from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME 
 
 from yaml import load, Loader
 from flask import Flask, request

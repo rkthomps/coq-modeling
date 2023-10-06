@@ -12,7 +12,7 @@ import torch
 from torch import LongTensor, FloatTensor
 
 from tactic_gen.lm_example import LmExample 
-from tactic_gen.train_codellama import (collate_input, CONF_NAME, load_config,
+from tactic_gen.train_codellama import (collate_input, TRAINING_CONF_NAME, load_config,
                                         get_tokenizer)
 from model_deployment.serve_codellama_utils import (
     do_sample, SampleResult, PeriodStoppingCriteria)

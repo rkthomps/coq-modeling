@@ -17,7 +17,7 @@ from data_management.split_raw_data import SPLITS, split_file_path
 from data_management.jsonl_utils import shuffle
 
 
-PREMISE_CONFIG_NAME = "config.yaml"
+PREMISE_DATA_CONF_NAME = "premise-data-config.yaml"
 def get_examples_from_project(project_obj: DatasetFile,
                               num_negatives_per_positive: int,
                               num_in_file_negatives_per_positive: int,
@@ -104,7 +104,7 @@ if __name__ == "__main__":
         premise_filter,
     )
 
-    config_destination = os.path.join(output_dataset_loc, PREMISE_CONFIG_NAME)
+    config_destination = os.path.join(output_dataset_loc, PREMISE_DATA_CONF_NAME)
     shutil.copy(args.yaml_config, config_destination)
 
 

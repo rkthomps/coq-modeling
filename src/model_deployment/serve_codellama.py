@@ -10,7 +10,7 @@ from transformers.generation.utils import BeamSearchDecoderOnlyOutput
 import torch
 
 from tactic_gen.lm_example import LmExample 
-from tactic_gen.train_codellama import (collate_input, CONF_NAME, load_config,
+from tactic_gen.train_codellama import (collate_input, TRAINING_CONF_NAME, load_config,
                                         get_tokenizer)
 from model_deployment.serve_codellama_utils import (
     PeriodStoppingCriteria, do_sample, SampleResult)
@@ -22,7 +22,7 @@ MODEL_LOC = "/home/ubuntu/coq-modeling/models/codellama-7b-basic"
 CHECKPOINT_NUM = 20500 
 
 model_path = os.path.join(MODEL_LOC, f"checkpoint-{CHECKPOINT_NUM}")
-model_conf = load_config(os.path.join(MODEL_LOC, CONF_NAME))
+model_conf = load_config(os.path.join(MODEL_LOC, TRAINING_CONF_NAME))
 
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 model = LlamaForCausalLM.from_pretrained(
