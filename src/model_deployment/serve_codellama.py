@@ -12,6 +12,8 @@ import torch
 from tactic_gen.lm_example import LmExample 
 from tactic_gen.train_codellama import (collate_input, CONF_NAME, load_config,
                                         get_tokenizer)
+from model_deployment.serve_codellama_utils import (
+    PeriodStoppingCriteria, do_sample, SampleResult)
 
 
 app = Flask(__name__) 
@@ -32,6 +34,52 @@ max_input_len = model_conf["max_input_len"]
 device = "cuda" 
 
 
+# @app.route("/codellama", methods=["POST"])
+# def codellama() -> str:
+#     n = int(request.form["n"])
+#     example = LmExample.from_json(request.form)
+
+#     input_ids = tokenizer(example.input, return_tensors="pt")["input_ids"].to("cuda")
+#     model_input = tokenizer.decode(input_ids[0])
+#     print(model_input)
+
+#     period_stopping.set_num_periods(input_ids)
+#     stopping_list = StoppingCriteriaList([period_stopping])
+#     tactics: list[str] = []
+#     scores: list[float] = []
+#     num_tokens: list[int] = []
+#     for i in range(n):
+#         output = model.generate(
+#             input_ids,
+#             temperature=1,
+#             do_sample=True,
+#             max_new_tokens=32,
+#             output_scores=True,
+#             return_dict_in_generate=True,
+#             stopping_criteria=stopping_list,
+#         )
+#         assert type(output) == SampleDecoderOnlyOutput 
+#         output_sequence = output.sequences[0]
+#         input_sequence = input_ids[0]
+#         output_length = len(output.scores)
+#         tactic = tokenizer.decode(output_sequence[len(input_sequence):], skip_special_tokens=True)
+#         score = get_sequence_score(input_sequence, output_sequence, output.scores, period_stopping)
+#         tactics.append(tactic)
+#         scores.append(score)
+#         num_tokens.append(output_length)
+#         del output
+
+#     response = {
+#         "tactics": tactics,
+#         "scores": scores,
+#         "num_tokens": num_tokens,
+#     }
+#     print(response)
+#     return json.dumps(response, indent=2)
+
+
+period_stopping = PeriodStoppingCriteria.from_tokenizer(tokenizer)
+
 @app.route("/codellama", methods=["POST"])
 def codellama() -> str:
     n = int(request.form["n"])
@@ -41,29 +89,10 @@ def codellama() -> str:
     input_ids = tokenizer(collated_in, return_tensors="pt")["input_ids"].to("cuda")
     model_input = tokenizer.decode(input_ids[0])
     print(model_input)
-    output = model.generate(
-        input_ids,
-        num_beams=n,
-        num_return_sequences=n,
-        max_new_tokens=64,
-        output_scores=True,
-        return_dict_in_generate=True,
-        pad_token_id=tokenizer.pad_token_id,
-    )
-    assert type(output) == BeamSearchDecoderOnlyOutput 
-    num_padding_tokens = (output.sequences == tokenizer.pad_token_id).sum(axis=1)
-    seq_lens = (output.sequences.shape[1] - input_ids.shape[1] - num_padding_tokens).to("cpu")
-    tactics = tokenizer.batch_decode(output.sequences[:, input_ids.shape[1]:], skip_special_tokens=True) 
-    scores = (output.sequences_scores).to("cpu")
-    del output
 
-    response = {
-        "tactics": list(tactics),
-        "scores": scores.tolist(),
-        "num_tokens": seq_lens.tolist(),
-    }
-    print(response)
-    return json.dumps(response, indent=2)
+    sample_result = do_sample(input_ids, model, tokenizer, n, period_stopping)
+
+    return json.dumps(sample_result.to_json(), indent=2)
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Start a server running CodeLLama")    

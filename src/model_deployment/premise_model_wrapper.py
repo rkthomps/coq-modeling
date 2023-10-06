@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-from typing import Iterable, Any
+from typing import Iterable, Any, Optional
 
 import sys, os
 import json
@@ -56,6 +56,30 @@ class PremiseModelWrapper:
             yield premises[idx]
 
 
+class RoundRobinCache:
+    def __init__(self, max_size: int=50000) -> None:
+        self.cache: dict[str, torch.Tensor] = {}
+        self.key_list: list[str] = []
+        self.max_size = max_size
+
+    def add(self, key: str, value: torch.Tensor) -> None:
+        if key in self.cache:
+            return
+        if len(self.key_list) == self.max_size:
+            removed_key = self.key_list.pop()
+            del self.cache[removed_key]
+        self.cache[key] = value
+        self.key_list.insert(0, key)
+        assert len(self.cache) == len(self.key_list)
+        assert len(self.key_list) <= self.max_size
+
+    def contains(self, key: str) -> bool:
+        return key in self.cache
+    
+    def get(self, key: str) -> torch.Tensor:
+        return self.cache[key]
+
+
 
 class LocalPremiseModelWrapper(PremiseModelWrapper):
     MAX_CACHE_SIZE = 50000
@@ -68,19 +92,28 @@ class LocalPremiseModelWrapper(PremiseModelWrapper):
             context_format, premise_format, premise_filter)
         self.retriever = retriever
         self.checkpoint_loc = checkpoint_loc
-        self.encoding_cache: dict[str, torch.Tensor] = {}
+        self.encoding_cache = RoundRobinCache(self.MAX_CACHE_SIZE)
+        self.hits = 0
+        self.misses = 0
 
 
     def __encode_str(self, to_encode: str) -> torch.Tensor:
-        if to_encode in self.encoding_cache:
-            return self.encoding_cache[to_encode]
+        if self.encoding_cache.contains(to_encode):
+            self.hits += 1
+            return self.encoding_cache.get(to_encode)
+        self.misses += 1
         encoding = self.retriever.encode_str(to_encode)
-        if len(self.encoding_cache) < self.MAX_CACHE_SIZE:
-            self.encoding_cache[to_encode] = encoding
-        else:
-            print(f"Premise Selection Cache full after {self.MAX_CACHE_SIZE} entries.")
+        self.encoding_cache.add(to_encode, encoding)
         return encoding
 
+    def reset_hit_rate(self) -> None:
+        self.hits = 0
+        self.misses = 0
+
+    def get_hit_rate(self) -> Optional[float]:
+        if self.hits + self.misses == 0:
+            return None
+        return self.hits / (self.hits + self.misses)
     
     def get_premise_scores_from_strings(self, context_str: str,
                                         premise_strs: list[str]) -> list[float]:

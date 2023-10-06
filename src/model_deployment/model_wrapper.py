@@ -9,6 +9,7 @@ import math
 
 from tactic_gen.lm_example import LmExample, GPT4BasicLmExample
 from model_deployment.node_score import NodeScore, CodeLLamaNodeScore
+from model_deployment.serve_codellama_utils import SampleResult
 
 import openai
 
@@ -61,17 +62,16 @@ class CodeLLamaServer(ModelWrapper):
 
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
         request_data = example.to_json()
-        request_data["n"] = "n"
+        request_data["n"] = str(n) 
         response = requests.post(self.server_url, request_data)
         response_data = json.loads(response.content)
-        next_tactic_list = response_data["tactics"]
-        score_list = response_data["scores"]
-        num_tokens_list = response_data["num_tokens"] 
-        assert len(score_list) == len(num_tokens_list)
+        response_obj = SampleResult.from_json(response_data)
+
+        assert len(response_obj.scores) == len(response_obj.num_tokens)
         llama_scores: list[CodeLLamaNodeScore] = []
-        for score, toks in zip(score_list, num_tokens_list):
+        for score, toks in zip(response_obj.scores, response_obj.num_tokens):
             llama_scores.append(CodeLLamaNodeScore(score, toks))
-        return self.__filter_recs(next_tactic_list, llama_scores)
+        return self.__filter_recs(response_obj.tactics, llama_scores)
 
     @classmethod
     def from_json(cls, json_data: Any) -> ModelWrapper:

@@ -17,13 +17,13 @@ from data_management.create_lm_dataset import LmExampleConfig
 # EXAMPLE_TYPE = GPT4BasicLmExample
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-# WRAPPER = CodeLLamaServer("http://127.0.0.1:5000/codellama")
-# EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BasicLmExample)
-# NODE_SCORE_TYPE = CodeLLamaNodeScore
-
 WRAPPER = CodeLLamaServer("http://127.0.0.1:5000/codellama")
-EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
+EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BasicLmExample)
 NODE_SCORE_TYPE = CodeLLamaNodeScore
+
+# WRAPPER = CodeLLamaServer("http://127.0.0.1:5000/codellama")
+# EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
+# NODE_SCORE_TYPE = CodeLLamaNodeScore
 
 
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
@@ -31,16 +31,14 @@ NODE_SCORE_TYPE = CodeLLamaNodeScore
 TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 TIMEOUT = 1000
-BRANCH = 3
+BRANCH = 7 
 EXPANSIONS = 30
 
-proof_manager = ProofManager(TEST_FILE, EXAMPLE_CONFIG)
-tree_manager = SearchTreeManager(
-    WRAPPER, proof_manager, NODE_SCORE_TYPE,
-    BRANCH, EXPANSIONS,TIMEOUT 
-)
+with ProofManager(TEST_FILE, EXAMPLE_CONFIG) as proof_manager:
+    tree_manager = SearchTreeManager(
+        WRAPPER, proof_manager, NODE_SCORE_TYPE,
+        BRANCH, EXPANSIONS,TIMEOUT 
+    )
 
-#TODO test printing tree
-result = tree_manager.search()
-proof_manager.close()
-print(result.get_proof())
+    result = tree_manager.search()
+    print(result.get_proof())

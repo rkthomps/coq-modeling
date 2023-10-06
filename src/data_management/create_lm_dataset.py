@@ -35,6 +35,9 @@ def create_lm_dataset(example_config: LmExampleConfig) -> None:
             project_examples = example_config.format_type.json_from_dataset_file(
                 project_obj, example_config.premise_wrapper)
             output_writer.write_all(project_examples)
+            if example_config.premise_wrapper is not None:
+                print("Premise hit rate:", example_config.premise_wrapper.get_hit_rate())
+                example_config.premise_wrapper.reset_hit_rate()
         output_writer.close()
         shuffled_output_path = split_file_path(example_config.output_dataset_loc, split, shuffled=True)
         print(f"Shuffling {split}")

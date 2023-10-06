@@ -174,7 +174,7 @@ class BaseCodeLLamaLmExample(LmExample):
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):
             goal_strings.append(f"Goal {i + 1}:\n{goal.to_string()}")
-        partial_proof_string = proof.proof_prefix_to_string(step)
+        partial_proof_string = proof.proof_prefix_to_string(step, include_proof=True)
         final_goal_string = "\n\n".join(goal_strings)
         input = f"{final_goal_string}\n\n{partial_proof_string}"
         output = step.step.text

@@ -225,9 +225,12 @@ class Proof:
         proof_text = "".join(step_strings)
         return f"{theorem_text}{proof_text}"
 
-    def proof_prefix_to_string(self, stop_step: FocusedStep) -> str:
+    def proof_prefix_to_string(self, stop_step: FocusedStep, 
+                               include_proof: bool=False) -> str:
         """Print the tactics of the proof up to but not including the given step"""
         proof = self.theorem.term.text
+        if include_proof:
+            proof += "\nProof."
         for step in self.steps:
             if (step == stop_step):
                 break

@@ -298,8 +298,11 @@ class SearchTreeManager:
                 pretty_goal = repr(goals.goals.goals)
                 node_goal = self.__get_goals(goals) 
                 goal_progress = node_goal.makes_progress(self.seen_goals)
-                is_bullet = re.search(r"\s+[-+*]+", tactic) is not None
-                makes_progress = goal_progress or is_bullet
+                proof_in_tactic = re.search
+                makes_progress = (
+                    goal_progress or 
+                    self.__is_bullet(tactic) or 
+                    self.__is_first_proof_tactic(leaf_subtree.combined_tactics, tactic))
                 valid = True
                 final_tactic = False
                 new_leaf = ProofSearchTree(
@@ -311,6 +314,17 @@ class SearchTreeManager:
                     heapq.heappush(self.frontier, new_leaf)
         leaf_subtree.children = children
         return None 
+
+    @staticmethod
+    def __is_first_proof_tactic(proof_script: str, tactic: str) -> bool:
+        proof_pattern = r"Proof."
+        proof_in_script = re.search(proof_pattern, proof_script) is not None
+        proof_in_tactic = re.search(proof_pattern, tactic) is not None
+        return proof_in_tactic and (not proof_in_script)
+
+    @staticmethod
+    def __is_bullet(tactic: str) -> bool:
+        return re.search(r"\s+[-+*]+", tactic) is not None
 
     @staticmethod
     def __get_goals(goal_answer: GoalAnswer) -> NodeGoal: 
@@ -352,7 +366,7 @@ class ProofManager:
 
     def check_proof(self, partial_proof: str
                     ) -> tuple[TacticResult, Optional[GoalAnswer]]:
-        if "Admitted" in partial_proof:
+        if ("Admitted." in partial_proof) or ("admit." in partial_proof):
             return TacticResult.INVALID, None
         partial_proof_file = f"{self.__file_prefix}{partial_proof}"
         self.__update_hidden_file(partial_proof_file)
