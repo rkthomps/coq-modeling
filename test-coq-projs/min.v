@@ -13,6 +13,10 @@ Fixpoint min (l : (list nat)) : option nat :=
 Lemma exists_min: forall (l : (list nat)), 
     (l <> nil) -> exists h, min(l) = Some(h).
 Proof. 
+  intros l H.
+  destruct l.
+  - contradiction.
+  - simpl. destru 
   <prove>
  
 (* Lemma exists_min: forall (l : (list nat)), 
