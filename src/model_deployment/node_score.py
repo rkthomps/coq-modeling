@@ -60,6 +60,7 @@ class CodeLLamaNodeScore(NodeScore):
 
     def to_json(self) -> Any:
         return {
+            "alias": self.get_alias(),
             "sequence_score": self.sequence_score,
             "sequence_num_tokens": self.sequence_num_tokens,
         }

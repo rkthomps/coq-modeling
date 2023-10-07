@@ -99,7 +99,9 @@ class ProofSearchTree:
     vert_bar = u"\u2502"
 
     def __init__(self, valid: bool, final_tactic: bool, makes_progress: bool,
-                 tactic: str, combined_tactics: str, goal: str, score: NodeScore) -> None:
+                 tactic: str, combined_tactics: str, goal: str, score: NodeScore,
+                 expanded: Optional[int]= None, 
+                 children: list[ProofSearchTree]=[]) -> None:
         assert type(valid) == bool
         assert type(final_tactic) == bool
         assert type(makes_progress) == bool
@@ -107,6 +109,9 @@ class ProofSearchTree:
         assert type(combined_tactics) == str
         assert type(goal) == str
         assert isinstance(score, NodeScore) 
+        assert expanded is None or type(expanded) == int
+        assert type(children) == list
+        assert all([type(c) == ProofSearchTree for c in children])
         self.valid = valid
         self.final_tactic = final_tactic
         self.makes_progress = makes_progress
@@ -114,8 +119,8 @@ class ProofSearchTree:
         self.combined_tactics = combined_tactics
         self.goal = goal
         self.score = score 
-        self.expanded: Optional[int] = None
-        self.children: list[ProofSearchTree] = []
+        self.expanded = expanded
+        self.children = children
 
     
     def __lt__(self, other: ProofSearchTree) -> bool:
@@ -166,6 +171,8 @@ class ProofSearchTree:
             "combined_tactics": self.combined_tactics,
             "goal": self.goal,
             "score": self.score.to_json(),
+            "expanded": self.expanded,
+            "children": [c.to_json() for c in self.children] 
         }
 
     @classmethod
@@ -177,8 +184,10 @@ class ProofSearchTree:
         combined_tactics = json_data["combined_tactics"]
         goal = json_data["goal"]
         score = NodeScore.from_json(json_data["score"])
+        expanded = json_data["expanded"]
+        children = [ProofSearchTree.from_json(c) for c in json_data["children"]]
         return cls(valid, final_tactic, makes_progress, tactic,
-                   combined_tactics, goal, score)
+                   combined_tactics, goal, score, expanded, children)
 
     @staticmethod
     def __clean_tactic(tactic: str) -> str:

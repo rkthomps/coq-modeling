@@ -38,18 +38,22 @@ def load_config(path: str) -> dict[str, Any]:
     assert all(type(s) == str for s in conf.keys())
     return conf
 
-TRAINING_CONF_NAME = "training_conf.yaml"
-def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
+def make_output_dir(conf: dict[str, Any]) -> None:
     output_dir = __get_required_arg("output_dir", conf)
     if os.path.exists(output_dir):
         print(f"{output_dir} already exists.")
         exit(1)
     os.makedirs(output_dir)
 
+
+TRAINING_CONF_NAME = "training_conf.yaml"
+def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
+    output_dir = __get_required_arg("output_dir", conf)
     data_path = __get_required_arg("data_path", conf)
     data_conf_loc = os.path.join(data_path, DATA_CONF_NAME)
     shutil.copy(conf_path, os.path.join(output_dir, TRAINING_CONF_NAME))
     shutil.copy(data_conf_loc, os.path.join(output_dir, DATA_CONF_NAME))
+
 
 def __get_required_arg(key: str, conf: dict[str, Any]) -> Any:
     if key not in conf:
@@ -231,6 +235,7 @@ if __name__=="__main__":
     parser.add_argument("yaml_config", help="yaml config file to use for training.")
     args = parser.parse_args(sys.argv[1:])
     conf = load_config(args.yaml_config)
+    make_output_dir(conf)
     trainer = get_trainer(conf)
     train_from_checkpoint = "checkpoint_name" in conf
     if train_from_checkpoint:

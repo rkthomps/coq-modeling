@@ -27,8 +27,8 @@ NODE_SCORE_TYPE = CodeLLamaNodeScore
 
 
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 TIMEOUT = 1000
 BRANCH = 7 
@@ -41,4 +41,7 @@ with ProofManager(TEST_FILE, EXAMPLE_CONFIG) as proof_manager:
     )
 
     result = tree_manager.search()
+    with open("proof-tree.json", "w") as fout:
+        json_proof_tree = result.search_tree.to_json()
+        fout.write(json.dumps(json_proof_tree, indent=2))
     print(result.get_proof())
