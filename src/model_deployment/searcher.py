@@ -22,8 +22,8 @@ from model_deployment.goal_comparer import NodeGoal
 
 from coqlspclient.coq_file import CoqFile, GoalAnswer
 from coqlspclient.coq_lsp_structs import Goal
-from coqlspclient.proof_state import ProofState, ProofTerm
-from coqlspclient.coq_structs import Term
+from coqlspclient.proof_file import ProofFile
+from coqlspclient.coq_structs import Term, ProofTerm
 from coqlspclient.coq_structs import FileContext
 
 
@@ -352,76 +352,99 @@ class TacticResult(Enum):
     INVALID = 3
 
 
-class ProofManager:
-    SEARCH_TOKEN = "<prove>"
-    TIMEOUT = 60
 
-    def __init__(self, file_path: str, lm_example_config: LmExampleConfig) -> None:
+SEARCH_TOKEN = "<prove>"
+def initialize_hidden_file(orig_file_path: str) -> str:
+    """
+    Find a fresh file path, and copy the contents of the original
+    file to the fresh file up to the <prove> token. Replace the 
+    <prove> token with `Admitted`.
+    """
+    file_dirname = os.path.dirname(orig_file_path)
+    file_basename = os.path.basename(orig_file_path)
+    fresh_file_path = get_fresh_path(file_dirname, file_basename)
+    file_prefix = get_file_prefix(orig_file_path, SEARCH_TOKEN)
+    if file_prefix is None:
+        raise ValueError(f"Could not find search token {SEARCH_TOKEN}")
+    with open(fresh_file_path, "w") as fout:
+        fout.write(f"{file_prefix} Admitted.")
+    return fresh_file_path
+
+
+class ProofManager:
+    TIMEOUT = 60
+    LAST_TACTIC_IDX = -3 # -1 is garbage. -2 is "Admitted.". -3 is last tactic. 
+
+    def __init__(self, file_path: str, proof_file: ProofFile, lm_example_config: LmExampleConfig) -> None:
         file_dir = os.path.dirname(file_path) 
+        self.file_path = file_path
         self.example_type = lm_example_config.format_type
         self.premise_wrapper = lm_example_config.premise_wrapper
-        self.__orig_file_path = file_path 
         self.__search_dir_path = get_fresh_path(file_dir, ".proof-search")
-        self.__hidden_file_path = get_fresh_path(file_dir, os.path.basename(file_path))
-        self.__file_prefix = get_file_prefix(self.__orig_file_path, self.SEARCH_TOKEN)
-        if self.__file_prefix is None:
-            raise ValueError(f"Could not find search token {self.SEARCH_TOKEN}")
-        print("Initiaizing Proof State")
-        self.__update_hidden_file(f"{self.__file_prefix} Admitted.")
-        with CoqFile(self.__hidden_file_path, timeout=self.TIMEOUT) as coq_file:
-            with ProofState(coq_file, None) as proof_state:
-                self.__cached_file_context = proof_state.coq_file.context
+        self.proof_file = proof_file
+        self.base_num_steps = len(proof_file.steps) 
+        self.last_proof_attempted: str | None = None
+
+    def __get_last_tactic_idx(self) -> int:
+        return len(self.proof_file.steps) + self.LAST_TACTIC_IDX
+
+
+    def __get_current_partial_proof(self) -> str:
+        current_partial_proof = ""
+        stop_idx = self.LAST_TACTIC_IDX + 1 # Include last tactic
+        for step in self.proof_file.steps[self.base_num_steps:stop_idx]:
+            current_partial_proof += step.text
+        return current_partial_proof
+
+
+    def __get_last_goals(self) -> GoalAnswer:
+        return self.proof_file.proofs[-1].steps[-1].goals
+
+
+    def set_proof_file(self, partial_proof: str) -> None:
+        assert len(self.proof_file.steps) > self.base_num_steps
+        current_partial_proof = self.__get_current_partial_proof() 
+        while not partial_proof.startswith(current_partial_proof):
+            to_remove_index = len(self.proof_file.steps) - 3
+            self.proof_file.delete_step(to_remove_index)
+        prefix_len = len(current_partial_proof)
+        remaining_current_proof = partial_proof[prefix_len:]
+        last_tactic_idx = self.__get_last_tactic_idx()
+        self.proof_file.add_step(remaining_current_proof, last_tactic_idx)
 
 
     def check_proof(self, partial_proof: str
                     ) -> tuple[TacticResult, Optional[GoalAnswer]]:
         if ("Admitted." in partial_proof) or ("admit." in partial_proof):
             return TacticResult.INVALID, None
-        partial_proof_file = f"{self.__file_prefix}{partial_proof}"
-        self.__update_hidden_file(partial_proof_file)
-        with CoqFile(self.__hidden_file_path, timeout=self.TIMEOUT) as hidden_coq_file:
-            hidden_coq_file.run()
-            if not hidden_coq_file.is_valid:
-                return TacticResult.INVALID, None
-            if not hidden_coq_file.in_proof:
-                return TacticResult.COMPLETE, None
-            return TacticResult.VALID, hidden_coq_file.current_goals()
+        assert len(self.proof_file.steps) >= self.base_num_steps
+        self.set_proof_file(partial_proof)
+        if not self.proof_file.is_valid:
+            return TacticResult.INVALID, None
+        last_goals = self.__get_last_goals()
+        if len(last_goals.goals.goals) == 0:
+            return TacticResult.COMPLETE, None 
+        return TacticResult.VALID, last_goals
 
 
     def get_example(self, partial_proof: str) -> LmExample:
-        partial_proof_file = f"{self.__file_prefix}{partial_proof} Admitted."
-        self.__update_hidden_file(partial_proof_file)
-        time1 = time.time_ns()
-        with CoqFile(self.__hidden_file_path, timeout=self.TIMEOUT) as coq_file:
-            time2 = time.time_ns()
-            with ProofState(coq_file, self.__cached_file_context) as proof_state:
-                time3 = time.time_ns()
-                print(f"Coqfile: {(time2 - time1) / 1e9}; State: {(time3 - time2) / 1e9}")
-                self.__update_search_dir(proof_state)
-                dataset_obj = DatasetFile.from_directory(self.__search_dir_path)
-                examples = self.example_type.from_dataset_file(dataset_obj, self.premise_wrapper)
-                example = examples[-1]
-                return example
+        dataset_obj = self.get_dataset_file(partial_proof) 
+        examples = self.example_type.from_dataset_file(dataset_obj, self.premise_wrapper)
+        example = examples[-1]
+        return example
 
 
     def get_dataset_file(self, partial_proof: str) -> DatasetFile:
-        partial_proof_file = f"{self.__file_prefix}{partial_proof} Admitted."
-        self.__update_hidden_file(partial_proof_file)
-        time1 = time.time_ns()
-        with CoqFile(self.__hidden_file_path, timeout=self.TIMEOUT) as coq_file:
-            time2 = time.time_ns()
-            with ProofState(coq_file, self.__cached_file_context) as proof_state:
-                time3 = time.time_ns()
-                print(f"Coqfile: {(time2 - time1) / 1e9}; State: {(time3 - time2) / 1e9}")
-                self.__update_search_dir(proof_state)
-                dataset_obj = DatasetFile.from_directory(self.__search_dir_path)
-                return dataset_obj
+        self.set_proof_file(partial_proof)
+        self.__update_search_dir(self.proof_file)
+        dataset_obj = DatasetFile.from_directory(self.__search_dir_path)
+        return dataset_obj
 
 
-    def __update_search_dir(self, proof_state: ProofState) -> None:
-        last_proof = proof_state.proofs[-1]
+    def __update_search_dir(self, proof_file: ProofFile) -> None:
+        last_proof = proof_file.proofs[-1]
         last_proof_data = get_last_proof_data_points(last_proof)
-        context_list = list(proof_state.context.terms.values())
+        context_list = list(proof_file.context.terms.values())
         context_data = get_context(context_list) 
         steps_loc = os.path.join(self.__search_dir_path, STEPS_NAME)
         context_loc = os.path.join(self.__search_dir_path, FILE_CONTEXT_NAME)
@@ -439,11 +462,6 @@ class ProofManager:
                 "file": proc_file_path(last_proof.file_path),
                 "context": context_data}])
 
-
-    def __update_hidden_file(self, contents: str) -> None:
-        with open(self.__hidden_file_path, "w") as fout:
-            fout.write(contents)
-        
     def __enter__(self) -> ProofManager:
         return self
 

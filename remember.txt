@@ -1,0 +1,1 @@
+eval $(opam env --switch=/home/ubuntu/.opam/coq8.18 --set-switch)
