@@ -6,6 +6,9 @@ from enum import Enum
 import heapq 
 import time
 import re
+import pdb
+import traceback
+import copy
 
 import sys, os
 import shutil
@@ -16,6 +19,7 @@ from termcolor import colored
 from tactic_gen.lm_example import LmExample
 from data_management.create_lm_dataset import LmExampleConfig
 from data_management.dataset_file import STEPS_NAME, FILE_CONTEXT_NAME, DatasetFile
+from data_management.get_counts import remove_comments
 from model_deployment.model_wrapper import ModelWrapper, ModelResult
 from model_deployment.node_score import NodeScore
 from model_deployment.goal_comparer import NodeGoal
@@ -383,6 +387,7 @@ class ProofManager:
         self.__search_dir_path = get_fresh_path(file_dir, ".proof-search")
         self.proof_file = proof_file
         self.base_num_steps = len(proof_file.steps) 
+        self.proof_start_idx = self.__get_last_tactic_idx() + 1 # No tactics yet!
         self.last_proof_attempted: str | None = None
 
     def __get_last_tactic_idx(self) -> int:
@@ -392,7 +397,7 @@ class ProofManager:
     def __get_current_partial_proof(self) -> str:
         current_partial_proof = ""
         stop_idx = self.LAST_TACTIC_IDX + 1 # Include last tactic
-        for step in self.proof_file.steps[self.base_num_steps:stop_idx]:
+        for step in self.proof_file.steps[self.proof_start_idx:stop_idx]:
             current_partial_proof += step.text
         return current_partial_proof
 
@@ -400,25 +405,41 @@ class ProofManager:
     def __get_last_goals(self) -> GoalAnswer:
         return self.proof_file.proofs[-1].steps[-1].goals
 
+    def __is_step(self, text: str) -> bool:
+        """TODO: Not handling comments"""
+        if text.strip().endswith("."):
+            return True
+        return False
+
 
     def set_proof_file(self, partial_proof: str) -> None:
-        assert len(self.proof_file.steps) > self.base_num_steps
+        clean_partial_proof = remove_comments(partial_proof)
+        assert len(self.proof_file.steps) >= self.base_num_steps
         current_partial_proof = self.__get_current_partial_proof() 
-        while not partial_proof.startswith(current_partial_proof):
-            to_remove_index = len(self.proof_file.steps) - 3
+        while not clean_partial_proof.startswith(current_partial_proof):
+            to_remove_index = self.__get_last_tactic_idx() 
             self.proof_file.delete_step(to_remove_index)
+            current_partial_proof = self.__get_current_partial_proof() 
         prefix_len = len(current_partial_proof)
-        remaining_current_proof = partial_proof[prefix_len:]
+        remaining_current_proof = clean_partial_proof[prefix_len:]
         last_tactic_idx = self.__get_last_tactic_idx()
-        self.proof_file.add_step(remaining_current_proof, last_tactic_idx)
+        if self.__is_step(clean_partial_proof):
+            print("Adding:", remaining_current_proof)
+            self.proof_file.add_step(remaining_current_proof, last_tactic_idx)
+        print(self.__get_current_partial_proof())
 
 
     def check_proof(self, partial_proof: str
                     ) -> tuple[TacticResult, Optional[GoalAnswer]]:
         if ("Admitted." in partial_proof) or ("admit." in partial_proof):
             return TacticResult.INVALID, None
-        assert len(self.proof_file.steps) >= self.base_num_steps
-        self.set_proof_file(partial_proof)
+
+        try:
+            self.set_proof_file(partial_proof)
+        except:
+            traceback.print_exc()
+            pdb.set_trace()
+            return TacticResult.INVALID, None
         if not self.proof_file.is_valid:
             return TacticResult.INVALID, None
         last_goals = self.__get_last_goals()
@@ -435,7 +456,11 @@ class ProofManager:
 
 
     def get_dataset_file(self, partial_proof: str) -> DatasetFile:
-        self.set_proof_file(partial_proof)
+        try:
+            self.set_proof_file(partial_proof)
+        except:
+            traceback.print_exc()
+            pdb.set_trace()
         self.__update_search_dir(self.proof_file)
         dataset_obj = DatasetFile.from_directory(self.__search_dir_path)
         return dataset_obj
@@ -472,6 +497,5 @@ class ProofManager:
 
     def close(self) -> None:
         shutil.rmtree(self.__search_dir_path)
-        os.remove(self.__hidden_file_path)
 
 

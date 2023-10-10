@@ -17,6 +17,15 @@ from data_management.dataset_file import DatasetFile, Sentence, data_shape_expec
 from data_management.split_raw_data import SPLITS 
 
 
+def remove_comments(step_text: str) -> str:
+    new_step_text = step_text
+    comment_match = re.search(r"\(\*.*?\*\)", new_step_text, re.DOTALL)
+    while comment_match:
+        new_step_text = new_step_text.replace(comment_match.group(), " ", 1)
+        comment_match = re.search(r"\(\*.*?\*\)", new_step_text, re.DOTALL)
+    return new_step_text 
+
+
 class Origin(enum.Enum):
     COQ_STD_LIB = 1
     COQ_USER_CONTRIB = 2
@@ -173,20 +182,13 @@ class PosPremiseAggregator(PremTableAggregator):
         self.num_nonempty_premises = num_nonempty_premises
         self.num_has_period = num_has_period 
 
-    def __remove_comments(self, step_text: str) -> str:
-        new_step_text = step_text
-        comment_match = re.search(r"\(\*.*?\*\)", new_step_text, re.DOTALL)
-        while comment_match:
-            new_step_text = new_step_text.replace(comment_match.group(), " ", 1)
-            comment_match = re.search(r"\(\*.*?\*\)", new_step_text, re.DOTALL)
-        return new_step_text 
 
 
     def add_premise_step(self, step_text: str, pos_premises: list[Sentence]) -> None:
         self.add_table(PremTypeTable.from_premises(pos_premises))
         if len(pos_premises) > 0:
             self.num_nonempty_premises += 1
-        step_without_comments = self.__remove_comments(step_text)
+        step_without_comments = remove_comments(step_text)
         if "." in step_without_comments.strip().rstrip("."):
             print(step_text)
             self.num_has_period += 1

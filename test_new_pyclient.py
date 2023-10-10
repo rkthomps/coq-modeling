@@ -29,10 +29,11 @@ def add_step_to_proof_term(proof_file: ProofFile, proof: ProofTerm, step: str) -
 
 with ProofFile(PATH, timeout=30) as proof_file:
     print_proofs(proof_file.proofs)
-    prev_idx = len(proof_file.steps) - 3
-    print("Prev step:", proof_file.steps[prev_idx].text)
-    print(repr(proof_file.proofs[-1].steps[-1].goals.goals.goals))
-    proof_file.add_step(" apply H.", prev_idx)
-    print(repr(proof_file.proofs[-1].steps[-1].goals.goals.goals))
-    print_proofs(proof_file.proofs)
+
+    # prev_idx = len(proof_file.steps) - 3
+    # print("Prev step:", proof_file.steps[prev_idx].text)
+    # print(repr(proof_file.proofs[-1].steps[-1].goals.goals.goals))
+    # proof_file.add_step(" apply H.", prev_idx)
+    # print(repr(proof_file.proofs[-1].steps[-1].goals.goals.goals))
+    # print_proofs(proof_file.proofs)
     
