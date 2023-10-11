@@ -8,6 +8,7 @@ from impose_file_hierarchy import NEW_ROOT_NAME
 PROJECT_NAME = "_CoqProject"
 MAKEFILE_NAME = "CoqMakefile"
 MAKEFILE_CONF_NAME = "CoqMakefile.conf"
+PROOF_SEARCH_NAME = ".proof_search"
 SPECIAL_FILES = [PROJECT_NAME, MAKEFILE_NAME, MAKEFILE_CONF_NAME]
 
 COQ_PROJECT_PREFIX = "-R theories CoqRepos"
@@ -18,6 +19,7 @@ def clean_directory(dir_loc: str) -> None:
         s_loc = os.path.join(parent_loc, s_fname)
         if os.path.exists(s_loc):
             os.remove(s_loc)
+
 
 
 def get_coq_project_contents(dir_loc: str) -> str:

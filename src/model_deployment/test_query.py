@@ -7,7 +7,8 @@ import pdb
 
 import jsonlines
 
-from model_deployment.searcher import ProofManager, SearchTreeManager, initialize_hidden_file 
+from model_deployment.searcher import SearchTreeManager 
+from model_deployment.proof_manager import ProofManager, initialize_hidden_files
 from model_deployment.model_wrapper import CodeLLamaServer, ModelWrapper, GPT4Wrapper 
 from model_deployment.node_score import CodeLLamaNodeScore, NodeScore 
 from tactic_gen.lm_example import LmExample, BasicLmExample, GPT4BasicLmExample, BaseCodeLLamaLmExample
@@ -29,17 +30,16 @@ NODE_SCORE_TYPE = CodeLLamaNodeScore
 
 
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 TIMEOUT = 1000
 BRANCH = 7 
 EXPANSIONS = 30
 
-
-hidden_file_path = initialize_hidden_file(TEST_FILE)
+hidden_file_path, aux_hidden_file_path = initialize_hidden_files(TEST_FILE)
 with ProofFile(hidden_file_path, timeout=60) as proof_file:
-    with ProofManager(hidden_file_path, proof_file, EXAMPLE_CONFIG) as proof_manager:
+    with ProofManager(hidden_file_path, proof_file, aux_hidden_file_path, EXAMPLE_CONFIG) as proof_manager:
         tree_manager = SearchTreeManager(
             WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH,
             EXPANSIONS, TIMEOUT

@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-from typing import Any  
+from typing import Any, Optional
 from enum import Enum
 
 from coqlspclient.coq_structs import TermType
@@ -226,7 +226,8 @@ class Proof:
         return f"{theorem_text}{proof_text}"
 
     def proof_prefix_to_string(self, stop_step: FocusedStep, 
-                               include_proof: bool=False) -> str:
+                               include_proof: bool=False,
+                               add_to_end: Optional[str]=None) -> str:
         """Print the tactics of the proof up to but not including the given step"""
         proof = self.theorem.term.text
         if include_proof:
@@ -235,6 +236,8 @@ class Proof:
             if (step == stop_step):
                 break
             proof += step.step.text
+        if add_to_end:
+            proof += add_to_end 
         return proof
 
 

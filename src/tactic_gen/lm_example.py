@@ -25,12 +25,14 @@ class LmExample:
 
     @classmethod
     def json_from_dataset_file(cls, dataset_file: DatasetFile,
-                               premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[dict[str, str]]:
-        return [example.to_json() for example in cls.from_dataset_file(dataset_file, premise_model_wrapper)]
+                               premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+                               partial_proof_suffix: Optional[str]=None) -> list[dict[str, str]]:
+        return [example.to_json() for example in cls.from_dataset_file(dataset_file, premise_model_wrapper, partial_proof_suffix)]
 
     @classmethod
     def from_dataset_file(cls, dataset_file: DatasetFile,
-                          premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[LmExample]:
+                          premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+                          partial_proof_suffix: Optional[str]=None) -> list[LmExample]:
         raise NotImplementedError
 
     @classmethod
@@ -49,11 +51,12 @@ class BasicLmExample(LmExample):
         super(BasicLmExample, self).__init__(input, output)
 
     @classmethod
-    def example_from_step(cls, step: FocusedStep, proof: Proof) -> BasicLmExample:
+    def example_from_step(cls, step: FocusedStep, proof: Proof, 
+                          partial_proof_suffix: Optional[str]) -> BasicLmExample:
         goal_strings: list[str] = []
         for goal in step.goals:
             goal_strings.append(goal.to_string())
-        partial_proof_string = proof.proof_prefix_to_string(step)
+        partial_proof_string = proof.proof_prefix_to_string(step, add_to_end=partial_proof_suffix)
         final_goal_string = "<GOAL-SEP>".join(goal_strings)
         input = f"{partial_proof_string}<THM-SEP>{final_goal_string}"
         output = step.step.text
@@ -61,12 +64,14 @@ class BasicLmExample(LmExample):
 
     @classmethod
     def from_dataset_file(cls, dataset_file: DatasetFile,
-                          premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[LmExample]:
+                          premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+                          partial_proof_suffix: Optional[str]=None) -> list[LmExample]:
         basic_lm_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
             for step in proof.steps:
-                basic_lm_examples.append(cls.example_from_step(step, proof))
+                basic_lm_examples.append(cls.example_from_step(step, proof, partial_proof_suffix))
         return basic_lm_examples
+                    
 
     @staticmethod
     def get_alias() -> str:
@@ -140,8 +145,9 @@ class PremiseLmExample(LmExample):
     def example_from_step(cls, step: FocusedStep, 
                             proof: Proof, 
                             dset_obj: DatasetFile,
-                            premise_model_wrapper: LocalPremiseModelWrapper) -> PremiseLmExample:
-        basic_example = BasicLmExample.example_from_step(step, proof)
+                            premise_model_wrapper: LocalPremiseModelWrapper,
+                            partial_proof_suffix: Optional[str]) -> PremiseLmExample:
+        basic_example = BasicLmExample.example_from_step(step, proof, partial_proof_suffix)
         premise_str = cls.__get_premise_str(step, proof, dset_obj, premise_model_wrapper)
         example_input = f"{premise_str}<PREM-SEP>{basic_example.input}"
         example_output = basic_example.output
@@ -150,13 +156,14 @@ class PremiseLmExample(LmExample):
     
     @classmethod
     def from_dataset_file(cls, dataset_file: DatasetFile, 
-                          premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[LmExample]:
+                          premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+                          partial_proof_suffix: Optional[str]=None) -> list[LmExample]:
         assert premise_model_wrapper is not None
         premise_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
             for step in proof.steps:
                 premise_example = cls.example_from_step(
-                    step, proof, dataset_file, premise_model_wrapper)
+                    step, proof, dataset_file, premise_model_wrapper, partial_proof_suffix)
                 premise_examples.append(premise_example)
         return premise_examples
 
@@ -170,22 +177,25 @@ class BaseCodeLLamaLmExample(LmExample):
         super(BaseCodeLLamaLmExample, self).__init__(input, output)
     
     @classmethod
-    def example_from_step(cls, step: FocusedStep, proof: Proof) -> BaseCodeLLamaLmExample:
+    def example_from_step(cls, step: FocusedStep, proof: Proof, 
+                          partial_proof_suffix: Optional[str]) -> BaseCodeLLamaLmExample:
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):
             goal_strings.append(f"Goal {i + 1}:\n{goal.to_string()}")
-        partial_proof_string = proof.proof_prefix_to_string(step, include_proof=True)
+        partial_proof_string = proof.proof_prefix_to_string(step, include_proof=True, add_to_end=partial_proof_suffix)
         final_goal_string = "\n\n".join(goal_strings)
         input = f"{final_goal_string}\n\n{partial_proof_string}"
         output = step.step.text
         return cls(input, output)
 
     @classmethod
-    def from_dataset_file(cls, dataset_file: DatasetFile, premise_model_wrapper: LocalPremiseModelWrapper | None) -> list[LmExample]:
+    def from_dataset_file(cls, dataset_file: DatasetFile, 
+                          premise_model_wrapper: LocalPremiseModelWrapper | None,
+                          partial_proof_suffix: Optional[str]=None) -> list[LmExample]:
         code_llama_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
             for step in proof.steps:
-                code_llama_examples.append(cls.example_from_step(step, proof))
+                code_llama_examples.append(cls.example_from_step(step, proof, partial_proof_suffix))
         return code_llama_examples 
 
     @staticmethod
@@ -207,11 +217,13 @@ class GPT4BasicLmExample(LmExample):
 
 
     @classmethod
-    def example_from_step(cls, step: FocusedStep, proof: Proof) -> GPT4BasicLmExample:
+    def example_from_step(cls, step: FocusedStep, 
+                          proof: Proof,
+                          partial_proof_suffix: Optional[str]) -> GPT4BasicLmExample:
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):
             goal_strings.append(f"Goal {i + 1}\n{goal.to_string()}")
-        partial_proof_string = proof.proof_prefix_to_string(step)
+        partial_proof_string = proof.proof_prefix_to_string(step, add_to_end=partial_proof_suffix)
         final_goal_string = "\n".join(goal_strings)
         input = f"{cls.SCRIPT_TAG}\n{partial_proof_string}\n{cls.STATE_TAG}\n{final_goal_string}"
         output = step.step.text
@@ -220,11 +232,12 @@ class GPT4BasicLmExample(LmExample):
 
     @classmethod
     def from_dataset_file(cls, dataset_file: DatasetFile,
-                          premise_model_wrapper: Optional[LocalPremiseModelWrapper]) -> list[LmExample]:
+                          premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+                          partial_proof_suffix: Optional[str]=None) -> list[LmExample]:
         gpt4_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
             for step in proof.steps:
-                gpt4_examples.append(cls.example_from_step(step, proof))
+                gpt4_examples.append(cls.example_from_step(step, proof, partial_proof_suffix))
         return gpt4_examples
 
 

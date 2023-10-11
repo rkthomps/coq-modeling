@@ -91,6 +91,7 @@ def codellama() -> str:
     print(model_input)
 
     sample_result = do_sample(input_ids, model, tokenizer, n, period_stopping)
+    print(sample_result.tactics)
 
     return json.dumps(sample_result.to_json(), indent=2)
 

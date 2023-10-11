@@ -9,7 +9,8 @@ import time
 
 
 #PATH = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
-PATH = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
+#PATH = "/home/ubuntu/coq-modeling/test-coq-projs/aux_lt_impl.v"
+PATH = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 
 # with CoqFile(PATH, timeout=60) as coq_file:
 #     coq_file.exec(nsteps=6)
@@ -27,8 +28,22 @@ def print_proofs(proofs: list[ProofTerm]) -> None:
 def add_step_to_proof_term(proof_file: ProofFile, proof: ProofTerm, step: str) -> None: 
     proof_file.add_step(step, proof.steps[-1].ast.range)
 
-with ProofFile(PATH, timeout=30) as proof_file:
-    print_proofs(proof_file.proofs)
+
+# start = time.time_ns()
+# with CoqFile(PATH) as coq_file:
+#     coq_file.run()
+#     print(coq_file.is_valid)
+#     print(coq_file.in_proof)
+# end = time.time_ns()
+# print((end - start) / (1e9))
+
+with ProofFile(PATH) as proof_file:
+    for proof in proof_file.proofs:
+        for step in proof.steps:
+            print("\"" + step.text.replace("\n", r"\n") + "\"")
+
+# with ProofFile(PATH, timeout=30) as proof_file:
+#     print_proofs(proof_file.proofs)
 
     # prev_idx = len(proof_file.steps) - 3
     # print("Prev step:", proof_file.steps[prev_idx].text)
