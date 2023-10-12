@@ -125,7 +125,7 @@ class Evaluator:
                 all_proof_prefixes.append((physical_path, file_prefix))
                 proof_loc = contents.find(proof_tok, proof_loc + 1)
 
-        random.shuffle(all_proof_prefixes)
+        #random.shuffle(all_proof_prefixes)
         for file, proof_prefix in all_proof_prefixes:
             file_basename = os.path.basename(file)
             file_dirname = os.path.dirname(file)
