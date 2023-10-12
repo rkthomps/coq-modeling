@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any, Optional
 from types import TracebackType
 
+import pickle
+import time
 import traceback
 import sys, os
 import shutil
@@ -63,13 +65,17 @@ def get_context(context: list[Term]) -> list[dict[str, Any]]:
     return res
 
 
+def get_prefix_from_str(file_str: str, search_token: str) -> Optional[str]:
+    token_idx = file_str.find(search_token)
+    if token_idx == -1:
+        return None
+    return file_str[:token_idx].strip()
+
+
 def get_file_prefix(filename: str, search_token: str) -> Optional[str]:
     with open(filename, "r") as fin:
         file_contents = fin.read()
-    token_idx = file_contents.find(search_token)
-    if token_idx == -1:
-        return None
-    return file_contents[:token_idx].strip()
+    return get_prefix_from_str(file_contents, search_token)
 
 
 def get_fresh_path(dirname: str, fresh_base: str) -> str:
@@ -112,6 +118,17 @@ def get_last_proof_data_points(proof: ProofTerm) -> Any:
 
 
 SEARCH_TOKEN = "<prove>"
+
+
+def set_hidden_files(hidden_file_path: str,
+                     aux_hidden_file_path: str,
+                     prefix: str) -> None:
+    with open(hidden_file_path, "w") as fout:
+        fout.write(f"{prefix}\nAdmitted.")
+    with open(aux_hidden_file_path, "w") as fout:
+        fout.write(f"{prefix}")
+
+
 def initialize_hidden_files(orig_file_path: str) -> tuple[str, str]:
     """
     Find a fresh file path, and copy the contents of the original
@@ -125,11 +142,20 @@ def initialize_hidden_files(orig_file_path: str) -> tuple[str, str]:
     file_prefix = get_file_prefix(orig_file_path, SEARCH_TOKEN)
     if file_prefix is None:
         raise ValueError(f"Could not find search token {SEARCH_TOKEN}")
-    with open(fresh_file_path, "w") as fout:
-        fout.write(f"{file_prefix}\nadmit.")
-    with open(fresh_aux_file_path, "w") as fout:
-        fout.write(f"{file_prefix}")
+    set_hidden_files(fresh_file_path, fresh_aux_file_path, file_prefix)
     return fresh_file_path, fresh_aux_file_path 
+
+
+def hidden_files_from_prefix(orig_file_path: str, file_prefix: str) -> tuple[str, str]:
+    file_dirname = os.path.dirname(orig_file_path)
+    file_basename = os.path.basename(orig_file_path)
+    fresh_file_path = get_fresh_path(file_dirname, file_basename)
+    fresh_aux_file_path = get_fresh_path(file_dirname, f"aux_{file_basename}")
+    prefix_no_tok = get_prefix_from_str(file_prefix, SEARCH_TOKEN)
+    if prefix_no_tok is None:
+        raise ValueError(f"Could not find search token {SEARCH_TOKEN}")
+    set_hidden_files(fresh_file_path, fresh_aux_file_path, prefix_no_tok)
+    return fresh_file_path, fresh_aux_file_path
 
 
 class ProofManager:
@@ -186,7 +212,12 @@ class ProofManager:
         remaining_current_proof = valid_steps[prefix_len:]
         for step in remaining_current_proof:
             last_tactic_idx = self.__get_last_tactic_idx()
-            self.proof_file.add_step(step, last_tactic_idx)
+            try:
+                self.proof_file.add_step(step, last_tactic_idx)
+            except:
+                with open("erroroneous-proof-file.pkl", "wb") as fout:
+                    fout.write(pickle.dumps(self.proof_file))
+                raise ValueError("proof-search failed.")
         final_partial_proof = self.__get_current_partial_proof()
         try:
             assert target_combined_proof == "".join(final_partial_proof) + partial_proof_suffix
@@ -244,7 +275,10 @@ class ProofManager:
     def get_dataset_file(self, valid_steps: list[str], 
                          target_combined_steps: str,
                          partial_proof_suffix: str) -> DatasetFile:
+        start = time.time_ns()
         self.set_proof_file(valid_steps, target_combined_steps, partial_proof_suffix)
+        end = time.time_ns()
+        print("ProofFile Update Time:", (end - start) / 1e9)
         self.__update_search_dir(self.proof_file)
         dataset_obj = DatasetFile.from_directory(self.__search_dir_path)
         return dataset_obj
@@ -280,4 +314,9 @@ class ProofManager:
         self.close()
 
     def close(self) -> None:
-        shutil.rmtree(self.__search_dir_path)
+        if os.path.exists(self.file_path):
+            os.remove(self.file_path)
+        if os.path.exists(self.aux_file_path):
+            os.remove(self.aux_file_path)
+        if os.path.exists(self.__search_dir_path):
+            shutil.rmtree(self.__search_dir_path)

@@ -16,7 +16,6 @@ from transformers import (
     BitsAndBytesConfig, TrainingArguments)
 import torch
 from datasets import Dataset
-from evaluate import EvaluationModule
 import numpy as np 
 
 from tactic_gen.lm_example import LmExample

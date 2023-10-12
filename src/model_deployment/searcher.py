@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional, Any
 from enum import Enum
 import heapq 
+import pdb
 import time
 import re
 
@@ -174,6 +175,25 @@ class SearchResult:
         assert self.qed_node is not None
         return self.qed_node.steps_to_str(self.qed_node.combined_proof_steps)
 
+    def to_json(self) -> Any:
+        json_data = {
+            "search_tree": self.search_tree.to_json()
+        }
+        if self.qed_node: 
+            json_data["qed_node"] = self.qed_node.to_json()
+        return json_data
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> SearchResult:
+        search_tree_data = json_data["search_tree"]
+        search_tree = ProofSearchTree.from_json(search_tree_data)
+        if "qed_node" in search_tree_data:
+            qed_node_data = json_data["qed_node"]
+            qed_node = ProofSearchTree.from_json(qed_node_data)
+        else:
+            qed_node = None
+        return cls(search_tree, qed_node)
+
 
 class SearchTreeManager:
     def __init__(self, 
@@ -241,7 +261,8 @@ class SearchTreeManager:
                                   attempted_tactic: str,
                                   parent_node: ProofSearchTree,
                                   score: NodeScore) -> ProofSearchTree:
-        assert proof_check_result.current_goals is None
+        assert proof_check_result.current_goals is not None
+        assert proof_check_result.current_goals.goals.goals == []
         pretty_goal = "complete"
         valid = True
         final_tactic = True

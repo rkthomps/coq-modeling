@@ -9,8 +9,9 @@ import time
 
 
 #PATH = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+PATH = "/home/ubuntu/coq-modeling/test-coq-projs/___min.v"
 #PATH = "/home/ubuntu/coq-modeling/test-coq-projs/aux_lt_impl.v"
-PATH = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
+#PATH = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 
 # with CoqFile(PATH, timeout=60) as coq_file:
 #     coq_file.exec(nsteps=6)
@@ -38,9 +39,7 @@ def add_step_to_proof_term(proof_file: ProofFile, proof: ProofTerm, step: str) -
 # print((end - start) / (1e9))
 
 with ProofFile(PATH) as proof_file:
-    for proof in proof_file.proofs:
-        for step in proof.steps:
-            print("\"" + step.text.replace("\n", r"\n") + "\"")
+    proof_file.add_step(" destruct (a <? n).", len(proof_file.steps) - 3)
 
 # with ProofFile(PATH, timeout=30) as proof_file:
 #     print_proofs(proof_file.proofs)

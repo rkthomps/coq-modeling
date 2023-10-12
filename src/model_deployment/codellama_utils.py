@@ -83,7 +83,7 @@ def do_sample(input_ids: torch.LongTensor,
               tokenizer: CodeLlamaTokenizer,
               n_recs: int,
               period_stopping: PeriodStoppingCriteria,
-              temperature: float=0.5) -> SampleResult:
+              temperature: float=0.2) -> SampleResult:
     period_stopping.set_num_periods(input_ids)
     stopping_list = StoppingCriteriaList([period_stopping])
     tactics: list[str] = []

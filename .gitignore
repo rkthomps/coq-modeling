@@ -2,6 +2,7 @@
 raw-data
 data
 models
+eval
 
 # Config files
 # - Creating premise and tactic datasets 
@@ -18,6 +19,13 @@ src/premise_selection/confs/**
 src/tactic_gen/confs/**
 !src/tactic_gen/confs/codellama_basic.yaml
 
+# - Eval
+src/evaluation/confs/**
+!src/evaluation/confs/codellama.yaml
+
+# scripts
+clean_search.sh
+
 
 # Python files
 venv
@@ -25,6 +33,9 @@ venv
 build
 __pycache__
 .DS_STORE
+
+# Coq Files
+.lia.cache
 
 # IDE files
 mypy.ini

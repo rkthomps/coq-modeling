@@ -1,14 +1,14 @@
 
 
 import sys, os
+import re
 import argparse
 import subprocess
-from impose_file_hierarchy import NEW_ROOT_NAME 
+from impose_file_hierarchy import DESIRED_PREFIX
 
 PROJECT_NAME = "_CoqProject"
 MAKEFILE_NAME = "CoqMakefile"
 MAKEFILE_CONF_NAME = "CoqMakefile.conf"
-PROOF_SEARCH_NAME = ".proof_search"
 SPECIAL_FILES = [PROJECT_NAME, MAKEFILE_NAME, MAKEFILE_CONF_NAME]
 
 COQ_PROJECT_PREFIX = "-R theories CoqRepos"
@@ -21,27 +21,40 @@ def clean_directory(dir_loc: str) -> None:
             os.remove(s_loc)
 
 
-
 def get_coq_project_contents(dir_loc: str) -> str:
     dir_name = os.path.basename(dir_loc)
     return f"-R {dir_name} MyProject\n{dir_name}"
 
 
+def this_or_sub_has_dash_or_dot(dir_loc: str) -> bool:
+    bad_pattern = re.compile(r"[-.]")
+    if bad_pattern.search(os.path.basename(dir_loc)):
+        return True
+    for files, dirs, root in os.walk(dir_loc):
+        for dir in dirs:
+            if bad_pattern.search(dir):
+                return True
+    return False
+
+
 def compile_directory(dir_loc: str, num_cores: int) -> None:
-    clean_directory(dir_loc)
-    parent_dir = os.path.dirname(dir_loc)
-    os.chdir(parent_dir)
-    coq_project_loc = os.path.join(parent_dir, PROJECT_NAME)
-    with open(coq_project_loc, "w") as fout:
-        fout.write(get_coq_project_contents(dir_loc))
-    p_create_make = subprocess.run(["coq_makefile", "-f", PROJECT_NAME, "-o", MAKEFILE_NAME])
-    assert p_create_make.returncode == 0
-    p_make = subprocess.run(["make", "-j", str(num_cores), "-f", MAKEFILE_NAME])
-    if p_make.returncode != 0:
-        for subdir_name in os.listdir(dir_loc):
-            subdir_loc = os.path.join(dir_loc, subdir_name)
-            if os.path.isdir(subdir_loc):
-                compile_directory(subdir_loc, num_cores)
+    if not this_or_sub_has_dash_or_dot(dir_loc):
+        clean_directory(dir_loc)
+        parent_loc = os.path.dirname(dir_loc)
+        os.chdir(parent_loc)
+        coq_project_loc = os.path.join(parent_loc, PROJECT_NAME)
+        with open(coq_project_loc, "w") as fout:
+            fout.write(get_coq_project_contents(dir_loc))
+        p_create_make = subprocess.run(["coq_makefile", "-f", PROJECT_NAME, "-o", MAKEFILE_NAME])
+        assert p_create_make.returncode == 0
+        p_make = subprocess.run(["make", "-j", str(num_cores), "-f", MAKEFILE_NAME])
+        if p_make.returncode == 0:
+            return
+
+    for subdir_name in os.listdir(dir_loc):
+        subdir_loc = os.path.join(dir_loc, subdir_name)
+        if os.path.isdir(subdir_loc):
+            compile_directory(subdir_loc, num_cores)
 
 
 if __name__ == "__main__":
@@ -54,6 +67,11 @@ if __name__ == "__main__":
     if args.num_cores is not None:
         num_cores = args.num_cores
 
-    compile_target = os.path.join(args.tree_parent_loc, NEW_ROOT_NAME)
-    compile_target_full_path = os.path.abspath(compile_target)
-    compile_directory(compile_target_full_path, num_cores)
+    rel_base_directory = os.path.join(args.tree_parent_loc, DESIRED_PREFIX)
+    base_directory = os.path.abspath(rel_base_directory)
+    for repo_name in os.listdir(base_directory):
+        repo_loc = os.path.join(base_directory, repo_name)
+        if not os.path.isdir(repo_loc):
+            continue
+        abs_repo_loc = os.path.abspath(repo_loc)
+        compile_directory(abs_repo_loc, num_cores)

@@ -60,6 +60,16 @@ class LmExampleConfig:
         self.format_type = format_type
         self.premise_wrapper = premise_wrapper
 
+    def to_json(self) -> Any:
+        json_data: Any = {
+            "partitioned_dataset_loc": self.partitioned_dataset_loc,
+            "output_dataset_loc": self.output_dataset_loc,
+            "format_alias": self.format_type.get_alias(),
+        }
+        if self.premise_wrapper:
+            json_data["premise_wrapper_checkpoint"] = self.premise_wrapper.checkpoint_loc
+        return json_data
+
     @classmethod
     def from_json(cls, json_data: Any) -> LmExampleConfig:
         partitioned_dataset_loc = json_data["partitioned_dataset_loc"]
