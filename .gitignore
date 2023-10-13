@@ -3,6 +3,7 @@ raw-data
 data
 models
 eval
+examples
 
 # Config files
 # - Creating premise and tactic datasets 

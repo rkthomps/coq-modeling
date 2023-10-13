@@ -77,6 +77,17 @@ class ProofSearchTree:
     def set_expanded_num(self, expanded_num: int) -> None:
         self.expanded = expanded_num
 
+    def get_deepest_node(self, cur_depth:int =0) -> tuple[ProofSearchTree, int]:
+        cur_max_depth = cur_depth
+        cur_deepest_node = self
+        for child in self.children:
+            child_deepest_node, depth = child.get_deepest_node(cur_depth + 1)
+            if depth > cur_max_depth:
+                cur_max_depth = depth
+                cur_deepest_node = child_deepest_node
+        return cur_deepest_node, cur_max_depth
+        
+
     def pretty_print(self, start_marker: str=uni_l, indent: str="", 
                      last_child: bool=True) -> None:
         line_start = start_marker + (self.sideways_bar * 2) + " "
@@ -187,7 +198,7 @@ class SearchResult:
     def from_json(cls, json_data: Any) -> SearchResult:
         search_tree_data = json_data["search_tree"]
         search_tree = ProofSearchTree.from_json(search_tree_data)
-        if "qed_node" in search_tree_data:
+        if "qed_node" in json_data:
             qed_node_data = json_data["qed_node"]
             qed_node = ProofSearchTree.from_json(qed_node_data)
         else:

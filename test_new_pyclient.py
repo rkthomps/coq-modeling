@@ -8,8 +8,8 @@ from coqlspclient.proof_file import ProofFile
 import time
 
 
-#PATH = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
-PATH = "/home/ubuntu/coq-modeling/test-coq-projs/___min.v"
+PATH = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+#PATH = "/home/ubuntu/coq-modeling/test-coq-projs/___min.v"
 #PATH = "/home/ubuntu/coq-modeling/test-coq-projs/aux_lt_impl.v"
 #PATH = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 
@@ -39,7 +39,10 @@ def add_step_to_proof_term(proof_file: ProofFile, proof: ProofTerm, step: str) -
 # print((end - start) / (1e9))
 
 with ProofFile(PATH) as proof_file:
-    proof_file.add_step(" destruct (a <? n).", len(proof_file.steps) - 3)
+    proof_file.add_step("\nintros. ", len(proof_file.steps) - 2)
+
+
+    #proof_file.add_step(" destruct (a <? n).", len(proof_file.steps) - 3)
 
 # with ProofFile(PATH, timeout=30) as proof_file:
 #     print_proofs(proof_file.proofs)

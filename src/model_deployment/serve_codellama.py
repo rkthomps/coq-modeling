@@ -12,15 +12,17 @@ from model_deployment.model_wrapper import CodeLLamaLocalWrapper, FORMAT_NAME, I
 app = Flask(__name__) 
 
 
-PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
+#PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
+PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-premise/checkpoint-20500"
 #PRETRAINED_NAME = "codellama/CodeLlama-7b-hf"
 
 model_wrapper = CodeLLamaLocalWrapper.from_pretrained(PRETRAINED_NAME)
 
-@app.route(FORMAT_NAME, method=["POST"])
+@app.route(FORMAT_NAME, methods=["POST"])
 def format() -> str:
     example_config = model_wrapper.lm_example_config
-    return json.dumps(example_config.to_json(), indent=2)
+    json_str = json.dumps(example_config.to_json(), indent=2)
+    return json_str 
 
 
 @app.route(INFERENCE_NAME, methods=["POST"])

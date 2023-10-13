@@ -20,8 +20,7 @@ from coqlspclient.proof_file import ProofFile
 # EXAMPLE_TYPE = GPT4BasicLmExample
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-WRAPPER = CodeLLamaServer("http://127.0.0.1:5000/codellama")
-EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BasicLmExample)
+WRAPPER = CodeLLamaServer.from_url("http://127.0.0.1:5000")
 NODE_SCORE_TYPE = CodeLLamaNodeScore
 
 # WRAPPER = CodeLLamaServer("http://127.0.0.1:5000/codellama")
@@ -30,16 +29,17 @@ NODE_SCORE_TYPE = CodeLLamaNodeScore
 
 
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 TIMEOUT = 1000
 BRANCH = 5
 EXPANSIONS = 50
 
 hidden_file_path, aux_hidden_file_path = initialize_hidden_files(TEST_FILE)
 with ProofFile(hidden_file_path, timeout=60) as proof_file:
-    with ProofManager(hidden_file_path, proof_file, aux_hidden_file_path, EXAMPLE_CONFIG) as proof_manager:
+    with ProofManager(hidden_file_path, proof_file, 
+                      aux_hidden_file_path, WRAPPER.lm_example_config) as proof_manager:
         tree_manager = SearchTreeManager(
             WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH,
             EXPANSIONS, TIMEOUT

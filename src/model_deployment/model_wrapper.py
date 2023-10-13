@@ -196,7 +196,7 @@ class CodeLLamaServer(ModelWrapper):
                  lm_example_conf: LmExampleConfig) -> None:
         super(CodeLLamaServer, self).__init__(lm_example_conf)
         assert type(server_url) == str
-        self.server_url = server_url
+        self.server_url = server_url.rstrip("/") + INFERENCE_NAME
 
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
         request_data = example.to_json()
@@ -205,7 +205,6 @@ class CodeLLamaServer(ModelWrapper):
         response_data = json.loads(response.content)
         response_obj = ModelResult.from_json(response_data) 
         return response_obj
-
 
     @classmethod
     def from_json(cls, json_data: Any) -> ModelWrapper:
@@ -217,6 +216,10 @@ class CodeLLamaServer(ModelWrapper):
         format_data = json.loads(format_response.content) 
         format_config = LmExampleConfig.from_json(format_data) 
         return cls(server_url, format_config) 
+
+    @classmethod
+    def from_url(cls, url: str) -> ModelWrapper:
+        return cls.from_json({"server_url": url})
 
     @staticmethod
     def get_alias() -> str:
