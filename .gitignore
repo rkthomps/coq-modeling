@@ -23,6 +23,8 @@ src/tactic_gen/confs/**
 # - Eval
 src/evaluation/confs/**
 !src/evaluation/confs/codellama.yaml
+safe_val.txt
+shared-thms.json
 
 # scripts
 clean_search.sh
@@ -39,7 +41,6 @@ __pycache__
 .lia.cache
 
 # IDE files
-mypy.ini
 .vscode
 
 # Proof search files
