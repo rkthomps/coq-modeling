@@ -212,18 +212,9 @@ class ProofManager:
         remaining_current_proof = valid_steps[prefix_len:]
         for step in remaining_current_proof:
             last_tactic_idx = self.__get_last_tactic_idx()
-            try:
-                self.proof_file.add_step(step, last_tactic_idx)
-            except:
-                with open("erroroneous-proof-file.pkl", "wb") as fout:
-                    fout.write(pickle.dumps(self.proof_file))
-                raise ValueError("proof-search failed.")
+            self.proof_file.add_step(step, last_tactic_idx)
         final_partial_proof = self.__get_current_partial_proof()
-        try:
-            assert target_combined_proof == "".join(final_partial_proof) + partial_proof_suffix
-        except AssertionError:
-            pdb.set_trace()
-
+        assert target_combined_proof == "".join(final_partial_proof) + partial_proof_suffix
 
     def __update_aux_file(self, partial_proof: str) -> None:
         with open(self.aux_file_path, "w") as fout:

@@ -104,14 +104,13 @@ class Evaluator:
             mapping = json.load(fin) 
         assert mapping_shape_correct(mapping)
         assert self.split in SPLITS
+
         #eligible_files = assignment[self.split]
-        eligible_files = [
-            "-coq-dataset-repos-voellinger-verified-certifying-distributed-algorithms-shortest-path-problem-arg_min_inequ.v",
-            "-coq-dataset-repos-voellinger-verified-certifying-distributed-algorithms-shortest-path-problem-minimal_existence.v",
-            "-coq-dataset-repos-coq-community-jmlcoq-theories-ListHelpers.v",
-            "-coq-dataset-repos-anshumanmohan-CertiGraph-VST-VST-floyd-simple_reify.v",
-            "-coq-dataset-repos-airxhi-CompCert-lib-Axioms.v",
-        ]
+        # Found safe validation files manually. In the future will
+        # be automated
+        with open("safe_val.txt", "r") as fin:
+            eligible_files = json.load(fin)
+
         all_proof_prefixes: list[tuple[str, str]] = []
         print("Indexing Proofs...")
         for file in tqdm(eligible_files):
@@ -130,6 +129,13 @@ class Evaluator:
             file_basename = os.path.basename(file)
             file_dirname = os.path.dirname(file)
             hidden_file_path, aux_hidden_file_path = hidden_files_from_prefix(file, proof_prefix)
+            with CoqFile(aux_hidden_file_path) as coq_file:
+                if len(coq_file.steps) < 3:
+                    continue 
+                statement_text = coq_file.steps[-3].text
+                if not ("Theorem" in statement_text or "Lemma" in statement_text):
+                    print("Skipping proof for: ", statement_text)
+                    continue
             yield file, proof_prefix, hidden_file_path, aux_hidden_file_path 
 
 

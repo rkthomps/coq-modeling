@@ -29,6 +29,7 @@ dependencies = [
     "pandas",
     "types-PyYAML",
     "types-requests",
+    "black",
 ]
  
 [tool.setuptools.packages.find]

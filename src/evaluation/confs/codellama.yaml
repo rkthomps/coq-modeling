@@ -8,10 +8,10 @@ example_type: basic # From lmexample.py
 node_score: codellama-node-score # From node_score.py 
 model_wrapper: codellama-local # From model_wrapper.py 
 branching_factor: 5 # Number of recommendations from the model
-max_leaf_expansions: 100 # Number of queries to the model
+max_leaf_expansions: 50 # Number of queries to the model
 split: val
 num_proofs: 20000 
-timeout: 1000 # Per-proof time limit
+timeout: 60 # Per-proof time limit
 
 codellama-local:
   pretrained-name: /home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500
