@@ -177,6 +177,7 @@ def do_beam_sample(
     n_recs: int,
     period_stopping: PeriodStoppingCriteria,
     batch_size: int = 2,
+    max_seq_len: int = 512,
 ) -> SampleResult:
     past = None
     beam_scores = torch.zeros((input_ids.shape[0],), dtype=torch.float32).to("cuda")
@@ -193,23 +194,17 @@ def do_beam_sample(
         next_scores_list: list[torch.Tensor] = []
         next_input_id_list: list[torch.Tensor] = []
 
-        print(len(batched_input_ids))
-        print(input_ids.shape)
         for input_ids_batch, beam_score_batch, past_batch in zip(
             batched_input_ids,
             batched_beam_scores,
             batched_pasts,
         ):
-            # print(
-            #     tokenizer.batch_decode(
-            #         input_ids_batch[:, orig_input_length:], skip_special_tokens=True
-            #     )
-            # )
             batch_inputs = model.prepare_inputs_for_generation(
                 input_ids_batch, past_batch
             )
-            output_batch = model(**batch_inputs)
-            output_logits = output_batch[0]
+            with torch.no_grad():
+                output_batch = model(**batch_inputs)
+                output_logits = output_batch[0]
             output_pasts = output_batch[1]
             next_token_logits = output_logits[:, -1, :]  # B x V
             next_token_scores = F.log_softmax(next_token_logits, dim=-1)  # B x V
@@ -219,11 +214,11 @@ def do_beam_sample(
             next_scores, next_tokens = torch.topk(
                 next_token_beam_scores, beam_width, dim=-1, largest=True, sorted=True
             )
-            batch_size, num_next_toks = next_tokens.shape
+            mini_batch_size, num_next_toks = next_tokens.shape
             input_batch_size, input_num_toks = input_ids_batch.shape
             prev_input_ids = (
                 input_ids_batch[:, None, :]
-                .expand(batch_size, num_next_toks, input_num_toks)
+                .expand(mini_batch_size, num_next_toks, input_num_toks)
                 .reshape(-1, input_num_toks)
             )
             next_input_ids = torch.cat(
@@ -257,6 +252,8 @@ def do_beam_sample(
                 or ordered_next_scores[i] > completed_heap[0].score
             ):
                 next_batch_indices.append(i)
+                if len(next_batch_indices) >= beam_width:
+                    break
 
         if len(next_batch_indices) == 0:
             break
@@ -265,11 +262,13 @@ def do_beam_sample(
         input_ids = ordered_next_token_ids[indices_tensor]
         beam_scores = ordered_next_scores[indices_tensor]
 
+        if input_ids.shape[1] > max_seq_len:
+            break
+
     final_outputs: list[str] = []
     final_scores: list[float] = []
     final_num_toks: list[int] = []
-    while len(completed_heap) > 0:
-        candidate = completed_heap.pop()
+    for candidate in heapq.nlargest(n_recs, completed_heap):
         generated_ids = candidate.indices[orig_input_length:]
         output = tokenizer.decode(generated_ids, skip_special_tokens=True)
         final_outputs.append(output)

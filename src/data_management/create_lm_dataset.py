@@ -17,12 +17,17 @@ from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
 
 def create_lm_dataset(example_config: LmExampleConfig) -> None:
     if os.path.exists(example_config.output_dataset_loc):
-        print(f"Dataset already exists at {example_config.output_dataset_loc}", file=sys.stderr)
+        print(
+            f"Dataset already exists at {example_config.output_dataset_loc}",
+            file=sys.stderr,
+        )
         exit(1)
     os.makedirs(example_config.output_dataset_loc)
     for split in SPLITS:
         split_loc = os.path.join(example_config.partitioned_dataset_loc, split)
-        unshuffled_output_path = split_file_path(example_config.output_dataset_loc, split, shuffled=False) 
+        unshuffled_output_path = split_file_path(
+            example_config.output_dataset_loc, split, shuffled=False
+        )
         output_writer = jsonlines.open(unshuffled_output_path, "a")
         if not os.path.exists(split_loc):
             print(f"{split_loc} does not exist.", file=sys.stderr)
@@ -33,23 +38,31 @@ def create_lm_dataset(example_config: LmExampleConfig) -> None:
             project_loc = os.path.join(split_loc, project)
             project_obj = DatasetFile.from_directory(project_loc)
             project_examples = example_config.format_type.json_from_dataset_file(
-                project_obj, example_config.premise_wrapper)
+                project_obj, example_config.premise_wrapper
+            )
             output_writer.write_all(project_examples)
             if example_config.premise_wrapper is not None:
-                print("Premise hit rate:", example_config.premise_wrapper.get_hit_rate())
+                print(
+                    "Premise hit rate:", example_config.premise_wrapper.get_hit_rate()
+                )
                 example_config.premise_wrapper.reset_hit_rate()
         output_writer.close()
-        shuffled_output_path = split_file_path(example_config.output_dataset_loc, split, shuffled=True)
+        shuffled_output_path = split_file_path(
+            example_config.output_dataset_loc, split, shuffled=True
+        )
         print(f"Shuffling {split}")
         shuffle(unshuffled_output_path, shuffled_output_path)
         os.remove(unshuffled_output_path)
 
 
 class LmExampleConfig:
-    def __init__(self, partitioned_dataset_loc: str,
-                 output_dataset_loc: str,
-                 format_type: Type[LmExample],
-                 premise_wrapper: Optional[LocalPremiseModelWrapper]) -> None:
+    def __init__(
+        self,
+        partitioned_dataset_loc: str,
+        output_dataset_loc: str,
+        format_type: Type[LmExample],
+        premise_wrapper: Optional[LocalPremiseModelWrapper],
+    ) -> None:
         assert type(partitioned_dataset_loc) == str
         assert type(output_dataset_loc) == str
         assert type(format_type) == type
@@ -67,7 +80,9 @@ class LmExampleConfig:
             "format_alias": self.format_type.get_alias(),
         }
         if self.premise_wrapper:
-            json_data["premise_wrapper_checkpoint"] = self.premise_wrapper.checkpoint_loc
+            json_data[
+                "premise_wrapper_checkpoint"
+            ] = self.premise_wrapper.checkpoint_loc
         return json_data
 
     @classmethod
@@ -78,10 +93,14 @@ class LmExampleConfig:
         format_type = LMEXAMPLE_ALIASES[format_type_alias]
         if "premise_wrapper_checkpoint" in json_data:
             premise_wrapper_checkpoint = json_data["premise_wrapper_checkpoint"]
-            premise_wrapper = LocalPremiseModelWrapper.from_checkpoint(premise_wrapper_checkpoint)
+            premise_wrapper = LocalPremiseModelWrapper.from_checkpoint(
+                premise_wrapper_checkpoint
+            )
         else:
             premise_wrapper = None
-        return cls(partitioned_dataset_loc, output_dataset_loc, format_type, premise_wrapper)
+        return cls(
+            partitioned_dataset_loc, output_dataset_loc, format_type, premise_wrapper
+        )
 
     @classmethod
     def load(cls, path: str) -> LmExampleConfig:
@@ -92,28 +111,39 @@ class LmExampleConfig:
     @classmethod
     def void_config(cls) -> LmExampleConfig:
         partitioned_dataset_loc = ""
-        output_dataset_loc = "" 
+        output_dataset_loc = ""
         format_type = LmExample
         premise_wrapper = None
-        return cls(partitioned_dataset_loc, output_dataset_loc, format_type, premise_wrapper)
+        return cls(
+            partitioned_dataset_loc, output_dataset_loc, format_type, premise_wrapper
+        )
 
     @classmethod
-    def from_example_type(cls, example_type: type[LmExample]) -> LmExampleConfig:
+    def from_example_type_and_premise_wrapper(
+        cls,
+        example_type: type[LmExample],
+        premise_wrapper: Optional[LocalPremiseModelWrapper],
+    ) -> LmExampleConfig:
         partitioned_dataset_loc = ""
-        output_dataset_loc = "" 
-        premise_wrapper = None
-        return cls(partitioned_dataset_loc, output_dataset_loc, example_type, premise_wrapper)
+        output_dataset_loc = ""
+        return cls(
+            partitioned_dataset_loc, output_dataset_loc, example_type, premise_wrapper
+        )
 
 
 DATA_CONF_NAME = "lm-example-conf.yaml"
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Create a jsonl dataset from the data collected by the coq lsp.")
-    parser.add_argument("lm_data_config_loc", help="Location of configuration file for LmExample dataset.")
+    parser = argparse.ArgumentParser(
+        "Create a jsonl dataset from the data collected by the coq lsp."
+    )
+    parser.add_argument(
+        "lm_data_config_loc",
+        help="Location of configuration file for LmExample dataset.",
+    )
     args = parser.parse_args(sys.argv[1:])
 
     example_config = LmExampleConfig.load(args.lm_data_config_loc)
     create_lm_dataset(example_config)
     conf_out_loc = os.path.join(example_config.output_dataset_loc, DATA_CONF_NAME)
     shutil.copy(args.lm_data_config_loc, conf_out_loc)
-
