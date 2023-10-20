@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 import json
 import sys, os
+import re
 import argparse
 import random
 import shutil
@@ -53,6 +54,22 @@ class EvalSearchResult:
             "proof_prefix": self.proof_prefix,
         }
 
+    def get_save_name(self, file_tree_loc: str = "") -> str:
+        orig_file_basename = (
+            self.orig_file_path.lstrip(file_tree_loc)
+            .lstrip("/")
+            .lstrip('"')
+            .lstrip(DESIRED_PREFIX)
+        )
+        save_path_name = orig_file_basename.replace("/", "-").replace("\\", "-")
+        save_name = f"{save_path_name}:{len(self.proof_prefix)}.json"
+        return save_name
+
+    def save(self, out_dir: str, file_tree_loc: str = "") -> None:
+        save_loc = os.path.join(out_dir, self.get_save_name(file_tree_loc))
+        with open(save_loc, "w") as fout:
+            fout.write(json.dumps(self.to_json(), indent=2))
+
     @classmethod
     def from_json(cls, json_data: Any) -> EvalSearchResult:
         search_result_data = json_data["search_result"]
@@ -60,6 +77,16 @@ class EvalSearchResult:
         orig_file_path = json_data["orig_file_path"]
         proof_prefix = json_data["proof_prefix"]
         return cls(search_result, orig_file_path, proof_prefix)
+
+    @classmethod
+    def name_to_v_file(cls, json_path: str) -> str:
+        json_dirname = os.path.dirname(json_path)
+        json_basename = os.path.basename(json_path)
+        print("matching", json_path)
+        match = re.match(r"(.*?\.v):\d+?\.json", json_basename)
+        assert match is not None
+        (prefix,) = match.groups()
+        return os.path.join(json_dirname, prefix.replace("-", "_"))
 
 
 # Need a proof
@@ -149,24 +176,6 @@ class Evaluator:
                     continue
             yield file, proof_prefix, hidden_file_path, aux_hidden_file_path
 
-    def save_search_result(
-        self, orig_file_path: str, proof_prefix: str, search_result: SearchResult
-    ) -> None:
-        orig_file_basename = (
-            orig_file_path.lstrip(self.file_tree_loc)
-            .lstrip("/")
-            .lstrip('"')
-            .lstrip(DESIRED_PREFIX)
-        )
-        save_path_name = orig_file_basename.replace("/", "-").replace("\\", "-")
-        save_name = f"{save_path_name}:{len(proof_prefix)}.json"
-        save_loc = os.path.join(self.results_loc, save_name)
-        eval_search_result = EvalSearchResult(
-            search_result, orig_file_path, proof_prefix
-        )
-        with open(save_loc, "w") as fout:
-            fout.write(json.dumps(eval_search_result.to_json(), indent=2))
-
     def get_search_result(
         self,
         orig_file: str,
@@ -222,7 +231,10 @@ class Evaluator:
                     aux_hidden_file,
                     lm_example_conf,
                 )
-                self.save_search_result(orig_file, proof_prefix, search_result)
+                eval_search_result = EvalSearchResult(
+                    search_result, orig_file, proof_prefix
+                )
+                eval_search_result.save(self.results_loc, self.file_tree_loc)
                 if search_result.found_proof():
                     num_correct_proofs += 1
                 num_proof_attempts += 1
