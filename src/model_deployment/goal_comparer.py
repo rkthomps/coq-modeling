@@ -1,8 +1,9 @@
-
 from __future__ import annotations
 from coqlspclient.coq_lsp_structs import Goal, RangedSpan
 from typing import Any, Optional
 import pdb
+
+from model_deployment.search_tree import ProofSearchTree
 
 
 class ParsedHyp:
@@ -23,7 +24,7 @@ class ParsedObligation:
         for hyp in self.hyps:
             for var in hyp.ids:
                 all_vars.append(var)
-        return all_vars 
+        return all_vars
 
     def get_hyp_from_var(self, var: str) -> ParsedHyp:
         for hyp in self.hyps:
@@ -33,27 +34,46 @@ class ParsedObligation:
 
     def as_hard_as(self, other: ParsedObligation) -> bool:
         self_vars = self.get_all_vars()
-        one_to_two_mapping = dict((k, None) for k in self_vars)  
+        one_to_two_mapping: dict[str, str | None] = dict((k, None) for k in self_vars)
         two_avail_vars = set(other.get_all_vars())
+        fresh_var_mapping: dict[str, str] = {}
         same_goal_under_sub = compare_expressions_under_substitution(
-            self.goal_ast, other.goal_ast, one_to_two_mapping, two_avail_vars)
+            self.goal_ast,
+            other.goal_ast,
+            one_to_two_mapping,
+            two_avail_vars,
+            fresh_var_mapping,
+        )
         if not same_goal_under_sub:
             return False
         for var in self_vars:
-            if one_to_two_mapping[var] is None:
+            corresponding_var = one_to_two_mapping[var]
+            if corresponding_var is None:
                 continue
+            other_hyp = other.get_hyp_from_var(corresponding_var)
             self_hyp = self.get_hyp_from_var(var)
-            other_hyp = other.get_hyp_from_var(one_to_two_mapping[var])
+            fresh_var_mapping = {}
             hyps_same = compare_expressions_under_substitution(
-                self_hyp.ast, other_hyp.ast, one_to_two_mapping, two_avail_vars)
+                self_hyp.ast,
+                other_hyp.ast,
+                one_to_two_mapping,
+                two_avail_vars,
+                fresh_var_mapping,
+            )
             if not hyps_same:
                 return False
-        
+
         for self_hyp in self.hyps:
             covered = False
             for other_hyp in other.hyps:
+                fresh_var_mapping = {}
                 if compare_expressions_under_substitution(
-                    self_hyp, other_hyp, one_to_two_mapping, two_avail_vars):
+                    self_hyp.ast,
+                    other_hyp.ast,
+                    one_to_two_mapping,
+                    two_avail_vars,
+                    fresh_var_mapping,
+                ):
                     covered = True
                     break
             if not covered:
@@ -77,28 +97,34 @@ class ParsedObligations:
                 return False
         return True
 
-    def makes_progress(self, others: list[ParsedObligations]) -> bool:
-        for other in others:
+    def redundant_to(
+        self,
+        other_obligations: list[ParsedObligations],
+        other_nodes: list[ProofSearchTree],
+    ) -> Optional[ProofSearchTree]:
+        for i, other in enumerate(other_obligations):
             if self.as_hard_as(other):
-                return False
-        return True
+                return other_nodes[i]
+        return None
 
 
 class Obligation:
     def __init__(self, goal: Goal) -> None:
         self.goal = goal
-    
+
     def as_hard_as(self, other: Obligation) -> bool:
         """This obligation is as hard as other if it
-           has the same number or fewer hyps."""
+        has the same number or fewer hyps."""
         if self.goal.ty != other.goal.ty:
             return False
         this_hyps_covered: list[bool] = []
         for this_hyp in self.goal.hyps:
-            this_hyp_covered = False 
-            for other_hyp in other.goal.hyps: 
-                if (sorted(this_hyp.names) == sorted(other_hyp.names) and
-                    this_hyp.ty == other_hyp.ty):
+            this_hyp_covered = False
+            for other_hyp in other.goal.hyps:
+                if (
+                    sorted(this_hyp.names) == sorted(other_hyp.names)
+                    and this_hyp.ty == other_hyp.ty
+                ):
                     this_hyp_covered = True
             this_hyps_covered.append(this_hyp_covered)
         return all(this_hyps_covered)
@@ -110,7 +136,7 @@ class NodeGoal:
 
     def as_hard_as(self, other: NodeGoal) -> bool:
         """This list of obligations is as hard as other if it
-           has the same or more goals"""
+        has the same or more goals"""
         other_obligations_covered: list[bool] = []
         for other_obligation in other.obligations:
             other_obligation_covered = False
@@ -122,7 +148,7 @@ class NodeGoal:
 
     def makes_progress(self, others: list[NodeGoal]) -> bool:
         """A set of obligations 'makes progress' if it is strictly easier than
-           any previously seen set of obligations"""
+        any previously seen set of obligations"""
         for other in others:
             if self.as_hard_as(other):
                 return False
@@ -133,16 +159,16 @@ class CoqName:
     def __init__(self, id: str) -> None:
         assert type(id) == str
         self.id = id
-    
+
     @classmethod
     def from_json(cls, json_data: Any) -> CoqName:
         """Example: ["Name", ["Id", "l"]]"""
-        assert type(json_data) == list 
+        assert type(json_data) == list
         assert len(json_data) == 2
         assert json_data[0] == "Name"
         assert json_data[1][0] == "Id"
         return cls(json_data[1][1])
-        
+
 
 class CoqQualId:
     def __init__(self, dirpath: list[str], id: str) -> None:
@@ -158,7 +184,6 @@ class CoqQualId:
         if not isinstance(other, CoqQualId):
             return False
         return hash(self) == hash(other)
-    
 
     @classmethod
     def from_json(cls, json_data: Any) -> CoqQualId:
@@ -182,10 +207,12 @@ def __is_local_assm(ast: Any) -> bool:
 
 
 def __compare_dicts_under_substitution(
-        goal1_ast: dict[Any, Any],
-        goal2_ast: Any,
-        one_to_two_mapping: dict[str, Optional[str]],
-        avail_names_two: set[str]) -> bool:
+    goal1_ast: dict[Any, Any],
+    goal2_ast: Any,
+    one_to_two_mapping: dict[str, Optional[str]],
+    avail_names_two: set[str],
+    fresh_var_mapping: dict[str, str],
+) -> bool:
     assert type(goal1_ast) == dict
     if type(goal2_ast) != dict:
         return False
@@ -197,23 +224,29 @@ def __compare_dicts_under_substitution(
         if k not in goal2_ast:
             return False
         values_equal = compare_expressions_under_substitution(
-            v, goal2_ast[k], one_to_two_mapping, avail_names_two)
+            v, goal2_ast[k], one_to_two_mapping, avail_names_two, fresh_var_mapping
+        )
         if not values_equal:
             return False
     return True
 
 
 def __compare_qualid_under_substitution(
-        exp1_ast: list[Any],
-        exp2_ast: list[Any],
-        one_to_two_mapping: dict[str, Optional[str]],
-        avail_names_two: set[str]) -> bool:
+    exp1_ast: list[Any],
+    exp2_ast: list[Any],
+    one_to_two_mapping: dict[str, Optional[str]],
+    avail_names_two: set[str],
+    fresh_var_mapping: dict[str, str],
+) -> bool:
     assert exp1_ast[0] == "Ser_Qualid"
     qual1 = CoqQualId.from_json(exp1_ast)
     try:
         qual2 = CoqQualId.from_json(exp2_ast)
     except AssertionError:
         return False
+
+    if qual1.id in fresh_var_mapping:
+        return fresh_var_mapping[qual1.id] == qual2.id
 
     if qual1.id in one_to_two_mapping:
         if one_to_two_mapping[qual1.id] is None:
@@ -228,10 +261,12 @@ def __compare_qualid_under_substitution(
 
 
 def __compare_names_under_substitution(
-        exp1_ast: list[Any],
-        exp2_ast: list[Any],
-        one_to_two_mapping: dict[str, Optional[str]],
-        avail_names_two: set[str]) -> bool:
+    exp1_ast: list[Any],
+    exp2_ast: list[Any],
+    one_to_two_mapping: dict[str, Optional[str]],
+    avail_names_two: set[str],
+    fresh_var_mapping: dict[str, str],
+) -> bool:
     assert exp1_ast[0] == "Name"
     name1 = CoqName.from_json(exp1_ast)
     try:
@@ -240,16 +275,18 @@ def __compare_names_under_substitution(
         return False
     assert name1.id not in one_to_two_mapping
     assert name2.id not in avail_names_two
-    avail_names_two.add(name2.id)
-    one_to_two_mapping[name1.id] = name2.id
+    # Unfortunately I can't make a copy and pass to subtree since this is leaf
+    fresh_var_mapping[name1.id] = name2.id
     return True
 
 
 def __compare_lists_under_substitution(
-        exp1_ast: list[Any],
-        exp2_ast: Any,
-        one_to_two_mapping: dict[str, Optional[str]],
-        avail_names_two: set[str]) -> bool:
+    exp1_ast: list[Any],
+    exp2_ast: Any,
+    one_to_two_mapping: dict[str, Optional[str]],
+    avail_names_two: set[str],
+    fresh_var_mapping: dict[str, str],
+) -> bool:
     assert type(exp1_ast) == list
     if type(exp2_ast) != list:
         return False
@@ -257,15 +294,17 @@ def __compare_lists_under_substitution(
         return len(exp2_ast) == 0
     if exp1_ast[0] == "Ser_Qualid":
         return __compare_qualid_under_substitution(
-            exp1_ast, exp2_ast, one_to_two_mapping, avail_names_two)
+            exp1_ast, exp2_ast, one_to_two_mapping, avail_names_two, fresh_var_mapping
+        )
     if exp1_ast[0] == "Name":
         return __compare_names_under_substitution(
-            exp1_ast, exp2_ast, one_to_two_mapping, avail_names_two)
+            exp1_ast, exp2_ast, one_to_two_mapping, avail_names_two, fresh_var_mapping
+        )
     if len(exp1_ast) != len(exp2_ast):
         return False
 
     # Since the asts annoyingly can list uses before defs,
-    # we have to explicitly put defs first 
+    # we have to explicitly put defs first
     ast1_to_compare_first: list[Any] = []
     ast1_to_compare_second: list[Any] = []
     ast2_to_compare_first: list[Any] = []
@@ -285,33 +324,36 @@ def __compare_lists_under_substitution(
     # Look for Names first as they sometimes come later in the AST
     for exp1_el, exp2_el in zip(ast1_to_compare, ast2_to_compare):
         expr_eq = compare_expressions_under_substitution(
-            exp1_el, exp2_el, one_to_two_mapping, avail_names_two)
+            exp1_el, exp2_el, one_to_two_mapping, avail_names_two, fresh_var_mapping
+        )
         if not expr_eq:
             return False
     return True
 
 
-    
 def compare_expressions_under_substitution(
-        exp1_ast: Any, exp2_ast: Any, 
-        one_to_two_mapping: dict[str, Optional[str]],
-        avail_names_two: set[str]) -> bool:
+    exp1_ast: Any,
+    exp2_ast: Any,
+    one_to_two_mapping: dict[str, Optional[str]],
+    avail_names_two: set[str],
+    fresh_var_mapping: dict[str, str],
+) -> bool:
     if type(exp1_ast) == dict:
         return __compare_dicts_under_substitution(
-            exp1_ast, exp2_ast, one_to_two_mapping, avail_names_two)
+            exp1_ast, exp2_ast, one_to_two_mapping, avail_names_two, fresh_var_mapping
+        )
 
     if type(exp1_ast) == list:
         return __compare_lists_under_substitution(
-            exp1_ast, exp2_ast, one_to_two_mapping, avail_names_two)
-        
+            exp1_ast, exp2_ast, one_to_two_mapping, avail_names_two, fresh_var_mapping
+        )
+
     if exp1_ast is None and exp2_ast is None:
         return True
     try:
-        assert (type(exp1_ast) == str or
-                type(exp1_ast) == int)
-        assert (type(exp2_ast) == str or
-                type(exp2_ast) == int)
-        return exp1_ast == exp2_ast 
+        assert type(exp1_ast) == str or type(exp1_ast) == int
+        assert type(exp2_ast) == str or type(exp2_ast) == int
+        return exp1_ast == exp2_ast
     except AssertionError:
         pdb.set_trace()
     return False
@@ -320,7 +362,7 @@ def compare_expressions_under_substitution(
 def remove_loc(d: Any) -> Any:
     if type(d) == dict:
         dict_result = {}
-        for k, v in d.items(): 
+        for k, v in d.items():
             if k == "loc":
                 continue
             dict_result[k] = remove_loc(v)
@@ -332,7 +374,7 @@ def remove_loc(d: Any) -> Any:
             list_result.append(remove_loc(e))
         return list_result
     return d
-    
+
 
 def extract_last_definition_body(ast: list[RangedSpan]) -> Any:
     assert ast[-1].span is None
@@ -344,6 +386,7 @@ def extract_last_definition_body(ast: list[RangedSpan]) -> Any:
 
 def run_test() -> None:
     from coqlspclient.coq_file import CoqFile
+
     test_file1 = "/home/ubuntu/coq-modeling/test-coq-projs/test1.v"
     with CoqFile(test_file1, timeout=60) as coq_file:
         ast1 = extract_last_definition_body(coq_file.ast)
@@ -352,12 +395,15 @@ def run_test() -> None:
         ast2 = extract_last_definition_body(coq_file.ast)
     one_to_two_mapping: dict[str, Optional[str]] = {}
     two_name_set: set[str] = set()
-    #pdb.set_trace()
-    print(compare_expressions_under_substitution(
-        ast1, ast2, one_to_two_mapping, two_name_set))
+    fresh_var_mapping: dict[str, str] = {}
+    # pdb.set_trace()
+    print(
+        compare_expressions_under_substitution(
+            ast1, ast2, one_to_two_mapping, two_name_set, fresh_var_mapping
+        )
+    )
     print(one_to_two_mapping)
     print(two_name_set)
-
 
     # exp1 = {"a": [1, 2, {"b": [3, {"f": [4, 5, 6]}, 5]}]}
     # exp2 = {"a": [1, 2, {"b": [3, {"f": [4, 5, 6]}, 5]}]}

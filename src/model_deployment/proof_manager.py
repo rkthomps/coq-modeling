@@ -9,16 +9,21 @@ import sys, os
 import shutil
 from enum import Enum
 import pdb
-
 import jsonlines
 
 from data_management.dataset_file import DatasetFile, STEPS_NAME, FILE_CONTEXT_NAME
 from data_management.create_lm_dataset import LmExampleConfig
 from data_management.get_counts import remove_comments
 from tactic_gen.lm_example import LmExample
+from model_deployment.goal_comparer import (
+    ParsedObligations,
+    ParsedObligation,
+    ParsedHyp,
+)
 
 
-from coqlspclient.coq_structs import ProofTerm, Term, GoalAnswer, Step
+from coqlspclient.coq_structs import ProofTerm, Term, Step, RangedSpan
+from coqlspclient.coq_lsp_structs import Goal, GoalAnswer
 from coqlspclient.proof_file import ProofFile
 from coqlspclient.coq_file import CoqFile
 
@@ -35,6 +40,7 @@ class ProofCheckResult:
         tactic_result: TacticResult,
         valid_steps: list[str],
         current_goals: Optional[GoalAnswer],
+        parsed_current_goals: Optional[ParsedObligations],
     ) -> None:
         assert type(tactic_result) == TacticResult
         assert type(valid_steps) == list
@@ -42,10 +48,13 @@ class ProofCheckResult:
         self.tactic_result = tactic_result
         self.valid_steps = valid_steps
         self.current_goals = current_goals
+        self.parsed_current_goals = parsed_current_goals
 
     @classmethod
     def get_invalid(cls) -> ProofCheckResult:
-        return cls(TacticResult.INVALID, [], None)
+        current_goals = None
+        parsed_current_goals = None
+        return cls(TacticResult.INVALID, [], current_goals, parsed_current_goals)
 
 
 def proc_file_path(file_path: str) -> str:
@@ -92,6 +101,7 @@ def get_fresh_path(dirname: str, fresh_base: str) -> str:
 def get_last_proof_data_points(proof: ProofTerm) -> Any:
     data_points = []
     for i, step in enumerate(proof.steps):
+        assert step.goals.goals is not None
         goals = list(map(lambda goal: repr(goal), step.goals.goals.goals))
         next_steps: list[dict[str, Any]] = []
         data_point = {
@@ -232,10 +242,74 @@ class ProofManager:
                 nonempty_steps.append(s.text)
         return nonempty_steps
 
+    def __get_goal_strs(self, current_goals: GoalAnswer) -> list[str]:
+        assert current_goals.goals is not None
+        collapsed_stack: list[Goal] = []
+        for stack_goals1, stack_goals2 in current_goals.goals.stack:
+            collapsed_stack.extend(stack_goals1)
+            collapsed_stack.extend(stack_goals2)
+        real_goals = (
+            current_goals.goals.goals + collapsed_stack + current_goals.goals.shelf
+        )
+        final_strings: list[str] = []
+        for i, goal in enumerate(real_goals):
+            for j, hyp in enumerate(goal.hyps):
+                final_strings.append(f"Definition g_{i}_h_{j} := ({hyp.ty}).")
+            final_strings.append(f"Definition g_{i} := ({goal.ty}).")
+        return final_strings
+
+    def __extract_body_from_def_ast(self, def_ast: Any) -> Any:
+        def_expr = def_ast["v"]["expr"][1]
+        try:
+            assert def_expr[0] == "VernacDefinition"
+        except AssertionError:
+            pdb.set_trace()
+        return def_expr[3]
+
+    def __read_definition(
+        self, coq_file: CoqFile, num_definitions: int, num_read: int
+    ) -> tuple[Any, int]:
+        num_steps = len(coq_file.steps)
+        read_idx = num_steps - num_definitions - 1 + num_read
+        whole_def_ast = coq_file.steps[read_idx].ast.span
+        ast_def_body = self.__extract_body_from_def_ast(whole_def_ast)
+        return ast_def_body, num_read + 1
+
+    def get_parsed_goals(
+        self, partial_proof: str, current_goals: GoalAnswer
+    ) -> ParsedObligations:
+        assert current_goals.goals is not None
+        goal_as_definitions = self.__get_goal_strs(current_goals)
+        goal_str = "\n\n".join(goal_as_definitions)
+        to_write = f"{partial_proof}\n\n{goal_str}"
+        self.__update_aux_file(to_write)
+        num_read = 0
+        num_definitions = len(goal_as_definitions)
+        parsed_goals: list[ParsedObligation] = []
+        with CoqFile(self.aux_file_path) as coq_file:
+            for goal in current_goals.goals.goals:
+                parsed_hyps: list[ParsedHyp] = []
+                for hyp in goal.hyps:
+                    hyp_ast, num_read = self.__read_definition(
+                        coq_file, num_definitions, num_read
+                    )
+                    parsed_hyp = ParsedHyp(hyp.names, hyp_ast)
+                    parsed_hyps.append(parsed_hyp)
+                goal_ast, num_read = self.__read_definition(
+                    coq_file, num_definitions, num_read
+                )
+                parsed_goal = ParsedObligation(parsed_hyps, goal_ast)
+                parsed_goals.append(parsed_goal)
+        return ParsedObligations(parsed_goals)
+
     def check_proof(
         self, partial_proof: str, prev_valid_steps: list[str]
     ) -> ProofCheckResult:
-        if ("Admitted." in partial_proof) or ("admit." in partial_proof):
+        if (
+            ("Admitted." in partial_proof)
+            or ("admit." in partial_proof)
+            or ("Abort." in partial_proof)
+        ):
             return ProofCheckResult.get_invalid()
         self.__update_aux_file(partial_proof)
         with CoqFile(self.aux_file_path) as coq_file:
@@ -245,12 +319,21 @@ class ProofManager:
             valid_steps = self.__get_valid_steps(coq_file)
             assert self.__is_proof_prefix(prev_valid_steps, valid_steps)
             new_valid_steps = valid_steps[len(prev_valid_steps) :]
+            # might not have to compute this here
             current_goals = coq_file.current_goals()
             if not coq_file.in_proof:
+                parsed_obligations = None
                 return ProofCheckResult(
-                    TacticResult.COMPLETE, new_valid_steps, current_goals
+                    TacticResult.COMPLETE,
+                    new_valid_steps,
+                    current_goals,
+                    parsed_obligations,
                 )
-            return ProofCheckResult(TacticResult.VALID, new_valid_steps, current_goals)
+
+        parsed_obligations = self.get_parsed_goals(partial_proof, current_goals)
+        return ProofCheckResult(
+            TacticResult.VALID, new_valid_steps, current_goals, parsed_obligations
+        )
 
     def get_example(
         self, valid_steps: list[str], target_combined_steps: str
@@ -325,8 +408,10 @@ class ProofManager:
 
     def close(self) -> None:
         if os.path.exists(self.file_path):
-            os.remove(self.file_path)
+            # os.remove(self.file_path)
+            pass
         if os.path.exists(self.aux_file_path):
-            os.remove(self.aux_file_path)
+            # os.remove(self.aux_file_path)
+            pass
         if os.path.exists(self.__search_dir_path):
             shutil.rmtree(self.__search_dir_path)

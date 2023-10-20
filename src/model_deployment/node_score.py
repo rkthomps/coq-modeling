@@ -1,9 +1,12 @@
 from __future__ import annotations
 from typing import Any
+import math
+
 
 class NodeScore:
-    def __init__(self) -> None:
-        pass
+    def __init__(self, branching_factor: int) -> None:
+        assert type(branching_factor) == int
+        self.branching_factor = branching_factor
 
     def __le__(self, other: NodeScore) -> bool:
         return self.compute() <= other.compute()
@@ -21,7 +24,11 @@ class NodeScore:
         raise NotImplementedError
 
     @classmethod
-    def get_initial_score(cls) -> NodeScore:
+    def get_initial_score(cls, branching_factor: int) -> NodeScore:
+        raise NotImplementedError
+
+    @classmethod
+    def from_unit_score(cls, branching_factor: int, unit_score: float) -> NodeScore:
         raise NotImplementedError
 
     @classmethod
@@ -37,44 +44,51 @@ class NodeScore:
 
 
 class CodeLLamaNodeScore(NodeScore):
-    def __init__(self, sequence_score: int | float, 
-                 sequence_num_tokens: int) -> None:
-        assert (type(sequence_score) == float or
-                type(sequence_score) == int)
-        assert type(sequence_num_tokens) == int
+    def __init__(
+        self, branching_factor: int, sequence_score: int | float, proof_num_tactics: int
+    ) -> None:
+        super(CodeLLamaNodeScore, self).__init__(branching_factor)
+        assert type(sequence_score) == float or type(sequence_score) == int
+        assert type(proof_num_tactics) == int
         self.sequence_score = sequence_score
-        self.sequence_num_tokens = sequence_num_tokens
+        self.proof_num_tactics = proof_num_tactics
 
     def compute(self) -> float:
-        if self.sequence_num_tokens == 0:
-            assert self.sequence_score == 0
-            return 0
-        return self.sequence_score / self.sequence_num_tokens
+        return self.sequence_score - (
+            self.proof_num_tactics * math.log(1 / self.branching_factor)
+        )
 
     def agg(self, other: NodeScore) -> CodeLLamaNodeScore:
         if not isinstance(other, CodeLLamaNodeScore):
             raise ValueError("Other nodescore must be codellamanodescore")
         new_sequence_score = self.sequence_score + other.sequence_score
-        new_seq_len = self.sequence_num_tokens + other.sequence_num_tokens
-        return CodeLLamaNodeScore(new_sequence_score, new_seq_len)
+        new_proof_num_tactics = self.proof_num_tactics + other.proof_num_tactics
+        return CodeLLamaNodeScore(
+            self.branching_factor, new_sequence_score, new_proof_num_tactics
+        )
 
     def to_json(self) -> Any:
         return {
             "alias": self.get_alias(),
+            "branching_factor": self.branching_factor,
             "sequence_score": self.sequence_score,
-            "sequence_num_tokens": self.sequence_num_tokens,
+            "proof_num_tactics": self.proof_num_tactics,
         }
-    
+
     @classmethod
     def from_json(cls, json_data: Any) -> CodeLLamaNodeScore:
-        sequence_score = json_data["sequence_score"] 
-        sequence_num_toks = json_data["sequence_num_tokens"]
-        return cls(sequence_score, sequence_num_toks) 
-
+        branching_factor = json_data["branching_factor"]
+        sequence_score = json_data["sequence_score"]
+        proof_num_tactics = json_data["proof_num_tactics"]
+        return cls(branching_factor, sequence_score, proof_num_tactics)
 
     @classmethod
-    def get_initial_score(cls) -> CodeLLamaNodeScore:
-        return cls(0, 0)
+    def get_initial_score(cls, branching_factor: int) -> CodeLLamaNodeScore:
+        return cls(branching_factor, 0, 0)
+
+    @classmethod
+    def from_unit_score(cls, branching_factor: int, unit_score: float) -> NodeScore:
+        return cls(branching_factor, unit_score, 1)
 
     @staticmethod
     def get_alias() -> str:

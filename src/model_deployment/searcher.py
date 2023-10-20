@@ -8,195 +8,16 @@ import re
 
 import sys, os
 
-from termcolor import colored
 
 from tactic_gen.lm_example import LmExample
 from model_deployment.model_wrapper import ModelWrapper, ModelResult
 from model_deployment.node_score import NodeScore
-from model_deployment.goal_comparer import NodeGoal
+from model_deployment.goal_comparer import NodeGoal, ParsedObligations
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
+from model_deployment.search_tree import ProofSearchTree
 
 from coqlspclient.coq_file import CoqFile, GoalAnswer
 from coqlspclient.coq_lsp_structs import Goal
-
-
-class ProofSearchTree:
-    uni_sideways_t = "\u251c"
-    sideways_bar = "\u2500"
-    uni_l = "\u2514"
-    vert_bar = "\u2502"
-
-    def __init__(
-        self,
-        valid: bool,
-        final_tactic: bool,
-        makes_progress: bool,
-        valid_proof_steps: list[str],
-        combined_proofs_steps: list[str],
-        model_tactic: str,
-        combined_model_tactics: str,
-        goal: str,
-        score: NodeScore,
-        creation_time: int,
-        expanded: Optional[int] = None,
-        children: Optional[list[ProofSearchTree]] = None,
-    ) -> None:
-        assert type(valid) == bool
-        assert type(final_tactic) == bool
-        assert type(makes_progress) == bool
-        assert type(valid_proof_steps) == list
-        assert all([type(s) == str for s in valid_proof_steps])
-        assert type(combined_proofs_steps) == list
-        assert all([type(s) == str for s in combined_proofs_steps])
-        assert type(goal) == str
-        assert type(model_tactic) == str
-        assert type(combined_model_tactics) == str
-        assert isinstance(score, NodeScore)
-        assert type(creation_time) == int
-        assert expanded is None or type(expanded) == int
-        self.valid = valid
-        self.final_tactic = final_tactic
-        self.makes_progress = makes_progress
-        self.valid_proof_steps = valid_proof_steps
-        self.combined_proof_steps = combined_proofs_steps
-        self.model_tactic = model_tactic
-        self.combined_model_tactics = combined_model_tactics
-        self.goal = goal
-        self.score = score
-        self.creation_time = creation_time
-        self.expanded = expanded
-        if children is None:
-            self.children = []
-        else:
-            assert type(children) == list
-            assert all([type(c) == ProofSearchTree for c in children])
-            self.children = children
-
-    def combined_proof_str(self) -> str:
-        return self.steps_to_str(self.combined_proof_steps)
-
-    def steps_proof_str(self) -> str:
-        return self.steps_to_str(self.valid_proof_steps)
-
-    def __lt__(self, other: ProofSearchTree) -> bool:
-        return other.score <= self.score
-
-    def set_expanded_num(self, expanded_num: int) -> None:
-        self.expanded = expanded_num
-
-    def get_deepest_node(self, cur_depth: int = 0) -> tuple[ProofSearchTree, int]:
-        cur_max_depth = cur_depth
-        cur_deepest_node = self
-        for child in self.children:
-            child_deepest_node, depth = child.get_deepest_node(cur_depth + 1)
-            if depth > cur_max_depth:
-                cur_max_depth = depth
-                cur_deepest_node = child_deepest_node
-        return cur_deepest_node, cur_max_depth
-
-    def pretty_print(
-        self, start_marker: str = uni_l, indent: str = "", last_child: bool = True
-    ) -> None:
-        line_start = start_marker + (self.sideways_bar * 2) + " "
-        start = indent + line_start
-        step_str = self.steps_proof_str()
-        clean_tactic = self.clean_tactic(step_str)
-        clean_score = "{:7.6f}".format(self.score.compute())
-        message = f"{start}{clean_score} {clean_tactic}"
-        if self.expanded is not None and self.expanded > 0:
-            expanded_len = len(str(self.expanded))
-            message = message.replace(" " * expanded_len, str(self.expanded), 1)
-        if not self.valid:
-            message = colored(message, "red")
-        elif self.final_tactic:
-            message = colored(message, "green")
-        elif not self.makes_progress:
-            message = colored(message, "yellow")
-        print(message)
-        if last_child:
-            new_indent = indent + " " * (len(line_start))
-        else:
-            new_indent = indent + self.vert_bar + " " * (len(line_start) - 1)
-
-        for i, child in enumerate(self.children):
-            if i < (len(self.children) - 1):
-                start_marker = self.uni_sideways_t
-                child.pretty_print(start_marker, new_indent, last_child=False)
-            else:
-                start_marker = self.uni_l
-                child.pretty_print(start_marker, new_indent, last_child=True)
-
-    def get_path_to_qed(self) -> list[ProofSearchTree]:
-        if self.final_tactic:
-            return [self]
-        for child in self.children:
-            child_return_path = child.get_path_to_qed()
-            if len(child_return_path) > 0:
-                return [self] + child_return_path
-        return []
-
-    def to_json(self) -> Any:
-        return {
-            "valid": self.valid,
-            "final_tactic": self.final_tactic,
-            "makes_progress": self.makes_progress,
-            "valid_proof_steps": self.valid_proof_steps,
-            "combined_proof_steps": self.combined_proof_steps,
-            "model_tactic": self.model_tactic,
-            "combined_model_tactics": self.combined_model_tactics,
-            "goal": self.goal,
-            "score": self.score.to_json(),
-            "creation_time": self.creation_time,
-            "expanded": self.expanded,
-            "children": [c.to_json() for c in self.children],
-        }
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> ProofSearchTree:
-        valid = json_data["valid"]
-        final_tactic = json_data["final_tactic"]
-        makes_progress = json_data["makes_progress"]
-        valid_proof_steps = json_data["valid_proof_steps"]
-        combined_proof_steps = json_data["combined_proof_steps"]
-        model_tactic = json_data["model_tactic"]
-        combined_model_tactics = json_data["combined_model_tactics"]
-        goal = json_data["goal"]
-        score = NodeScore.from_json(json_data["score"])
-        creation_time = json_data["creation_time"]
-        expanded = json_data["expanded"]
-        children = [ProofSearchTree.from_json(c) for c in json_data["children"]]
-        return cls(
-            valid,
-            final_tactic,
-            makes_progress,
-            valid_proof_steps,
-            combined_proof_steps,
-            model_tactic,
-            combined_model_tactics,
-            goal,
-            score,
-            creation_time,
-            expanded,
-            children,
-        )
-
-    @staticmethod
-    def steps_to_str(steps: list[str]) -> str:
-        return "".join(steps)
-
-    @staticmethod
-    def clean_tactic(tactic: str) -> str:
-        return '"' + tactic.replace("\n", r"\n") + '"'
-
-    @staticmethod
-    def combine_tactics(tactic1: str, tactic2: str) -> str:
-        if len(tactic1) == 0 or len(tactic2) == 0:
-            return tactic1 + tactic2
-        if re.match(r"\s", tactic2[0]):
-            return tactic1 + tactic2
-        if re.match(r"\s", tactic1[-1]):
-            return tactic1 + tactic2
-        return tactic1 + " " + tactic2
 
 
 class SearchResult:
@@ -251,6 +72,7 @@ class SearchTreeManager:
         assert type(timeout) == int
         self.model_wrapper = model_wrapper
         self.proof_manager = proof_manager
+        self.score_type = score_type
         self.max_branch = max_branch
         self.max_num_leaf_expansions = max_num_leaf_expansions
         self.timeout = timeout
@@ -267,7 +89,7 @@ class SearchTreeManager:
         assert initial_check_result.tactic_result == TacticResult.VALID
         assert initial_check_result.current_goals is not None
         node_goal = self.__get_goals(initial_check_result.current_goals)
-        initial_score = score_type.get_initial_score()
+        initial_score = self.score_type.get_initial_score(max_branch)
         creation_time = -1
         self.search_tree = ProofSearchTree(
             initial_validity,
@@ -282,7 +104,8 @@ class SearchTreeManager:
             creation_time,
         )
         self.frontier: list[ProofSearchTree] = []
-        self.seen_goals: list[NodeGoal] = [node_goal]
+        self.seen_goals: list[ParsedObligations] = []
+        self.seen_goals_nodes: list[ProofSearchTree] = []
         heapq.heappush(self.frontier, self.search_tree)
 
     def __get_request_contents(
@@ -382,12 +205,15 @@ class SearchTreeManager:
         parent_node: ProofSearchTree,
         score: NodeScore,
         search_start_time: int,
-    ) -> tuple[ProofSearchTree, NodeGoal]:
+    ) -> ProofSearchTree:
         assert proof_check_result.current_goals is not None
         assert proof_check_result.current_goals.goals is not None
+        assert proof_check_result.parsed_current_goals is not None
         pretty_goal = repr(proof_check_result.current_goals.goals.goals)
-        node_goal = self.__get_goals(proof_check_result.current_goals)
-        goal_progress = node_goal.makes_progress(self.seen_goals)
+        redundant_to = proof_check_result.parsed_current_goals.redundant_to(
+            self.seen_goals, self.seen_goals_nodes
+        )
+        redundant_to_str = redundant_to.redundant_str() if redundant_to is not None else None
         combined_tactics = ProofSearchTree.combine_tactics(
             parent_node.combined_model_tactics, attempted_tactic
         )
@@ -396,7 +222,7 @@ class SearchTreeManager:
         tactic_str = ProofSearchTree.steps_to_str(valid_proof_steps)
         creation_time = time.time_ns() - search_start_time
         makes_progress = (
-            goal_progress
+            redundant_to is None
             or self.__is_bullet(tactic_str)
             or self.__is_first_proof_tactic(
                 parent_node.combined_proof_str(), tactic_str
@@ -415,8 +241,34 @@ class SearchTreeManager:
             pretty_goal,
             parent_node.score.agg(score),
             creation_time,
+            redundant_to_str=redundant_to_str,
         )
-        return new_leaf, node_goal
+        return new_leaf
+
+    def __filter_next_candidates(
+        self,
+        next_candidates: list[ProofSearchTree],
+        next_goals: list[ParsedObligations],
+    ) -> list[tuple[ProofSearchTree, ParsedObligations]]:
+        mins: list[tuple[ProofSearchTree, ParsedObligations]] = []
+        for candidate, goals in zip(next_candidates, next_goals):
+            insert_new = True
+            for i in range(len(mins)):
+                cur_min_candidate, cur_min_goal = mins[i]
+                if goals.as_hard_as(cur_min_goal):
+                    insert_new = False
+                    candidate.makes_progress = False
+                    candidate.redundant_to_str = cur_min_candidate.redundant_str()
+                    break
+                if cur_min_goal.as_hard_as(goals):
+                    insert_new = False
+                    cur_min_candidate.makes_progress = False
+                    cur_min_candidate.redundant_to_str = candidate.redundant_str()
+                    mins[i] = (candidate, goals)
+                    break
+            if insert_new:
+                mins.append((candidate, goals))
+        return mins
 
     def search_step(
         self, step_num: int, search_start_time: int
@@ -430,6 +282,8 @@ class SearchTreeManager:
         )
         result = self.model_wrapper.get_recs(example, self.max_branch)
         children: list[ProofSearchTree] = []
+        next_frontier_pool: list[ProofSearchTree] = []
+        next_frontier_goals: list[ParsedObligations] = []
         for tactic, score in zip(result.next_tactic_list, result.score_list):
             proof_script = ProofSearchTree.combine_tactics(
                 leaf_subtree.combined_model_tactics, tactic
@@ -437,13 +291,14 @@ class SearchTreeManager:
             proof_check_result = self.proof_manager.check_proof(
                 proof_script, leaf_subtree.combined_proof_steps
             )
+            node_score = self.score_type.from_unit_score(self.max_branch, score)
             match proof_check_result.tactic_result:
                 case TacticResult.COMPLETE:
                     complete_node = self.__get_complete_child_node(
                         proof_check_result,
                         tactic,
                         leaf_subtree,
-                        score,
+                        node_score,
                         search_start_time,
                     )
                     children.append(complete_node)
@@ -455,30 +310,35 @@ class SearchTreeManager:
                         proof_check_result,
                         tactic,
                         leaf_subtree,
-                        score,
+                        node_score,
                         search_start_time,
                     )
                     children.append(invalid_node)
 
                 case TacticResult.VALID:
-                    valid_node, node_goal = self.__get_valid_child_node(
+                    valid_node = self.__get_valid_child_node(
                         proof_check_result,
                         tactic,
                         leaf_subtree,
-                        score,
+                        node_score,
                         search_start_time,
                     )
                     children.append(valid_node)
+                    # We will check again if the candide makes progress to make
+                    # sure it isn't superceded by later candidates.
                     if valid_node.makes_progress:
-                        self.seen_goals.append(node_goal)
-                        heapq.heappush(self.frontier, valid_node)
-                        clean_steps = ProofSearchTree.clean_tactic(
-                            valid_node.steps_proof_str()
+                        assert proof_check_result.parsed_current_goals is not None
+                        next_frontier_pool.append(valid_node)
+                        next_frontier_goals.append(
+                            proof_check_result.parsed_current_goals
                         )
-                        clean_orig_step = ProofSearchTree.clean_tactic(tactic)
-                        print(
-                            f"adding new child node {clean_steps} from {clean_orig_step}"
-                        )
+
+        for confirmed_next_candidate, confirmed_goals in self.__filter_next_candidates(
+            next_frontier_pool, next_frontier_goals
+        ):
+            heapq.heappush(self.frontier, confirmed_next_candidate)
+            self.seen_goals.append(confirmed_goals)
+            self.seen_goals_nodes.append(confirmed_next_candidate)
         leaf_subtree.children = children
         return None
 

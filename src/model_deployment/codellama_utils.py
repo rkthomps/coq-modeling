@@ -236,7 +236,6 @@ def do_beam_sample(
             all_next_scores, descending=True
         )
         ordered_next_token_ids = all_next_inputs[ordered_indices]
-
         next_batch_indices: list[int] = []
         for i, token_ids in enumerate(ordered_next_token_ids):
             if (
@@ -248,7 +247,7 @@ def do_beam_sample(
                 if len(completed_heap) > n_recs:
                     heapq.heappop(completed_heap)
             elif (
-                len(completed_heap) == 0
+                len(completed_heap) < n_recs
                 or ordered_next_scores[i] > completed_heap[0].score
             ):
                 next_batch_indices.append(i)

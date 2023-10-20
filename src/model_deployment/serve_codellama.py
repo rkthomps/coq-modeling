@@ -16,10 +16,10 @@ from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
 app = Flask(__name__)
 
 PREMISE_WRAPPER = None
-# PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
-PRETRAINED_NAME = (
-    "/home/ubuntu/coq-modeling/models/codellama-7b-premise/checkpoint-20500"
-)
+PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
+# PRETRAINED_NAME = (
+#     "/home/ubuntu/coq-modeling/models/codellama-7b-premise/checkpoint-20500"
+# )
 
 # PRETRAINED_NAME = "codellama/CodeLlama-7b-hf"
 # PREMISE_WRAPPER = LocalPremiseModelWrapper.from_checkpoint(
