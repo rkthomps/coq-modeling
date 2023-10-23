@@ -108,7 +108,9 @@ def get_peft_conf(conf: dict[str, Any]) -> LoraConfig:
 
 def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
     model_name = __get_required_arg("model_name", conf)
-    quantization_config = BitsAndBytesConfig(load_in_4bit=True)
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
+    )
     model = LlamaForCausalLM.from_pretrained(
         model_name, quantization_config=quantization_config
     )
@@ -136,7 +138,7 @@ def collate_input(
     tokenizer: CodeLlamaTokenizer,
     max_input_len: int,
     input: str,
-    response_template: str = RESPONSE_TEMPLATE,
+    response_template: str = NEWLINE_RESPONSE_TEMPLATE,
 ) -> str:
     whole_input_string = f"{input}{response_template}"
     input_suffix = tokenizer.tokenize(whole_input_string)[(-1 * max_input_len) :]

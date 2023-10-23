@@ -187,9 +187,12 @@ class CodeLLamaLocalWrapper(ModelWrapper):
     def from_name(
         cls, model_name: str, premise_wrapper: Optional[LocalPremiseModelWrapper] = None
     ) -> CodeLLamaLocalWrapper:
-        quant_conf = BitsAndBytesConfig(load_in_4bit=True)
+        quant_conf = BitsAndBytesConfig(
+            load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
+        )
         model = LlamaForCausalLM.from_pretrained(
-            model_name, quantization_config=quant_conf
+            model_name,
+            quantization_config=quant_conf,
         )
         tokenizer = CodeLlamaTokenizer.from_pretrained(model_name)
         if premise_wrapper:
@@ -210,10 +213,13 @@ class CodeLLamaLocalWrapper(ModelWrapper):
     def from_checkpoint(cls, checkpoint_loc: str) -> CodeLLamaLocalWrapper:
         model_loc = cls.get_model_loc(checkpoint_loc)
         model_conf = load_config(os.path.join(model_loc, TRAINING_CONF_NAME))
-        quant_conf = BitsAndBytesConfig(load_in_4bit=True)
+        quant_conf = BitsAndBytesConfig(
+            load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
+        )
         lm_example_conf = LmExampleConfig.load(os.path.join(model_loc, DATA_CONF_NAME))
         model = LlamaForCausalLM.from_pretrained(
-            checkpoint_loc, quantization_config=quant_conf
+            checkpoint_loc,
+            quantization_config=quant_conf,
         )
         tokenizer = get_tokenizer(model_conf)
         tokenizer.add_eos_token = False

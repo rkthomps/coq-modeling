@@ -28,7 +28,7 @@ def get_eval_results(eval_dir: str, proof_files: set[str]) -> list[EvalSearchRes
         eval_data_loc = os.path.join(eval_dir, proof_file)
         with open(eval_data_loc, "r") as fin:
             eval_data = json.load(fin)
-            eval_obj = EvalSearchResult.from_json(eval_data)
+            eval_obj = EvalSearchResult.eval_from_json(eval_data)
             eval_results.append(eval_obj)
     return eval_results
 
@@ -51,7 +51,7 @@ def get_successful_evals(eval_dir: str, proof_files: set[str]) -> set[str]:
     for pf in proof_files:
         with open(os.path.join(eval_dir, pf), "r") as fin:
             eval_data = json.load(fin)
-            eval_obj = EvalSearchResult.from_json(eval_data)
+            eval_obj = EvalSearchResult.eval_from_json(eval_data)
             if eval_obj.search_result.found_proof():
                 sucessful_proofs.add(pf)
     return sucessful_proofs

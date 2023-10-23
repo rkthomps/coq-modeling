@@ -1,3 +1,5 @@
+from typing import Optional
+
 import sys, os
 import json
 import argparse
@@ -12,10 +14,10 @@ from model_deployment.model_wrapper import (
 )
 from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
 
-
 app = Flask(__name__)
 
-PREMISE_WRAPPER = None
+PREMISE_WRAPPER: Optional[LocalPremiseModelWrapper] = None
+
 PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
 # PRETRAINED_NAME = (
 #     "/home/ubuntu/coq-modeling/models/codellama-7b-premise/checkpoint-20500"

@@ -171,14 +171,22 @@ class CoqName:
 
 
 class CoqQualId:
-    def __init__(self, dirpath: list[str], id: str) -> None:
-        assert all([type(s) == str for s in dirpath])
+    def __init__(self, dirpath: list[list[str]], id: str) -> None:
+        assert type(dirpath) == list
+        for ol in dirpath:
+            assert type(ol) == list
+            for el in ol:
+                assert type(el) == str
         assert type(id) == str
         self.dirpath = dirpath
         self.id = id
 
     def __hash__(self) -> int:
-        return hash((self.id, "|".join(self.dirpath)))
+        all_tokens: list[str] = []
+        for o_dirpath in self.dirpath:
+            for i_str in o_dirpath:
+                all_tokens.append(i_str)
+        return hash((self.id, "|".join(all_tokens)))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CoqQualId):
@@ -350,13 +358,16 @@ def compare_expressions_under_substitution(
 
     if exp1_ast is None and exp2_ast is None:
         return True
-    try:
-        assert type(exp1_ast) == str or type(exp1_ast) == int
-        assert type(exp2_ast) == str or type(exp2_ast) == int
-        return exp1_ast == exp2_ast
-    except AssertionError:
-        pdb.set_trace()
-    return False
+    assert (
+        exp1_ast is None
+        or type(exp1_ast) == str
+        or type(exp1_ast) == int
+        or type(exp1_ast) == bool
+        or type(exp1_ast) == float
+    )
+    if type(exp1_ast) != type(exp2_ast):
+        return False
+    return exp1_ast == exp2_ast
 
 
 def remove_loc(d: Any) -> Any:

@@ -242,17 +242,18 @@ class ProofManager:
                 nonempty_steps.append(s.text)
         return nonempty_steps
 
-    def __get_goal_strs(self, current_goals: GoalAnswer) -> list[str]:
+    def __get_all_goals(self, current_goals: GoalAnswer) -> list[Goal]:
         assert current_goals.goals is not None
         collapsed_stack: list[Goal] = []
         for stack_goals1, stack_goals2 in current_goals.goals.stack:
             collapsed_stack.extend(stack_goals1)
             collapsed_stack.extend(stack_goals2)
-        real_goals = (
-            current_goals.goals.goals + collapsed_stack + current_goals.goals.shelf
-        )
+        return current_goals.goals.goals + collapsed_stack + current_goals.goals.shelf
+
+    def __get_goal_strs(self, current_goals: GoalAnswer) -> list[str]:
+        all_goals = self.__get_all_goals(current_goals)
         final_strings: list[str] = []
-        for i, goal in enumerate(real_goals):
+        for i, goal in enumerate(all_goals):
             for j, hyp in enumerate(goal.hyps):
                 final_strings.append(f"Definition g_{i}_h_{j} := ({hyp.ty}).")
             final_strings.append(f"Definition g_{i} := ({goal.ty}).")
@@ -279,6 +280,7 @@ class ProofManager:
         self, partial_proof: str, current_goals: GoalAnswer
     ) -> ParsedObligations:
         assert current_goals.goals is not None
+        all_goals = self.__get_all_goals(current_goals)
         goal_as_definitions = self.__get_goal_strs(current_goals)
         goal_str = "\n\n".join(goal_as_definitions)
         to_write = f"{partial_proof}\n\n{goal_str}"
@@ -287,7 +289,7 @@ class ProofManager:
         num_definitions = len(goal_as_definitions)
         parsed_goals: list[ParsedObligation] = []
         with CoqFile(self.aux_file_path) as coq_file:
-            for goal in current_goals.goals.goals:
+            for goal in all_goals:
                 parsed_hyps: list[ParsedHyp] = []
                 for hyp in goal.hyps:
                     hyp_ast, num_read = self.__read_definition(
@@ -408,10 +410,10 @@ class ProofManager:
 
     def close(self) -> None:
         if os.path.exists(self.file_path):
-            # os.remove(self.file_path)
+            os.remove(self.file_path)
             pass
         if os.path.exists(self.aux_file_path):
-            # os.remove(self.aux_file_path)
+            os.remove(self.aux_file_path)
             pass
         if os.path.exists(self.__search_dir_path):
             shutil.rmtree(self.__search_dir_path)

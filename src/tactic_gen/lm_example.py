@@ -203,6 +203,30 @@ class PremiseLmExample(LmExample):
         return "premise"
 
 
+class AutoNTacticLmExample(LmExample):
+    def __init__(self, input: str, output: str) -> None:
+        super(AutoNTacticLmExample, self).__init__(input, output)
+
+    @classmethod
+    def example_from_step(
+        cls, step: FocusedStep, proof: Proof, partial_proof_suffix: Optional[str]
+    ) -> AutoNTacticLmExample:
+        pass
+
+    @classmethod
+    def from_dataset_file(
+        cls,
+        dataset_file: DatasetFile,
+        premise_model_wrapper: LocalPremiseModelWrapper | None,
+        partial_proof_suffix: str | None = None,
+    ) -> list[LmExample]:
+        pass
+
+
+class ManualNTacticLmExample(LmExample):
+    pass
+
+
 class BaseCodeLLamaLmExample(LmExample):
     def __init__(self, input: str, output: str) -> None:
         super(BaseCodeLLamaLmExample, self).__init__(input, output)

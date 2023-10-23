@@ -3,7 +3,7 @@ from typing import Optional, Any
 
 import re
 
-from model_deployment.node_score import NodeScore
+from model_deployment.node_score import NodeScore, CodeLLamaNodeScore
 from termcolor import colored
 
 
@@ -145,6 +145,40 @@ class ProofSearchTree:
             "children": [c.to_json() for c in self.children],
             "redundant_to_str": self.redundant_to_str,
         }
+
+    @classmethod
+    def eval_from_json(cls, json_data: Any) -> ProofSearchTree:
+        final_tactic = json_data["final_tactic"]
+        combined_model_tactics = json_data["combined_model_tactics"]
+        creation_time = json_data["creation_time"]
+        expanded = json_data["expanded"]
+        children = [ProofSearchTree.eval_from_json(c) for c in json_data["children"]]
+
+        # Default vars that don't matter for eval
+        valid = True
+        makes_progress = True
+        valid_proof_steps: list[str] = []
+        combined_proof_steps: list[str] = []
+        model_tactic = ""
+        goal = ""
+        score = CodeLLamaNodeScore.get_initial_score(1)
+        redundant_to_str = None
+
+        return cls(
+            valid,
+            final_tactic,
+            makes_progress,
+            valid_proof_steps,
+            combined_proof_steps,
+            model_tactic,
+            combined_model_tactics,
+            goal,
+            score,
+            creation_time,
+            expanded,
+            children,
+            redundant_to_str,
+        )
 
     @classmethod
     def from_json(cls, json_data: Any) -> ProofSearchTree:

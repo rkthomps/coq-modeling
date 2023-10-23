@@ -71,6 +71,15 @@ class EvalSearchResult:
             fout.write(json.dumps(self.to_json(), indent=2))
 
     @classmethod
+    def eval_from_json(cls, json_data: Any) -> EvalSearchResult:
+        """Less precise version of from_json. Good for backward compat."""
+        search_result_data = json_data["search_result"]
+        search_result = SearchResult.eval_from_json(search_result_data)
+        orig_file_path = json_data["orig_file_path"]
+        proof_prefix = json_data["proof_prefix"]
+        return cls(search_result, orig_file_path, proof_prefix)
+
+    @classmethod
     def from_json(cls, json_data: Any) -> EvalSearchResult:
         search_result_data = json_data["search_result"]
         search_result = SearchResult.from_json(search_result_data)
@@ -82,7 +91,6 @@ class EvalSearchResult:
     def name_to_v_file(cls, json_path: str) -> str:
         json_dirname = os.path.dirname(json_path)
         json_basename = os.path.basename(json_path)
-        print("matching", json_path)
         match = re.match(r"(.*?\.v):\d+?\.json", json_basename)
         assert match is not None
         (prefix,) = match.groups()
@@ -239,7 +247,10 @@ class Evaluator:
                     num_correct_proofs += 1
                 num_proof_attempts += 1
             except:
-                traceback.print_exc()
+                error_str = traceback.format_exc()
+                error_loc = os.path.join(self.results_loc, "errors.txt")
+                with open(error_loc, "a") as fout:
+                    fout.write(error_str + "\n\n")
                 num_errors += 1
             print(f"Correct Proofs: {num_correct_proofs}")
             print(f"Proof Attempts: {num_proof_attempts}")
@@ -271,7 +282,7 @@ def evaluate(evaluate_conf_loc: str) -> None:
     os.makedirs(results_loc)
     shutil.copy(evaluate_conf_loc, results_loc)
 
-    model_wrapper.get_recs(LmExample("hi", "there"), 2)
+    # model_wrapper.get_recs(LmExample("hi", "there"), 2)
 
     evaluator = Evaluator(
         assignment_loc,

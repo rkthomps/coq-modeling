@@ -5,6 +5,7 @@ import heapq
 import pdb
 import time
 import re
+import pickle
 
 import sys, os
 
@@ -41,6 +42,18 @@ class SearchResult:
         if self.qed_node:
             json_data["qed_node"] = self.qed_node.to_json()
         return json_data
+
+    @classmethod
+    def eval_from_json(cls, json_data: Any) -> SearchResult:
+        """Less precise version of to_json. Good for compatibility."""
+        search_tree_data = json_data["search_tree"]
+        search_tree = ProofSearchTree.eval_from_json(search_tree_data)
+        if "qed_node" in json_data:
+            qed_node_data = json_data["qed_node"]
+            qed_node = ProofSearchTree.eval_from_json(qed_node_data)
+        else:
+            qed_node = None
+        return cls(search_tree, qed_node)
 
     @classmethod
     def from_json(cls, json_data: Any) -> SearchResult:
@@ -88,7 +101,6 @@ class SearchTreeManager:
         initial_check_result = proof_manager.check_proof(initial_proof, [])
         assert initial_check_result.tactic_result == TacticResult.VALID
         assert initial_check_result.current_goals is not None
-        node_goal = self.__get_goals(initial_check_result.current_goals)
         initial_score = self.score_type.get_initial_score(max_branch)
         creation_time = -1
         self.search_tree = ProofSearchTree(
@@ -213,7 +225,9 @@ class SearchTreeManager:
         redundant_to = proof_check_result.parsed_current_goals.redundant_to(
             self.seen_goals, self.seen_goals_nodes
         )
-        redundant_to_str = redundant_to.redundant_str() if redundant_to is not None else None
+        redundant_to_str = (
+            redundant_to.redundant_str() if redundant_to is not None else None
+        )
         combined_tactics = ProofSearchTree.combine_tactics(
             parent_node.combined_model_tactics, attempted_tactic
         )
@@ -280,7 +294,10 @@ class SearchTreeManager:
         example = self.__get_request_contents(
             leaf_subtree.combined_proof_steps, leaf_subtree.combined_model_tactics
         )
+        start_time = time.time_ns()
         result = self.model_wrapper.get_recs(example, self.max_branch)
+        end_time = time.time_ns()
+        print(f"Model time: {(end_time - start_time) / 1e9}")
         children: list[ProofSearchTree] = []
         next_frontier_pool: list[ProofSearchTree] = []
         next_frontier_goals: list[ParsedObligations] = []
@@ -339,6 +356,7 @@ class SearchTreeManager:
             heapq.heappush(self.frontier, confirmed_next_candidate)
             self.seen_goals.append(confirmed_goals)
             self.seen_goals_nodes.append(confirmed_next_candidate)
+
         leaf_subtree.children = children
         return None
 
@@ -352,13 +370,3 @@ class SearchTreeManager:
     @staticmethod
     def __is_bullet(tactic: str) -> bool:
         return re.search(r"\s+[-+*]+", tactic) is not None
-
-    @staticmethod
-    def __get_goals(goal_answer: GoalAnswer) -> NodeGoal:
-        assert goal_answer.goals is not None
-        fg_goals = goal_answer.goals.goals
-        bg_goals: list[Goal] = []
-        for goal_list1, goal_list2 in goal_answer.goals.stack:
-            bg_goals.extend(goal_list1 + goal_list2)
-        node_goal = NodeGoal(fg_goals + bg_goals)
-        return node_goal

@@ -36,9 +36,11 @@ NODE_SCORE_TYPE = CodeLLamaNodeScore
 TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
-TIMEOUT = 1000
+
+
+TIMEOUT = 600
 BRANCH = 5
-EXPANSIONS = 50
+EXPANSIONS = 500
 
 hidden_file_path, aux_hidden_file_path = initialize_hidden_files(TEST_FILE)
 with ProofFile(hidden_file_path, timeout=60) as proof_file:
