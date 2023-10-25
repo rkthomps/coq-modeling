@@ -78,6 +78,15 @@ class PremiseTrainingExample:
             else:
                 out_of_file_neg_prems.append(formatted_prem)
 
+        if len(in_file_neg_prems) + len(out_of_file_neg_prems) < total_num_negatives:
+            return []
+        if len(out_of_file_neg_prems) < total_num_negatives:
+            out_of_file_negs_to_sample = len(out_of_file_neg_prems)
+            in_file_negs_to_sample = total_num_negatives - out_of_file_negs_to_sample
+        else:
+            in_file_negs_to_sample = min(num_in_file_negatives, len(in_file_neg_prems))
+            out_of_file_negs_to_sample = total_num_negatives - in_file_negs_to_sample
+
         in_file_negs_to_sample = min(num_in_file_negatives, len(in_file_neg_prems))
         out_of_file_negs_to_sample = total_num_negatives - in_file_negs_to_sample
         if out_of_file_negs_to_sample > len(out_of_file_neg_prems):

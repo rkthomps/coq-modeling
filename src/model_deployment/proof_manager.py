@@ -410,10 +410,10 @@ class ProofManager:
 
     def close(self) -> None:
         if os.path.exists(self.file_path):
-            os.remove(self.file_path)
+            # os.remove(self.file_path)
             pass
         if os.path.exists(self.aux_file_path):
-            os.remove(self.aux_file_path)
+            # os.remove(self.aux_file_path)
             pass
         if os.path.exists(self.__search_dir_path):
             shutil.rmtree(self.__search_dir_path)
