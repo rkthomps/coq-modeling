@@ -8,6 +8,7 @@ import jsonlines
 from tqdm import tqdm
 from yaml import load, Loader
 
+from tactic_gen.n_step_sampler import NStepSampler
 from tactic_gen.lm_example import LmExample, BasicLmExample, LMEXAMPLE_ALIASES
 from data_management.split_raw_data import SPLITS, split_file_path
 from data_management.jsonl_utils import shuffle
@@ -38,7 +39,9 @@ def create_lm_dataset(example_config: LmExampleConfig) -> None:
             project_loc = os.path.join(split_loc, project)
             project_obj = DatasetFile.from_directory(project_loc)
             project_examples = example_config.format_type.json_from_dataset_file(
-                project_obj, example_config.premise_wrapper
+                project_obj,
+                example_config.premise_wrapper,
+                example_config.n_step_sampler,
             )
             output_writer.write_all(project_examples)
             if example_config.premise_wrapper is not None:
@@ -62,16 +65,20 @@ class LmExampleConfig:
         output_dataset_loc: str,
         format_type: Type[LmExample],
         premise_wrapper: Optional[LocalPremiseModelWrapper],
+        n_step_sampler: Optional[NStepSampler],
     ) -> None:
         assert type(partitioned_dataset_loc) == str
         assert type(output_dataset_loc) == str
         assert type(format_type) == type
         if premise_wrapper is not None:
             assert isinstance(premise_wrapper, LocalPremiseModelWrapper)
+        if n_step_sampler is not None:
+            assert isinstance(n_step_sampler, NStepSampler)
         self.partitioned_dataset_loc = partitioned_dataset_loc
         self.output_dataset_loc = output_dataset_loc
         self.format_type = format_type
         self.premise_wrapper = premise_wrapper
+        self.n_step_sampler = n_step_sampler
 
     def to_json(self) -> Any:
         json_data: Any = {
@@ -83,6 +90,8 @@ class LmExampleConfig:
             json_data[
                 "premise_wrapper_checkpoint"
             ] = self.premise_wrapper.checkpoint_loc
+        if self.n_step_sampler:
+            json_data["n_step_sampler"] = self.n_step_sampler.to_json()
         return json_data
 
     @classmethod
@@ -91,6 +100,7 @@ class LmExampleConfig:
         output_dataset_loc = json_data["output_dataset_loc"]
         format_type_alias = json_data["format_alias"]
         format_type = LMEXAMPLE_ALIASES[format_type_alias]
+
         if "premise_wrapper_checkpoint" in json_data:
             premise_wrapper_checkpoint = json_data["premise_wrapper_checkpoint"]
             premise_wrapper = LocalPremiseModelWrapper.from_checkpoint(
@@ -98,8 +108,17 @@ class LmExampleConfig:
             )
         else:
             premise_wrapper = None
+
+        if "n_step_sampler" in json_data:
+            n_step_sampler = NStepSampler.from_json(json_data["n_step_sampler"])
+        else:
+            n_step_sampler = None
         return cls(
-            partitioned_dataset_loc, output_dataset_loc, format_type, premise_wrapper
+            partitioned_dataset_loc,
+            output_dataset_loc,
+            format_type,
+            premise_wrapper,
+            n_step_sampler,
         )
 
     @classmethod
@@ -114,8 +133,13 @@ class LmExampleConfig:
         output_dataset_loc = ""
         format_type = LmExample
         premise_wrapper = None
+        n_step_sampler = None
         return cls(
-            partitioned_dataset_loc, output_dataset_loc, format_type, premise_wrapper
+            partitioned_dataset_loc,
+            output_dataset_loc,
+            format_type,
+            premise_wrapper,
+            n_step_sampler,
         )
 
     @classmethod
@@ -126,8 +150,13 @@ class LmExampleConfig:
     ) -> LmExampleConfig:
         partitioned_dataset_loc = ""
         output_dataset_loc = ""
+        n_step_sampler = None
         return cls(
-            partitioned_dataset_loc, output_dataset_loc, example_type, premise_wrapper
+            partitioned_dataset_loc,
+            output_dataset_loc,
+            example_type,
+            premise_wrapper,
+            n_step_sampler,
         )
 
 

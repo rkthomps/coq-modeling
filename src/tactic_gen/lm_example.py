@@ -5,6 +5,7 @@ import sys, os
 import pdb
 import jsonlines
 
+from tactic_gen.n_step_sampler import NStepSampler
 from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence
 from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
 
@@ -27,12 +28,16 @@ class LmExample:
         cls,
         dataset_file: DatasetFile,
         premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+        n_step_sampler: Optional[NStepSampler],
         partial_proof_suffix: Optional[str] = None,
     ) -> list[dict[str, str]]:
         return [
             example.to_json()
             for example in cls.from_dataset_file(
-                dataset_file, premise_model_wrapper, partial_proof_suffix
+                dataset_file,
+                premise_model_wrapper,
+                n_step_sampler,
+                partial_proof_suffix,
             )
         ]
 
@@ -41,6 +46,7 @@ class LmExample:
         cls,
         dataset_file: DatasetFile,
         premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+        n_step_sampler: Optional[NStepSampler],
         partial_proof_suffix: Optional[str] = None,
     ) -> list[LmExample]:
         raise NotImplementedError
@@ -61,9 +67,9 @@ class BasicLmExample(LmExample):
         super(BasicLmExample, self).__init__(input, output)
 
     @classmethod
-    def example_from_step(
+    def input_from_step(
         cls, step: FocusedStep, proof: Proof, partial_proof_suffix: Optional[str]
-    ) -> BasicLmExample:
+    ) -> str:
         goal_strings: list[str] = []
         for goal in step.goals:
             goal_strings.append(goal.to_string())
@@ -72,6 +78,13 @@ class BasicLmExample(LmExample):
         )
         final_goal_string = "<GOAL-SEP>".join(goal_strings)
         input = f"{partial_proof_string}<THM-SEP>{final_goal_string}"
+        return input
+
+    @classmethod
+    def example_from_step(
+        cls, step: FocusedStep, proof: Proof, partial_proof_suffix: Optional[str]
+    ) -> BasicLmExample:
+        input = cls.input_from_step(step, proof, partial_proof_suffix)
         output = step.step.text
         return cls(input, output)
 
@@ -80,6 +93,7 @@ class BasicLmExample(LmExample):
         cls,
         dataset_file: DatasetFile,
         premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+        n_step_sampler: Optional[NStepSampler],
         partial_proof_suffix: Optional[str] = None,
     ) -> list[LmExample]:
         basic_lm_examples: list[LmExample] = []
@@ -100,36 +114,6 @@ class PremiseLmExample(LmExample):
 
     def __init__(self, input: str, output: str) -> None:
         super(PremiseLmExample, self).__init__(input, output)
-
-    @staticmethod
-    def get_predicted_logical_path(premise_file_path: str, cur_file_path: str) -> str:
-        """Helpful: https://coq.inria.fr/refman/practical-tools/utilities.html?highlight=imports"""
-        coq_lib_str = os.path.join("lib", "coq", "theories") + "/"
-        if coq_lib_str in premise_file_path:
-            coq_lib_str_idx = premise_file_path.index(coq_lib_str)
-            start_idx = coq_lib_str_idx + len(coq_lib_str)
-            log_path = premise_file_path[start_idx:].replace("/", ".").rstrip(".v")
-            return f"Coq.{log_path}"
-
-        coq_contrib_str = os.path.join("lib", "user-contrib") + "/"
-        if coq_contrib_str in premise_file_path:
-            coq_contrib_str_idx = premise_file_path.index(coq_contrib_str)
-            start_idx = coq_contrib_str_idx + len(coq_contrib_str)
-            log_path = premise_file_path[start_idx:].replace("/", ".").rstrip(".v")
-            return log_path
-
-        prefix = ""
-        first_tok = cur_file_path[0]
-        split_toks = cur_file_path[1:].split("/")
-        split_toks[0] = first_tok + split_toks[0]
-        i = 0
-        proposed_prefix = os.path.join(prefix, split_toks[i])
-        raise NotImplementedError
-        while premise_file_path.startswith(proposed_prefix) and i < len(split_toks):
-            prefix = proposed_prefix
-            i += 1
-            proposed_prefix = os.path.join(prefix, split_toks[i])
-            #### TODOTODOTODOTODO
 
     @classmethod
     def get_premise_str(
@@ -182,6 +166,7 @@ class PremiseLmExample(LmExample):
         cls,
         dataset_file: DatasetFile,
         premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+        nstep_sampler: Optional[NStepSampler],
         partial_proof_suffix: Optional[str] = None,
     ) -> list[LmExample]:
         assert premise_model_wrapper is not None
@@ -208,19 +193,44 @@ class AutoNTacticLmExample(LmExample):
         super(AutoNTacticLmExample, self).__init__(input, output)
 
     @classmethod
-    def example_from_step(
-        cls, step: FocusedStep, proof: Proof, partial_proof_suffix: Optional[str]
-    ) -> AutoNTacticLmExample:
-        pass
+    def examples_from_step(
+        cls,
+        step_idx: int,
+        proof: Proof,
+        n_step_sampler: NStepSampler,
+        partial_proof_suffix: Optional[str],
+    ) -> list[LmExample]:
+        example_input = BasicLmExample.input_from_step(
+            proof.steps[step_idx], proof, partial_proof_suffix
+        )
+        output_step_lists = n_step_sampler.sample_steps(proof.steps[step_idx:])
+        resulting_examples: list[LmExample] = []
+        for output_step_list in output_step_lists:
+            output = "".join([fs.step.text for fs in output_step_list])
+            resulting_examples.append(AutoNTacticLmExample(example_input, output))
+        return resulting_examples
 
     @classmethod
     def from_dataset_file(
         cls,
         dataset_file: DatasetFile,
-        premise_model_wrapper: LocalPremiseModelWrapper | None,
-        partial_proof_suffix: str | None = None,
+        premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+        n_step_sampler: Optional[NStepSampler],
+        partial_proof_suffix: Optional[str] = None,
     ) -> list[LmExample]:
-        pass
+        assert n_step_sampler is not None
+        dset_examples: list[LmExample] = []
+        for proof in dataset_file.proofs:
+            for i, step in enumerate(proof.steps):
+                step_examples = cls.examples_from_step(
+                    i, proof, n_step_sampler, partial_proof_suffix
+                )
+                dset_examples.extend(step_examples)
+        return dset_examples
+
+    @staticmethod
+    def get_alias() -> str:
+        return "auto-n-tactic"
 
 
 class ManualNTacticLmExample(LmExample):
@@ -373,6 +383,7 @@ LMEXAMPLE_ALIASES: dict[str, Type[LmExample]] = {
     BasicLmExample.get_alias(): BasicLmExample,
     GPT4BasicLmExample.get_alias(): GPT4BasicLmExample,
     PremiseLmExample.get_alias(): PremiseLmExample,
+    AutoNTacticLmExample.get_alias(): AutoNTacticLmExample,
     BaseCodeLLamaLmExample.get_alias(): BaseCodeLLamaLmExample,
     BaseCodeLLamaPremiseLmExample.get_alias(): BaseCodeLLamaPremiseLmExample,
 }

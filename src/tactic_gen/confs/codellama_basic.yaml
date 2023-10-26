@@ -1,7 +1,7 @@
 # File Paths
-data_path: "/home/ubuntu/coq-modeling/data/tactic-prem"
+data_path: "/home/ubuntu/coq-modeling/data/auto-n-tac-uniform"
 model_name: "codellama/CodeLlama-7b-hf"
-output_dir: "/home/ubuntu/coq-modeling/models/codellama-7b-premise" 
+output_dir: "/home/ubuntu/coq-modeling/models/codellama-7b-n-tac-unif" 
 
 # Training Args
 max_seq_len: 512
