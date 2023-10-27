@@ -260,7 +260,8 @@ class BaseCodeLLamaLmExample(LmExample):
     def from_dataset_file(
         cls,
         dataset_file: DatasetFile,
-        premise_model_wrapper: LocalPremiseModelWrapper | None,
+        premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+        n_step_sampler: Optional[NStepSampler],
         partial_proof_suffix: Optional[str] = None,
     ) -> list[LmExample]:
         code_llama_examples: list[LmExample] = []
@@ -307,7 +308,8 @@ class BaseCodeLLamaPremiseLmExample(LmExample):
     def from_dataset_file(
         cls,
         dataset_file: DatasetFile,
-        premise_model_wrapper: LocalPremiseModelWrapper | None,
+        premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+        nstep_sampler: Optional[NStepSampler],
         partial_proof_suffix: Optional[str] = None,
     ) -> list[LmExample]:
         assert premise_model_wrapper is not None
@@ -364,6 +366,7 @@ class GPT4BasicLmExample(LmExample):
         cls,
         dataset_file: DatasetFile,
         premise_model_wrapper: Optional[LocalPremiseModelWrapper],
+        n_step_sampler: Optional[NStepSampler],
         partial_proof_suffix: Optional[str] = None,
     ) -> list[LmExample]:
         gpt4_examples: list[LmExample] = []

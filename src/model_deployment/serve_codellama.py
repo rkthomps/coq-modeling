@@ -18,12 +18,12 @@ app = Flask(__name__)
 
 PREMISE_WRAPPER: Optional[LocalPremiseModelWrapper] = None
 
-# PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
+PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
 # PRETRAINED_NAME = (
 #     "/home/ubuntu/coq-modeling/models/codellama-7b-premise/checkpoint-20500"
 # )
 
-PRETRAINED_NAME = "codellama/CodeLlama-7b-hf"
+# PRETRAINED_NAME = "codellama/CodeLlama-7b-hf"
 # PREMISE_WRAPPER = LocalPremiseModelWrapper.from_checkpoint(
 #     "/home/ubuntu/coq-modeling/models/premise_selection_no_coq_notation_tac/lightning_logs/version_0/checkpoints/epoch=2-step=44628.ckpt"
 # )

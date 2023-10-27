@@ -3,7 +3,7 @@ from typing import Optional, Any
 
 import re
 
-from model_deployment.node_score import NodeScore, CodeLLamaNodeScore
+from model_deployment.node_score import NodeScore, BranchNormalizedScore
 from termcolor import colored
 
 
@@ -87,14 +87,21 @@ class ProofSearchTree:
         return cur_deepest_node, cur_max_depth
 
     def pretty_print(
-        self, start_marker: str = uni_l, indent: str = "", last_child: bool = True
+        self,
+        start_marker: str = uni_l,
+        indent: str = "",
+        last_child: bool = True,
+        verbose=True,
     ) -> None:
         line_start = start_marker + (self.sideways_bar * 2) + " "
         start = indent + line_start
         step_str = self.steps_proof_str()
-        clean_tactic = self.clean_tactic(step_str)
-        clean_score = "{:7.6f}".format(self.score.compute())
-        message = f"{start}{clean_score} {clean_tactic}"
+        if verbose:
+            clean_tactic = self.clean_tactic(step_str)
+            clean_score = "{:7.6f}".format(self.score.compute())
+            message = f"{start}{clean_score} {clean_tactic}"
+        else:
+            message = f"{start}{step_str.strip()}"
         if self.expanded is not None and self.expanded > 0:
             expanded_len = len(str(self.expanded))
             message = message.replace(" " * expanded_len, str(self.expanded), 1)
@@ -104,7 +111,8 @@ class ProofSearchTree:
             message = colored(message, "green")
         elif not self.makes_progress:
             assert self.redundant_to_str is not None
-            message = message + f" redundant to {self.redundant_to_str}"
+            if verbose:
+                message = message + f" redundant to {self.redundant_to_str}"
             message = colored(message, "yellow")
         print(message)
         if last_child:
@@ -115,10 +123,14 @@ class ProofSearchTree:
         for i, child in enumerate(self.children):
             if i < (len(self.children) - 1):
                 start_marker = self.uni_sideways_t
-                child.pretty_print(start_marker, new_indent, last_child=False)
+                child.pretty_print(
+                    start_marker, new_indent, last_child=False, verbose=verbose
+                )
             else:
                 start_marker = self.uni_l
-                child.pretty_print(start_marker, new_indent, last_child=True)
+                child.pretty_print(
+                    start_marker, new_indent, last_child=True, verbose=verbose
+                )
 
     def get_path_to_qed(self) -> list[ProofSearchTree]:
         if self.final_tactic:
@@ -161,7 +173,7 @@ class ProofSearchTree:
         combined_proof_steps: list[str] = []
         model_tactic = ""
         goal = ""
-        score = CodeLLamaNodeScore.get_initial_score(1)
+        score = BranchNormalizedScore.get_initial_score(1)
         redundant_to_str = None
 
         return cls(

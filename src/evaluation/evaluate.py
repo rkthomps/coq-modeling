@@ -242,6 +242,7 @@ class Evaluator:
                 eval_search_result = EvalSearchResult(
                     search_result, orig_file, proof_prefix
                 )
+                eval_search_result.search_result.search_tree.pretty_print(verbose=False)
                 eval_search_result.save(self.results_loc, self.file_tree_loc)
                 if search_result.found_proof():
                     num_correct_proofs += 1

@@ -9,7 +9,12 @@ import jsonlines
 from model_deployment.searcher import SearchTreeManager
 from model_deployment.proof_manager import ProofManager, initialize_hidden_files
 from model_deployment.model_wrapper import CodeLLamaServer, ModelWrapper, GPT4Wrapper
-from model_deployment.node_score import CodeLLamaNodeScore, NodeScore
+from model_deployment.node_score import (
+    TokenLengthNormalizedScore,
+    BranchNormalizedScore,
+    DepthFirstScore,
+    BreadthFirstScore,
+)
 from tactic_gen.lm_example import (
     LmExample,
     BasicLmExample,
@@ -25,19 +30,16 @@ from coqlspclient.proof_file import ProofFile
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
 WRAPPER = CodeLLamaServer.from_url("http://127.0.0.1:5000")
-NODE_SCORE_TYPE = CodeLLamaNodeScore
+NODE_SCORE_TYPE = TokenLengthNormalizedScore
 
 # WRAPPER = CodeLLamaServer("http://127.0.0.1:5000/codellama")
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
-
-TEST_FILE = "/home/ubuntu/coq-modeling/examples/test.v"
 
 
 TIMEOUT = 600
@@ -53,7 +55,7 @@ with ProofFile(hidden_file_path, timeout=60) as proof_file:
             WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, TIMEOUT
         )
 
-        result = tree_manager.search()
+        result = tree_manager.search(print_trees=True)
         with open("proof-tree.json", "w") as fout:
             json_proof_tree = result.search_tree.to_json()
             fout.write(json.dumps(json_proof_tree, indent=2))

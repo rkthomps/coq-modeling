@@ -32,7 +32,7 @@ from tactic_gen.train_codellama import (
     get_tokenizer,
     collate_input,
 )
-from model_deployment.node_score import NodeScore, CodeLLamaNodeScore
+from model_deployment.node_score import NodeScore, BranchNormalizedScore
 from model_deployment.codellama_utils import (
     SampleResult,
     PeriodStoppingCriteria,
@@ -44,24 +44,33 @@ import openai
 
 
 class ModelResult:
-    def __init__(self, next_tactic_list: list[str], score_list: list[float]) -> None:
+    def __init__(
+        self,
+        next_tactic_list: list[str],
+        score_list: list[float],
+        num_tokens_list: list[int],
+    ) -> None:
         assert all([type(t) == str for t in next_tactic_list])
         assert all([type(s) == float for s in score_list])
+        assert all([type(t) == int for t in num_tokens_list])
         assert len(next_tactic_list) == len(score_list)
         self.next_tactic_list = next_tactic_list
         self.score_list = score_list
+        self.num_tokens_list = num_tokens_list
 
     def to_json(self) -> Any:
         return {
             "next_tactic_list": self.next_tactic_list,
             "score_list": self.score_list,
+            "num_tokens_list": self.num_tokens_list,
         }
 
     @classmethod
     def from_json(cls, json_data: Any) -> ModelResult:
         next_tactic_list = json_data["next_tactic_list"]
         score_list = json_data["score_list"]
-        return cls(next_tactic_list, score_list)
+        num_tokens_list = json_data["num_tokens_list"]
+        return cls(next_tactic_list, score_list, num_tokens_list)
 
 
 class ModelWrapper:
@@ -107,21 +116,26 @@ class CodeLLamaLocalWrapper(ModelWrapper):
 
     @classmethod
     def __filter_recs(
-        cls, next_tactics: list[str], next_scores: list[float]
+        cls,
+        next_tactics: list[str],
+        next_scores: list[float],
+        next_num_tokens: list[int],
     ) -> ModelResult:
-        scores_and_tactics = list(zip(next_scores, next_tactics))
+        scores_and_tactics = list(zip(next_scores, next_tactics, next_num_tokens))
         scores_and_tactics.sort(reverse=True)
         final_tactics: list[str] = []
         final_scores: list[float] = []
+        final_num_tokens: list[int] = []
         seen_tactics: set[str] = set()
-        for score, tactic in scores_and_tactics:
+        for score, tactic, num_tokens in scores_and_tactics:
             stripped_tactic = tactic.strip()
             if stripped_tactic in seen_tactics:
                 continue
             seen_tactics.add(stripped_tactic)
             final_tactics.append(cls.__clean_tactic(tactic))
             final_scores.append(score)
-        return ModelResult(final_tactics, final_scores)
+            final_num_tokens.append(num_tokens)
+        return ModelResult(final_tactics, final_scores, final_num_tokens)
 
     def do_sample(
         self, input_ids: torch.LongTensor, n: int, temperature: float = 0.2
@@ -177,7 +191,9 @@ class CodeLLamaLocalWrapper(ModelWrapper):
         )
         print(sample_result.tactics)
         # sample_result = self.do_sample(input_ids, n)
-        return self.__filter_recs(sample_result.tactics, sample_result.scores)
+        return self.__filter_recs(
+            sample_result.tactics, sample_result.scores, sample_result.num_tokens
+        )
 
     @staticmethod
     def get_model_loc(checkpoint_loc: str) -> str:
@@ -315,30 +331,6 @@ class GPT4Wrapper(ModelWrapper):
         self.api_key = os.environ.get(self.ENV_API_KEY_NAME)
         self.org_key = os.environ.get(self.ENV_ORG_KEY_NAME)
 
-    def __filter_recs(self, completion: Any) -> ModelResult:
-        assert type(completion) == dict
-        seen_tactics: set[str] = set()
-        tactics: list[str] = []
-        scores: list[float] = []
-        for choice in completion["choices"]:
-            assert type(choice) == dict
-            assert type(choice["message"]) == dict
-            raw_msg = choice["message"]["content"]
-            assert type(raw_msg) == str
-            stripped_msg = raw_msg.strip()
-            if stripped_msg in seen_tactics:
-                continue
-            seen_tactics.add(stripped_msg)
-            assert type(choice["logprobs"]) == dict
-            token_logprobs = completion["logprobs"]["top_logprobs"]
-            assert type(token_logprobs) == dict
-            logprobs_alone = [v for k, v in token_logprobs.items()]
-            sequence_score = sum(logprobs_alone)
-            num_logprobs = len(logprobs_alone)
-            tactics.append(raw_msg)
-            scores.append(sequence_score)
-        return ModelResult(tactics, scores)
-
     def __filter_recs_no_logprobs(self, completion: Any, n: int) -> ModelResult:
         tactic_freqs: dict[str, int] = {}
         raw_tactic_map: dict[str, str] = {}
@@ -354,12 +346,14 @@ class GPT4Wrapper(ModelWrapper):
         sum_responses = len(completion["choices"])
         tactics: list[str] = []
         scores: list[float] = []
+        num_tokens: list[int] = []
         sorted_tactics = sorted(tactic_freqs.items(), key=lambda tup: -1 * tup[1])
         for tactic, freq in sorted_tactics[:n]:
             tactics.append(raw_tactic_map[tactic])
             psuedo_num_tokens = len(tactic.split())
             scores.append(math.log(freq / sum_responses))
-        return ModelResult(tactics, scores)
+            num_tokens.append(psuedo_num_tokens)
+        return ModelResult(tactics, scores, num_tokens)
 
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
         assert type(example) == GPT4BasicLmExample

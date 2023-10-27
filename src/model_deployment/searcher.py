@@ -127,7 +127,7 @@ class SearchTreeManager:
             combined_proof_steps, target_combined_steps
         )
 
-    def search(self) -> SearchResult:
+    def search(self, print_trees: bool = False) -> SearchResult:
         start = time.time_ns()
         for i in range(self.max_num_leaf_expansions):
             cur = time.time_ns()
@@ -137,7 +137,8 @@ class SearchTreeManager:
                 break
             print(f"Beginning iteration {i + 1} of search.")
             possible_complete_node = self.search_step(i, start)
-            self.search_tree.pretty_print()
+            if print_trees:
+                self.search_tree.pretty_print(verbose=True)
             if possible_complete_node is not None:
                 return SearchResult(self.search_tree, possible_complete_node)
         return SearchResult(self.search_tree, None)
@@ -301,14 +302,18 @@ class SearchTreeManager:
         children: list[ProofSearchTree] = []
         next_frontier_pool: list[ProofSearchTree] = []
         next_frontier_goals: list[ParsedObligations] = []
-        for tactic, score in zip(result.next_tactic_list, result.score_list):
+        for tactic, score, num_tokens in zip(
+            result.next_tactic_list, result.score_list, result.num_tokens_list
+        ):
             proof_script = ProofSearchTree.combine_tactics(
                 leaf_subtree.combined_model_tactics, tactic
             )
             proof_check_result = self.proof_manager.check_proof(
                 proof_script, leaf_subtree.combined_proof_steps
             )
-            node_score = self.score_type.from_unit_score(self.max_branch, score)
+            node_score = self.score_type.from_unit_score(
+                score, num_tokens, self.max_branch
+            )
             match proof_check_result.tactic_result:
                 case TacticResult.COMPLETE:
                     complete_node = self.__get_complete_child_node(

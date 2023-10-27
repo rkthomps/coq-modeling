@@ -8,7 +8,7 @@ from model_deployment.search_tree import ProofSearchTree
 
 
 def extract_body_from_step(step: Step) -> Any:
-    def_ast = step.ast.span
+    def_ast = remove_loc(step.ast.span)
     def_expr = def_ast["v"]["expr"][1]
     try:
         assert def_expr[0] == "VernacDefinition"
@@ -43,6 +43,75 @@ class ParsedObligation:
                 return hyp
         raise ValueError(f"Hyp {var} doesn't exist.")
 
+    def __check_substitution_validity(
+        self,
+        other: ParsedObligation,
+        one_to_two_mapping: dict[str, Optional[str]],
+        two_avail_vars: set[str],
+    ) -> bool:
+        for var in self.get_all_vars():
+            corresponding_var = one_to_two_mapping[var]
+            if corresponding_var is None:
+                continue
+            other_hyp = other.get_hyp_from_var(corresponding_var)
+            self_hyp = self.get_hyp_from_var(var)
+            fresh_var_mapping: dict[str, str] = {}
+            hyps_same = compare_expressions_under_substitution(
+                self_hyp.ast,
+                other_hyp.ast,
+                one_to_two_mapping,
+                two_avail_vars,
+                fresh_var_mapping,
+            )
+            if not hyps_same:
+                return False
+        return True
+
+    def __append_if_absent(
+        self,
+        mapping_candidates: list[dict[str, Optional[str]]],
+        new_candidate: dict[str, Optional[str]],
+    ) -> None:
+        if any([m == new_candidate for m in mapping_candidates]):
+            return
+        mapping_candidates.append(new_candidate)
+
+    def __check_hyps_covered(
+        self,
+        other: ParsedObligation,
+        one_to_two_mapping: dict[str, Optional[str]],
+        two_avail_vars: set[str],
+    ) -> bool:
+        """
+        Must keep track of multiple possible matches. Consider the hyps:
+        a = b       b = c
+        b < a       b < a
+        b = c       a = b
+        ---         ---
+        False       False
+
+        These are clearly equiv. but if you matched greedily, you would end up in a pickle
+        """
+        mapping_candidates: list[dict[str, Optional[str]]] = [one_to_two_mapping.copy()]
+        for self_hyp in self.hyps:
+            next_mapping_candidates: list[dict[str, Optional[str]]] = []
+            for other_hyp in other.hyps:
+                for mapping in mapping_candidates:
+                    fresh_var_mapping: dict[str, str] = {}
+                    copied_mapping = mapping.copy()
+                    if compare_expressions_under_substitution(
+                        self_hyp.ast,
+                        other_hyp.ast,
+                        copied_mapping,
+                        two_avail_vars,
+                        fresh_var_mapping,
+                    ):
+                        self.__append_if_absent(next_mapping_candidates, copied_mapping)
+            if len(next_mapping_candidates) == 0:
+                return False
+            mapping_candidates = next_mapping_candidates
+        return True
+
     def as_hard_as(self, other: ParsedObligation) -> bool:
         self_vars = self.get_all_vars()
         one_to_two_mapping: dict[str, str | None] = dict((k, None) for k in self_vars)
@@ -57,39 +126,17 @@ class ParsedObligation:
         )
         if not same_goal_under_sub:
             return False
-        for var in self_vars:
-            corresponding_var = one_to_two_mapping[var]
-            if corresponding_var is None:
-                continue
-            other_hyp = other.get_hyp_from_var(corresponding_var)
-            self_hyp = self.get_hyp_from_var(var)
-            fresh_var_mapping = {}
-            hyps_same = compare_expressions_under_substitution(
-                self_hyp.ast,
-                other_hyp.ast,
-                one_to_two_mapping,
-                two_avail_vars,
-                fresh_var_mapping,
-            )
-            if not hyps_same:
-                return False
 
-        for self_hyp in self.hyps:
-            covered = False
-            for other_hyp in other.hyps:
-                fresh_var_mapping = {}
-                if compare_expressions_under_substitution(
-                    self_hyp.ast,
-                    other_hyp.ast,
-                    one_to_two_mapping,
-                    two_avail_vars,
-                    fresh_var_mapping,
-                ):
-                    covered = True
-                    break
-            if not covered:
-                return False
-        return True
+        substitution_valid = self.__check_substitution_validity(
+            other, one_to_two_mapping, two_avail_vars
+        )
+        if not substitution_valid:
+            return False
+
+        hyps_covered = self.__check_hyps_covered(
+            other, one_to_two_mapping, two_avail_vars
+        )
+        return hyps_covered
 
 
 class ParsedObligations:
