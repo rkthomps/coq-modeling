@@ -1,9 +1,20 @@
 from __future__ import annotations
+from coqlspclient.coq_structs import Step
 from coqlspclient.coq_lsp_structs import Goal, RangedSpan
 from typing import Any, Optional
 import pdb
 
 from model_deployment.search_tree import ProofSearchTree
+
+
+def extract_body_from_step(step: Step) -> Any:
+    def_ast = step.ast.span
+    def_expr = def_ast["v"]["expr"][1]
+    try:
+        assert def_expr[0] == "VernacDefinition"
+    except AssertionError:
+        pdb.set_trace()
+    return def_expr[3]
 
 
 class ParsedHyp:

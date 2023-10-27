@@ -19,6 +19,7 @@ from model_deployment.goal_comparer import (
     ParsedObligations,
     ParsedObligation,
     ParsedHyp,
+    extract_body_from_step,
 )
 
 
@@ -259,21 +260,12 @@ class ProofManager:
             final_strings.append(f"Definition g_{i} := ({goal.ty}).")
         return final_strings
 
-    def __extract_body_from_def_ast(self, def_ast: Any) -> Any:
-        def_expr = def_ast["v"]["expr"][1]
-        try:
-            assert def_expr[0] == "VernacDefinition"
-        except AssertionError:
-            pdb.set_trace()
-        return def_expr[3]
-
     def __read_definition(
         self, coq_file: CoqFile, num_definitions: int, num_read: int
     ) -> tuple[Any, int]:
         num_steps = len(coq_file.steps)
         read_idx = num_steps - num_definitions - 1 + num_read
-        whole_def_ast = coq_file.steps[read_idx].ast.span
-        ast_def_body = self.__extract_body_from_def_ast(whole_def_ast)
+        ast_def_body = extract_body_from_step(coq_file.steps[read_idx])
         return ast_def_body, num_read + 1
 
     def get_parsed_goals(
@@ -351,8 +343,9 @@ class ProofManager:
         dataset_obj = self.get_dataset_file(
             valid_steps, target_combined_steps, partial_proof_suffix
         )
+        placeholder_sampler = None
         examples = self.example_type.from_dataset_file(
-            dataset_obj, self.premise_wrapper, partial_proof_suffix
+            dataset_obj, self.premise_wrapper, placeholder_sampler, partial_proof_suffix
         )
         example = examples[-1]
         return example

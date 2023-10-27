@@ -1,12 +1,12 @@
 from __future__ import annotations
-from typing import Iterable, Callable, Any
+from typing import Iterable, Callable, Any, Optional
 
 from functools import reduce
 
 import sys, os
 import json
 from model_deployment.searcher import ProofSearchTree
-from evaluation.evaluate import EvalSearchResult
+from evaluation.evaluate import EvalSearchResult, SEARCH_TOKEN
 
 
 def __get_json_file_names(dir: str) -> list[str]:
@@ -46,7 +46,6 @@ def __pos_time_key(e: EvalSearchResult) -> float:
 
 
 def get_successful_evals(eval_dir: str, proof_files: set[str]) -> set[str]:
-    eval_results = get_eval_results(eval_dir, proof_files)
     sucessful_proofs: set[str] = set()
     for pf in proof_files:
         with open(os.path.join(eval_dir, pf), "r") as fin:
@@ -55,6 +54,104 @@ def get_successful_evals(eval_dir: str, proof_files: set[str]) -> set[str]:
             if eval_obj.search_result.found_proof():
                 sucessful_proofs.add(pf)
     return sucessful_proofs
+
+
+def get_failed_evals(eval_dir: str, proof_files: set[str]) -> set[str]:
+    failed_proofs: set[str] = set()
+    for pf in proof_files:
+        with open(os.path.join(eval_dir, pf), "r") as fin:
+            eval_data = json.load(fin)
+            eval_obj = EvalSearchResult.eval_from_json(eval_data)
+            if not eval_obj.search_result.found_proof():
+                failed_proofs.add(pf)
+    return failed_proofs
+
+
+def num_to_roman(num: int) -> str:
+    if num >= 1000:
+        return "m" + num_to_roman(num - 1000)
+    if num >= 900:
+        return "cm" + num_to_roman(num - 900)
+    if num >= 500:
+        return "d" + num_to_roman(num - 500)
+    if num >= 400:
+        return "cd" + num_to_roman(num - 400)
+    if num >= 100:
+        return "c" + num_to_roman(num - 100)
+    if num >= 90:
+        return "xc" + num_to_roman(num - 90)
+    if num >= 50:
+        return "l" + num_to_roman(num - 50)
+    if num >= 40:
+        return "xl" + num_to_roman(num - 40)
+    if num >= 10:
+        return "x" + num_to_roman(num - 10)
+    if num >= 9:
+        return "ix" + num_to_roman(num - 9)
+    if num >= 5:
+        return "v" + num_to_roman(num - 5)
+    if num >= 4:
+        return "iv" + num_to_roman(num - 4)
+    return "i" * num
+
+
+def get_shortest_failed_proof(
+    eval_dirs: list[tuple[str, str]], output_loc: str
+) -> None:
+    assert len(eval_dirs) > 0
+    eval_dir_paths = [eval_dir for eval_name, eval_dir in eval_dirs]
+    shared_thms = find_shared_proofs(eval_dir_paths)
+    dir_failed_proofs = [get_failed_evals(p, shared_thms) for p in eval_dir_paths]
+    assert len(dir_failed_proofs) > 0
+    all_failed: set[str] = dir_failed_proofs[0]
+    for dir_failed in dir_failed_proofs[1:]:
+        all_failed &= dir_failed
+    all_failed_list = list(all_failed)
+    all_failed_ground_truths = get_ground_truth_proofs(
+        eval_dir_paths[0], all_failed_list
+    )
+    failed_and_gt: list[tuple[str, str]] = []
+    for failed_proof, failed_gt in zip(all_failed_list, all_failed_ground_truths):
+        if failed_gt is not None:
+            failed_and_gt.append((failed_proof, failed_gt))
+
+    failed_and_gt.sort(key=lambda x: len(x[1]))
+    if os.path.exists(output_loc):
+        print(f"{output_loc} exists.", file=sys.stderr)
+        return
+
+    os.makedirs(output_loc)
+    for i, (proof_name, gt) in enumerate(failed_and_gt[:20]):
+        filename = num_to_roman(i + 1) + ".v"
+        with open(os.path.join(output_loc, filename), "w") as fout:
+            contents = assemble_coq_file_contents(eval_dirs, proof_name, gt)
+            fout.write(contents)
+
+
+def get_ground_truth_proofs(
+    eval_dir: str, proof_files: list[str]
+) -> list[Optional[str]]:
+    ground_truths: list[Optional[str]] = []
+    for pf in proof_files:
+        with open(os.path.join(eval_dir, pf), "r") as fin:
+            eval_data = json.load(fin)
+            eval_obj = EvalSearchResult.eval_from_json(eval_data)
+        with open(eval_obj.orig_file_path, "r") as fin:
+            orig_file_str = fin.read()
+        clean_proof_prefix = (
+            eval_obj.proof_prefix.rstrip().rstrip(SEARCH_TOKEN).rstrip()
+        )
+        if not orig_file_str.startswith(clean_proof_prefix):
+            ground_truths.append(None)
+            continue
+        assert orig_file_str.startswith(clean_proof_prefix)
+        remaining_file = orig_file_str[len(clean_proof_prefix) :]
+        qed_idx = remaining_file.find("Qed.")
+        if qed_idx == -1:
+            ground_truths.append(None)
+        else:
+            ground_truths.append(remaining_file[: (qed_idx + 1)])
+    return ground_truths
 
 
 def get_sorted_successful_evals(
@@ -160,7 +257,7 @@ def get_fine_grained_comparison_stats(
     ]
     summary_strings = [repr(s) for s in model_stats_list]
 
-    print("".join(summary_strings))
+    print("\n".join(summary_strings))
 
 
 NAME_IDX = 0
@@ -168,7 +265,9 @@ PATH_IDX = 1
 
 
 def assemble_coq_file_contents(
-    eval_dirs: list[tuple[str, str]], proof_name: str
+    eval_dirs: list[tuple[str, str]],
+    proof_name: str,
+    ground_truth: Optional[str] = None,
 ) -> str:
     assert len(eval_dirs) > 0
     eval_paths = [d[PATH_IDX] for d in eval_dirs]
@@ -188,6 +287,8 @@ def assemble_coq_file_contents(
         suffix_strs.append(
             f"\n\n(* ----- {eval_dirs[i][NAME_IDX]} {result_str} proof -----\n {attempt_str} *)"
         )
+    if ground_truth:
+        suffix_strs.append(f"\n\n(* ----- Ground Truth proof -----\n {ground_truth} *)")
     return proof_prefix + "".join(suffix_strs)
 
 
