@@ -3,7 +3,6 @@ from typing import Any, Optional, Union
 from enum import Enum
 
 
-
 class SpecialToken(Enum):
     OPEN_COMMENT = 1
     CLOSE_COMMENT = 2
@@ -63,6 +62,26 @@ def lex(chars: list[str]) -> list[Token]:
             return [NormalChar(a)] + lex(rest)
         case []:
             return []
+
+def read_expression(chars: list[str]) -> tuple[ExprTok, list[str]]:
+    match chars:
+        case ["(", "*", *rest]:
+            comment_tok, rest = read_comment(rest)
+            comment_toks = [SpecialToken.OPEN_COMMENT, comment_tok, SpecialToken.CLOSE_COMMENT]
+            remaining_expr_tok, remaining_toks = read_expression(rest)
+            return ExprTok(comment_toks + remaining_expr_tok.expr), remaining_toks
+        case ["\\\"", *rest]:
+            remaining_expr_tok, remaining_toks = read_expression(rest)
+            return ExprTok(["\\\""] + remaining_expr_tok.expr), remaining_toks
+        case ["\"", *rest]:
+            str_tok, rest = read_str(rest)
+            str_toks = [SpecialToken.QUOTE, str_tok, SpecialToken.QUOTE]
+            remaining_expr_tok, remaining_toks = read_expression(rest)
+            return ExprTok(str_toks + remaining_expr_tok.expr), remaining_toks
+        case ["(", *rest]:
+            expr_tok, rest = read_expression(rest)
+            pass
+
 
 def read_comment(chars: list[str]) -> tuple[CommentTok, list[str]]:
     match chars:
