@@ -8,6 +8,8 @@ import random
 import shutil
 import time
 import traceback
+from threading import Thread
+from enum import Enum
 
 
 from coqlspclient.coq_file import CoqFile
@@ -95,6 +97,18 @@ class EvalSearchResult:
         assert match is not None
         (prefix,) = match.groups()
         return os.path.join(json_dirname, prefix.replace("-", "_"))
+
+
+class ThreadResult(Enum):
+    FOUND_PROOF = 1
+    NO_PROOF_FOUND = 2
+    ERROR = 3
+    EMPTY = 4
+
+
+class ThreadReturnObj:
+    def __init__(self, result: ThreadResult) -> None:
+        self.result = result
 
 
 # Need a proof
@@ -222,6 +236,39 @@ class Evaluator:
                 search_result = searcher.search()
         return search_result
 
+    def search_thread(
+        self,
+        orig_file: str,
+        proof_prefix: str,
+        hidden_file: str,
+        aux_hidden_file: str,
+        lm_example_conf: LmExampleConfig,
+        result_hole: ThreadReturnObj,
+    ) -> None:
+        try:
+            search_result = self.get_search_result(
+                orig_file,
+                proof_prefix,
+                hidden_file,
+                aux_hidden_file,
+                lm_example_conf,
+            )
+            eval_search_result = EvalSearchResult(
+                search_result, orig_file, proof_prefix
+            )
+            eval_search_result.search_result.search_tree.pretty_print(verbose=False)
+            eval_search_result.save(self.results_loc, self.file_tree_loc)
+            if search_result.found_proof():
+                result_hole.result = ThreadResult.FOUND_PROOF
+            else:
+                result_hole.result = ThreadResult.NO_PROOF_FOUND
+        except:
+            error_str = traceback.format_exc()
+            error_loc = os.path.join(self.results_loc, "errors.txt")
+            with open(error_loc, "a") as fout:
+                fout.write(error_str + "\n\n")
+            result_hole.result = ThreadResult.ERROR
+
     def evaluate(self) -> None:
         generator = self.proof_generator()
         num_proof_attempts = 0
@@ -231,28 +278,28 @@ class Evaluator:
         for orig_file, proof_prefix, hidden_file, aux_hidden_file in generator:
             if num_proof_attempts >= self.num_proofs:
                 break
-            try:
-                search_result = self.get_search_result(
+            # Note I don't need to use locks or anything yet since I'm joining right away.
+            thread_result = ThreadReturnObj(ThreadResult.EMPTY)
+            search_thread = Thread(
+                target=self.search_thread,
+                args=(
                     orig_file,
                     proof_prefix,
                     hidden_file,
                     aux_hidden_file,
                     lm_example_conf,
-                )
-                eval_search_result = EvalSearchResult(
-                    search_result, orig_file, proof_prefix
-                )
-                eval_search_result.search_result.search_tree.pretty_print(verbose=False)
-                eval_search_result.save(self.results_loc, self.file_tree_loc)
-                if search_result.found_proof():
+                    thread_result,
+                ),
+            )
+            search_thread.start()
+            search_thread.join(timeout=(self.timeout * 1.5 + 60))
+            match thread_result:
+                case ThreadResult.FOUND_PROOF:
                     num_correct_proofs += 1
-                num_proof_attempts += 1
-            except:
-                error_str = traceback.format_exc()
-                error_loc = os.path.join(self.results_loc, "errors.txt")
-                with open(error_loc, "a") as fout:
-                    fout.write(error_str + "\n\n")
-                num_errors += 1
+                case ThreadResult.ERROR | ThreadResult.EMPTY:
+                    num_errors += 1
+            num_proof_attempts += 1
+
             print(f"Correct Proofs: {num_correct_proofs}")
             print(f"Proof Attempts: {num_proof_attempts}")
             print(f"Num Errors: {num_errors}")

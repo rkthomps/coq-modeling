@@ -3,7 +3,11 @@ import unittest
 import json
 
 from model_deployment.proof_manager import get_fresh_path
-from model_deployment.node_score import NODE_SCORE_ALIASES, NodeScore, DepthFirstScore
+from model_deployment.node_score import (
+    NODE_SCORE_ALIASES,
+    NodeScore,
+    LastTacGreedyScore,
+)
 
 
 class NodeScoreTestCase(unittest.TestCase):

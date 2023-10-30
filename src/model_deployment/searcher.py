@@ -355,9 +355,10 @@ class SearchTreeManager:
                             proof_check_result.parsed_current_goals
                         )
 
-        for confirmed_next_candidate, confirmed_goals in self.__filter_next_candidates(
+        filtered_candidates = self.__filter_next_candidates(
             next_frontier_pool, next_frontier_goals
-        ):
+        )
+        for confirmed_next_candidate, confirmed_goals in filtered_candidates:
             heapq.heappush(self.frontier, confirmed_next_candidate)
             self.seen_goals.append(confirmed_goals)
             self.seen_goals_nodes.append(confirmed_next_candidate)
