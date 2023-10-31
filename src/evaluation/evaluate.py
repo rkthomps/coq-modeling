@@ -18,7 +18,8 @@ from coqlspclient.proof_file import ProofFile
 from tactic_gen.lm_example import LmExample, LMEXAMPLE_ALIASES
 from data_management.split_raw_data import SPLITS, assignment_shape_expected
 from data_management.create_lm_dataset import LmExampleConfig
-from model_deployment.searcher import SearchTreeManager, ProofSearchTree, SearchResult
+from model_deployment.search_tree import ProofSearchTree
+from model_deployment.searcher import SearchTreeManager, SearchResult
 from model_deployment.proof_manager import (
     ProofManager,
     SEARCH_TOKEN,
@@ -293,7 +294,7 @@ class Evaluator:
             )
             search_thread.start()
             search_thread.join(timeout=(self.timeout * 1.5 + 60))
-            match thread_result:
+            match thread_result.result:
                 case ThreadResult.FOUND_PROOF:
                     num_correct_proofs += 1
                 case ThreadResult.ERROR | ThreadResult.EMPTY:
