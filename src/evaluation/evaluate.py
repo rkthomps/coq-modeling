@@ -126,7 +126,6 @@ class Evaluator:
         max_leaf_expansions: int,
         model_wrapper: ModelWrapper,
         node_score_type: type[NodeScore],
-        example_type: type[LmExample],
         coq_file_timeout: int = 60,
     ) -> None:
         assert type(assignment_loc) == str
@@ -138,7 +137,6 @@ class Evaluator:
         assert type(branching_factor) == int
         assert isinstance(model_wrapper, ModelWrapper)
         assert type(node_score_type) == type
-        assert type(example_type) == type
         self.assignments_loc = assignment_loc
         self.results_loc = results_loc
         self.file_tree_loc = file_tree_loc
@@ -148,7 +146,6 @@ class Evaluator:
         self.branching_factor = branching_factor
         self.max_leaf_expansions = max_leaf_expansions
         self.model_wrapper = model_wrapper
-        self.example_type = example_type
         self.node_score_type = node_score_type
         self.coq_file_timeout = coq_file_timeout
 
@@ -185,8 +182,6 @@ class Evaluator:
 
         # random.shuffle(all_proof_prefixes)
         for file, proof_prefix in all_proof_prefixes:
-            file_basename = os.path.basename(file)
-            file_dirname = os.path.dirname(file)
             hidden_file_path, aux_hidden_file_path = hidden_files_from_prefix(
                 file, proof_prefix
             )
@@ -299,6 +294,8 @@ class Evaluator:
                     num_correct_proofs += 1
                 case ThreadResult.ERROR | ThreadResult.EMPTY:
                     num_errors += 1
+                case _:
+                    pass
             num_proof_attempts += 1
 
             print(f"Correct Proofs: {num_correct_proofs}")
@@ -323,7 +320,6 @@ def evaluate(evaluate_conf_loc: str) -> None:
     model_wrapper_type = MODEL_WRAPPER_ALIASES[model_wrapper_alias]
     model_wrapper = model_wrapper_type.from_json(evaluate_conf[model_wrapper_alias])
     node_score_type = NODE_SCORE_ALIASES[evaluate_conf["node_score"]]
-    exaple_type = LMEXAMPLE_ALIASES[evaluate_conf["example_type"]]
 
     if os.path.exists(results_loc):
         print(f"{results_loc} exists.", file=sys.stderr)
@@ -344,7 +340,6 @@ def evaluate(evaluate_conf_loc: str) -> None:
         max_leaf_expandsions,
         model_wrapper,
         node_score_type,
-        exaple_type,
     )
 
     evaluator.evaluate()

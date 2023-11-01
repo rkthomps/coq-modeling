@@ -4,6 +4,7 @@ import sys, os
 import argparse
 import heapq
 import json
+import csv
 from tqdm import tqdm
 
 from data_management.dataset_file import DatasetFile, FocusedStep, data_shape_expected
@@ -20,6 +21,9 @@ class TacticPairEncoding:
             assert type(v) == int
         self.vocab = vocab
 
+    def contains(self, tac_list: list[str]) -> bool:
+        return self.merge_steps(tac_list) in self.vocab
+
     def n_most_frequent_k_tac_seqs(self, n: int, k: int) -> list[tuple[str, int]]:
         tacs_of_k: list[tuple[int, str]] = []
         for tac, freq in self.vocab.items():
@@ -30,18 +34,41 @@ class TacticPairEncoding:
                 heapq.heappop(tacs_of_k)
         return [(v2, v1) for v1, v2 in heapq.nlargest(n, tacs_of_k)]
 
-    def print_report(self, n: int = 10) -> None:
+    def get_report(self, n: int) -> list[tuple[int, list[tuple[str, int]]]]:
         cur_len = 1
         tacs_at_k = self.n_most_frequent_k_tac_seqs(n, cur_len)
 
+        outer_list: list[tuple[int, list[tuple[str, int]]]] = []
+        while len(tacs_at_k) > 0:
+            inner_list: list[tuple[str, int]] = []
+            for tac_str, freq in tacs_at_k:
+                inner_list.append((tac_str, freq))
+            outer_list.append((cur_len, inner_list))
+            cur_len += 1
+            tacs_at_k = self.n_most_frequent_k_tac_seqs(n, cur_len)
+        return outer_list
+
+    def print_report(self, n: int = 10) -> None:
         def format_num(n: int) -> str:
             return "{:5d}".format(n)
 
-        while len(tacs_at_k) > 0:
+        for cur_len, tac_list in self.get_report(n):
             print(f"{n} Most Frequent Tactic Sequences of len {cur_len}:")
-            print("\n".join([(f"\t{format_num(v)} {s}") for s, v in tacs_at_k]))
-            cur_len += 1
-            tacs_at_k = self.n_most_frequent_k_tac_seqs(n, cur_len)
+            for tac_str, tac_freq in tac_list:
+                print(f"\t{format_num(tac_freq)} {tac_str}")
+            print()
+
+    def save_csv_reports(self, out_loc: str, n: int = 10) -> None:
+        report_obj = self.get_report(n)
+        if os.path.exists(out_loc):
+            raise ValueError(f"{out_loc} exists.")
+        with open(out_loc, "w") as fout:
+            writer = csv.writer(fout)
+            for k, tac_list in report_obj:
+                writer.writerow([f"{k}-lists of Tactics", "Frequency", "Tactic List"])
+                for tac_str, tac_freq in tac_list:
+                    writer.writerow(["", tac_freq] + self.__split_steps(tac_str))
+                writer.writerow([])
 
     def to_json(self) -> Any:
         return {"vocab": self.vocab}
@@ -54,8 +81,12 @@ class TacticPairEncoding:
 
     @classmethod
     def from_json(cls, json_data: Any) -> TacticPairEncoding:
-        vocab = json_data["vocab"]
-        return cls(vocab)
+        if "vocab" in json_data:
+            vocab = json_data["vocab"]
+            return cls(vocab)
+        if "path" in json_data:
+            return cls.load(json_data["path"])
+        raise ValueError('Expected "vocab" or "path" in json data.')
 
     @classmethod
     def load(cls, path: str) -> TacticPairEncoding:
@@ -63,9 +94,13 @@ class TacticPairEncoding:
             json_data = json.load(fin)
             return cls.from_json(json_data)
 
+    @classmethod
+    def __merge_step_pair(cls, step1: str, step2: str) -> str:
+        return cls.merge_steps([step1, step2])
+
     @staticmethod
-    def __merge_steps(step1: str, step2: str) -> str:
-        return f"{step1}{STEP_DELIM}{step2}"
+    def merge_steps(step_list: list[str]) -> str:
+        return STEP_DELIM.join(step_list)
 
     @staticmethod
     def __split_steps(steps: str) -> list[str]:
@@ -98,7 +133,7 @@ class TacticPairEncoding:
                 if (step_list[i], step_list[i + 1]) == pair:
                     step_list.pop(i)
                     step_list.pop(i)
-                    step_list.insert(i, cls.__merge_steps(*pair))
+                    step_list.insert(i, cls.__merge_step_pair(*pair))
                 i += 1
 
     @staticmethod
@@ -131,7 +166,7 @@ class TacticPairEncoding:
                     break
                 case (el1, el2), freq:
                     # print(cls.__merge_steps(el1, el2))
-                    step_vocab[cls.__merge_steps(el1, el2)] = freq
+                    step_vocab[cls.__merge_step_pair(el1, el2)] = freq
                     cls.__update_step_lists(step_lists, (el1, el2))
 
         return cls(step_vocab)

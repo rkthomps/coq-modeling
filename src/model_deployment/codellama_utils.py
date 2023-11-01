@@ -16,54 +16,6 @@ from torch.nn import functional as F
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-class PeriodStoppingCriteria(StoppingCriteria):
-    def __init__(self, stop_tok_ids: list[int]) -> None:
-        self.stop_tok_ids = stop_tok_ids
-        self.num_input_periods = torch.tensor(0).to(device)
-
-    def set_num_periods(self, input_ids: LongTensor) -> None:
-        self.num_input_periods = self.get_num_periods(input_ids)[0]
-
-    def get_num_periods(self, input_ids: LongTensor) -> torch.Tensor:
-        start_shape = (input_ids.shape[0],)
-        sum_input_periods = torch.full(start_shape, fill_value=0).to(device)
-        for stop_tok_id in self.stop_tok_ids:
-            sum_input_periods += (input_ids == stop_tok_id).sum(axis=1)
-        return sum_input_periods
-
-    def __call__(
-        self, input_ids: LongTensor, scores: FloatTensor, **kwargs: Any
-    ) -> bool:
-        return bool((self.get_num_periods(input_ids) > self.num_input_periods).all())
-
-    @classmethod
-    def from_tokenizer(cls, tokenizer: CodeLlamaTokenizer) -> PeriodStoppingCriteria:
-        period_tok_ids: list[int] = []
-        for token, token_id in tokenizer.get_vocab().items():
-            if "." in token:
-                period_tok_ids.append(token_id)
-        return cls(period_tok_ids)
-
-
-def get_sequence_score(
-    input_sequence: torch.LongTensor,
-    whole_sequence: torch.LongTensor,
-    scores: tuple[torch.FloatTensor],
-    stop_criteria: PeriodStoppingCriteria,
-) -> float:
-    assert len(scores) == int(whole_sequence.shape[0] - input_sequence.shape[0])
-    sequence_score = 0
-    start_idx = whole_sequence.shape[0] - len(scores)
-    stop_criteria.set_num_periods(input_sequence[None, :])
-    for i in range(len(scores)):
-        index = whole_sequence[start_idx + i]
-        score_at_i = scores[i][0, index] - torch.logsumexp(scores[i][0], axis=0)
-        sequence_score += score_at_i
-        if stop_criteria(whole_sequence[None, : (start_idx + i + 1)], scores):
-            break
-    return float(sequence_score)
-
-
 class SampleResult:
     def __init__(
         self, tactics: list[str], scores: list[float], num_tokens: list[int]
@@ -88,45 +40,6 @@ class SampleResult:
         scores = json_data["scores"]
         num_tokens = json_data["num_tokens"]
         return cls(tactics, scores, num_tokens)
-
-
-def do_sample(
-    input_ids: torch.LongTensor,
-    model: LlamaForCausalLM,
-    tokenizer: CodeLlamaTokenizer,
-    n_recs: int,
-    period_stopping: PeriodStoppingCriteria,
-    temperature: float = 0.2,
-) -> SampleResult:
-    period_stopping.set_num_periods(input_ids)
-    stopping_list = StoppingCriteriaList([period_stopping])
-    tactics: list[str] = []
-    scores: list[float] = []
-    num_tokens: list[int] = []
-    for i in range(n_recs):
-        output = model.generate(
-            input_ids,
-            temperature=temperature,
-            do_sample=True,
-            max_new_tokens=32,
-            output_scores=True,
-            return_dict_in_generate=True,
-            stopping_criteria=stopping_list,
-        )
-        assert type(output) == SampleDecoderOnlyOutput
-        output_sequence = output.sequences[0]
-        input_sequence = input_ids[0]
-        output_length = len(output.scores)
-        tactic = tokenizer.decode(
-            output_sequence[len(input_sequence) :], skip_special_tokens=True
-        )
-        score = get_sequence_score(
-            input_sequence, output_sequence, output.scores, period_stopping
-        )
-        tactics.append(tactic)
-        scores.append(score)
-        num_tokens.append(output_length)
-    return SampleResult(tactics, scores, num_tokens)
 
 
 past_type = tuple[tuple[torch.LongTensor, torch.LongTensor]]
@@ -169,13 +82,39 @@ class CompletedCandidate:
         return float(self.score) <= float(other.score)
 
 
+def fuzzy_starts_with(s1: str, s2: str) -> bool:
+    """some nonempty prefix of s1 matches some nonempty suffix of s2"""
+    if len(s2) == 0:
+        return False
+    if s1.startswith(s2):
+        return True
+    return fuzzy_starts_with(s1, s2[1:])
+
+
+def should_stop_now(
+    input_ids: torch.Tensor,
+    tokenizer: CodeLlamaTokenizer,
+    stop_strings: list[str],
+) -> bool:
+    """input ids is a one dimensional tensor"""
+    cur_candidate = tokenizer.decode(input_ids[-1:])
+    any_matched = True
+    while any_matched:
+        any_matched = False
+        for stop_string in stop_strings:
+            if stop_string in cur_candidate:
+                return True
+            any_matched |= fuzzy_starts_with(cur_candidate, stop_string)
+    return False
+
+
 def do_beam_sample(
     input_ids: torch.LongTensor,
     model: LlamaForCausalLM,
     tokenizer: CodeLlamaTokenizer,
     beam_width: int,
     n_recs: int,
-    period_stopping: PeriodStoppingCriteria,
+    stop_strings: list[str],
     batch_size: int = 2,
     max_seq_len: int = 512,
 ) -> SampleResult:
@@ -229,8 +168,8 @@ def do_beam_sample(
             next_scores_list.append(flat_next_scores)
             next_input_id_list.append(next_input_ids)
 
-        all_next_scores = torch.cat(next_scores_list, dim=0)  # B x (B * n)
-        all_next_inputs = torch.cat(next_input_id_list, dim=0)  # B x (B * n)
+        all_next_scores = torch.cat(next_scores_list, dim=0)  # (B * n)
+        all_next_inputs = torch.cat(next_input_id_list, dim=0)  # (B * n) x S
 
         ordered_next_scores, ordered_indices = torch.sort(
             all_next_scores, descending=True
@@ -240,7 +179,7 @@ def do_beam_sample(
         for i, token_ids in enumerate(ordered_next_token_ids):
             if (
                 token_ids[-1] == tokenizer.eos_token_id
-                or token_ids[-1] in period_stopping.stop_tok_ids
+                or should_stop_now(token_ids, tokenizer, stop_strings) 
             ):
                 new_candidate = CompletedCandidate(token_ids, ordered_next_scores[i])
                 heapq.heappush(completed_heap, new_candidate)

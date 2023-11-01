@@ -183,6 +183,7 @@ class ProofManager:
         self.file_path = file_path
         self.example_type = lm_example_config.format_type
         self.premise_wrapper = lm_example_config.premise_wrapper
+        self.n_step_sampler = lm_example_config.n_step_sampler
         self.__search_dir_path = get_fresh_path(file_dir, ".proof-search")
         self.aux_file_path = aux_file_path
         with open(self.aux_file_path, "r") as fin:
@@ -343,9 +344,8 @@ class ProofManager:
         dataset_obj = self.get_dataset_file(
             valid_steps, target_combined_steps, partial_proof_suffix
         )
-        placeholder_sampler = None
         examples = self.example_type.from_dataset_file(
-            dataset_obj, self.premise_wrapper, placeholder_sampler, partial_proof_suffix
+            dataset_obj, self.premise_wrapper, self.n_step_sampler, partial_proof_suffix
         )
         example = examples[-1]
         return example

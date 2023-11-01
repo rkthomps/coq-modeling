@@ -18,7 +18,12 @@ app = Flask(__name__)
 
 PREMISE_WRAPPER: Optional[LocalPremiseModelWrapper] = None
 
-PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
+PRETRAINED_NAME = (
+    "/home/ubuntu/coq-modeling/models/codellama-7b-n-tac-unif/checkpoint-36600"
+)
+
+# PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
+
 # PRETRAINED_NAME = (
 #     "/home/ubuntu/coq-modeling/models/codellama-7b-premise/checkpoint-20500"
 # )
@@ -29,6 +34,7 @@ PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoin
 # )
 
 model_wrapper = CodeLLamaLocalWrapper.from_pretrained(PRETRAINED_NAME, PREMISE_WRAPPER)
+print(model_wrapper.lm_example_config.n_step_sampler)
 print("Batch size: ", model_wrapper.batch_size)
 
 

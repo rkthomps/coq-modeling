@@ -12,11 +12,9 @@ from transformers import (
     LlamaForCausalLM,
     CodeLlamaTokenizer,
     BitsAndBytesConfig,
-    StoppingCriteriaList,
 )
-from transformers.generation.utils import SampleDecoderOnlyOutput
-import torch
 
+import torch
 
 from data_management.create_lm_dataset import LmExampleConfig, DATA_CONF_NAME
 from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
@@ -32,11 +30,7 @@ from tactic_gen.train_codellama import (
     get_tokenizer,
     collate_input,
 )
-from model_deployment.node_score import NodeScore, BranchNormalizedScore
 from model_deployment.codellama_utils import (
-    SampleResult,
-    PeriodStoppingCriteria,
-    get_sequence_score,
     do_beam_sample,
 )
 
@@ -96,15 +90,18 @@ class CodeLLamaLocalWrapper(ModelWrapper):
         model: LlamaForCausalLM,
         tokenizer: CodeLlamaTokenizer,
         lm_example_conf: LmExampleConfig,
+        stop_strings: list[str],
         collate_fn: Callable[[str], str],
         batch_size: int = 2,
     ) -> None:
         super(CodeLLamaLocalWrapper, self).__init__(lm_example_conf)
         assert type(model) == LlamaForCausalLM
         assert type(tokenizer) == CodeLlamaTokenizer
+        assert type(stop_strings) == list
+        assert all([type(s) == str for s in stop_strings])
         self.model = model
         self.tokenizer = tokenizer
-        self.stopping_criteria = PeriodStoppingCriteria.from_tokenizer(self.tokenizer)
+        self.stop_strings = stop_strings
         self.collate_fn = collate_fn
         self.batch_size = batch_size
 
@@ -137,39 +134,6 @@ class CodeLLamaLocalWrapper(ModelWrapper):
             final_num_tokens.append(num_tokens)
         return ModelResult(final_tactics, final_scores, final_num_tokens)
 
-    def do_sample(
-        self, input_ids: torch.LongTensor, n: int, temperature: float = 0.2
-    ) -> SampleResult:
-        self.stopping_criteria.set_num_periods(input_ids)
-        stopping_list = StoppingCriteriaList([self.stopping_criteria])
-        tactics: list[str] = []
-        scores: list[float] = []
-        num_tokens: list[int] = []
-        for i in range(n):
-            output = self.model.generate(
-                input_ids,
-                temperature=temperature,
-                do_sample=True,
-                max_new_tokens=32,
-                output_scores=True,
-                return_dict_in_generate=True,
-                stopping_criteria=stopping_list,
-            )
-            assert type(output) == SampleDecoderOnlyOutput
-            output_sequence = output.sequences[0]
-            input_sequence = input_ids[0]
-            output_length = len(output.scores)
-            tactic = self.tokenizer.decode(
-                output_sequence[len(input_sequence) :], skip_special_tokens=True
-            )
-            score = get_sequence_score(
-                input_sequence, output_sequence, output.scores, self.stopping_criteria
-            )
-            tactics.append(tactic)
-            scores.append(score)
-            num_tokens.append(output_length)
-        return SampleResult(tactics, scores, num_tokens)
-
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
         collated_input = self.collate_fn(example.input)
         input_ids = self.tokenizer(collated_input, return_tensors="pt")["input_ids"].to(
@@ -186,7 +150,7 @@ class CodeLLamaLocalWrapper(ModelWrapper):
             self.tokenizer,
             beam_width,
             n_recs,
-            self.stopping_criteria,
+            self.stop_strings,
             batch_size=self.batch_size,
         )
         print(sample_result.tactics)
@@ -220,10 +184,12 @@ class CodeLLamaLocalWrapper(ModelWrapper):
                 BaseCodeLLamaLmExample, None
             )
         max_input_len = 448
-        collate_fn = lambda x: collate_input(
-            tokenizer, max_input_len, x, response_template=""
-        )
-        return cls(model, tokenizer, lm_example_conf, collate_fn)
+
+        def collate_fn(x: str) -> str:
+            return collate_input(tokenizer, max_input_len, x, response_template="")
+
+        stop_strings = ["."]
+        return cls(model, tokenizer, lm_example_conf, stop_strings, collate_fn)
 
     @classmethod
     def from_checkpoint(cls, checkpoint_loc: str) -> CodeLLamaLocalWrapper:
@@ -240,8 +206,12 @@ class CodeLLamaLocalWrapper(ModelWrapper):
         tokenizer = get_tokenizer(model_conf)
         tokenizer.add_eos_token = False
         max_input_len = model_conf["max_input_len"]
-        collate_fn = lambda x: collate_input(tokenizer, max_input_len, x)
-        return cls(model, tokenizer, lm_example_conf, collate_fn)
+
+        def collate_fn(x: str) -> str:
+            return collate_input(tokenizer, max_input_len, x)
+
+        stop_strings: list[str] = []
+        return cls(model, tokenizer, lm_example_conf, stop_strings, collate_fn)
 
     @classmethod
     def from_pretrained(
@@ -300,6 +270,7 @@ class CodeLLamaServer(ModelWrapper):
         format_response = requests.post(format_endpoint, {})
         format_data = json.loads(format_response.content)
         format_config = LmExampleConfig.from_json(format_data)
+        print(format_config.n_step_sampler)
         return cls(server_url, format_config)
 
     @classmethod

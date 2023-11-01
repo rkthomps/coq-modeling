@@ -142,10 +142,14 @@ class DepthFirstScore(NodeScore):
     def __ord_key(self) -> tuple[int, int | float]:
         return (self.proof_num_tactics, self.sequence_score)
 
-    def __le__(self, other: DepthFirstScore) -> bool:
+    def __le__(self, other: NodeScore) -> bool:
+        if not isinstance(other, DepthFirstScore):
+            raise ValueError("Can only compare Depthfirst score with Depthfirst score.")
         return self.__ord_key() <= other.__ord_key()
 
-    def __lt__(self, other: DepthFirstScore) -> bool:
+    def __lt__(self, other: NodeScore) -> bool:
+        if not isinstance(other, DepthFirstScore):
+            raise ValueError("Can only compare Depthfirst score with Depthfirst score.")
         return self.__ord_key() < other.__ord_key()
 
     def compute(self) -> float:
@@ -197,11 +201,15 @@ class BreadthFirstScore(NodeScore):
     def __ord_key(self) -> tuple[int, int | float]:
         return (-1 * self.proof_num_tactics, self.sequence_score)
 
-    def __le__(self, other: BreadthFirstScore) -> bool:
+    def __le__(self, other: NodeScore) -> bool:
+        if not isinstance(other, BreadthFirstScore):
+            raise ValueError(f"Other nodescore must be {self.get_alias()}")
         """We prefer nodes with lower breadth unlike other scores"""
         return self.__ord_key() <= other.__ord_key()
 
-    def __lt__(self, other: BreadthFirstScore) -> bool:
+    def __lt__(self, other: NodeScore) -> bool:
+        if not isinstance(other, BreadthFirstScore):
+            raise ValueError(f"Other nodescore must be {self.get_alias()}")
         return self.__ord_key() < other.__ord_key()
 
     def compute(self) -> float:

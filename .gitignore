@@ -4,6 +4,7 @@ data
 models
 preprocessing
 evals
+reports
 
 # Examples
 examples

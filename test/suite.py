@@ -2,6 +2,7 @@ import unittest
 from test_model_deployment.test_goal_comparer import GoalComparerTestCase
 from test_model_deployment.test_node_score import NodeScoreTestCase
 from test_tactic_gen.test_step_parser import StepParserCase
+from test_tactic_gen.test_n_step_sampler import NStepSamplerCase
 
 
 def suite() -> unittest.TestSuite:
@@ -11,6 +12,7 @@ def suite() -> unittest.TestSuite:
         GoalComparerTestCase,
         NodeScoreTestCase,
         StepParserCase,
+        NStepSamplerCase,
     ]
 
     for case in cases:
