@@ -10,7 +10,9 @@ Language models for Coq based on data collected from the coq lsp.
       - `opam init`
       - `eval $(opam env --switch=default)`
     - Install coq-lsp:
-      - `opam install coq-lsp` 
+      - `opam install coq-lsp`
+    - _If training:_
+      - You must have a cuda compiler. Determine how to install `nvcc` on your machine. 
 - **Install Project:** Change to project directory and run `python3 -m pip install --editable .`
 
 ## Dowloading and Partitioning Data
