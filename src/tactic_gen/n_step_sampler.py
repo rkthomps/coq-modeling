@@ -11,7 +11,7 @@ class NStepSampler:
     def __init__(self) -> None:
         pass
 
-    def sample_steps(self, steps: list[FocusedStep]) -> list[list[FocusedStep]]:
+    def sample_steps(self, steps: list[FocusedStep]) -> list[FocusedStep]:
         raise NotImplementedError
 
     def to_json(self) -> Any:
@@ -33,12 +33,10 @@ class NStepUniformSampler(NStepSampler):
         super(NStepUniformSampler, self).__init__()
         self.samples_per_step = samples_per_step
 
-    def sample_steps(self, steps: list[FocusedStep]) -> list[list[FocusedStep]]:
+    def sample_steps(self, steps: list[FocusedStep]) -> list[FocusedStep]:
         assert len(steps) >= 1
-        sample_population = list(range(1, len(steps) + 1))
-        num_to_sample = min(len(steps), self.samples_per_step)
-        stop_indices = random.sample(sample_population, num_to_sample)
-        return [steps[:stop] for stop in stop_indices]
+        n_steps = random.randint(1, len(steps))
+        return steps[:n_steps]
 
     def to_json(self) -> Any:
         parent_json_repr = super(NStepUniformSampler, self).to_json()
@@ -70,20 +68,15 @@ class NStepTPESampler(NStepSampler):
                 out_texts.append("<UNPARSABLE>.")
         return out_texts
 
-    def sample_steps(self, steps: list[FocusedStep]) -> list[list[FocusedStep]]:
-        work_list = steps.copy()
-        steps_list: list[list[FocusedStep]] = []
-        while len(work_list) > 0:
-            next_steps = [work_list.pop(0)]
-            while len(work_list) > 0:
-                candidate_steps = next_steps + [work_list[0]]
-                candidate_strs = self.__get_step_texts(candidate_steps)
-                if not self.tpe.contains(candidate_strs):
-                    break
-                next_steps = candidate_steps
-                work_list.pop(0)
-            steps_list.append(next_steps)
-        return steps_list
+    def sample_steps(self, steps: list[FocusedStep]) -> list[FocusedStep]:
+        ret_steps: list[FocusedStep] = []
+        for step in steps:
+            candidate_steps = ret_steps + [step]
+            candidate_strs = self.__get_step_texts(candidate_steps)
+            if not self.tpe.contains(candidate_strs):
+                break
+            ret_steps = candidate_steps
+        return ret_steps
 
     def to_json(self) -> Any:
         parent_json_repr = super(NStepTPESampler, self).to_json()

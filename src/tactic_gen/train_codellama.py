@@ -1,7 +1,8 @@
-from typing import Optional, Iterable, Any
+from typing import Optional, Iterable, Generator, Any
 import sys, os
 import shutil
 import re
+import time
 import argparse
 import functools
 
@@ -15,6 +16,8 @@ from transformers import (
     CodeLlamaTokenizer,
     BitsAndBytesConfig,
     TrainingArguments,
+    HfArgumentParser,
+    BatchEncoding,
 )
 import torch
 from datasets import Dataset
@@ -43,9 +46,13 @@ def load_config(path: str) -> dict[str, Any]:
 def make_output_dir(conf: dict[str, Any]) -> None:
     output_dir = __get_required_arg("output_dir", conf)
     if os.path.exists(output_dir):
-        print(f"{output_dir} already exists.")
-        exit(1)
-    os.makedirs(output_dir)
+        time_since_created = time.time() - os.path.getctime(output_dir)
+        two_mins = 120
+        if time_since_created > two_mins:
+            print(f"{output_dir} already exists.")
+            exit(1)
+    else:
+        os.makedirs(output_dir)
 
 
 TRAINING_CONF_NAME = "training_conf.yaml"
@@ -73,7 +80,9 @@ def __get_optional_arg(key: str, conf: dict[str, Any], default: Any) -> Any:
     return conf[key]
 
 
-def get_training_args(conf: dict[str, Any]) -> TrainingArguments:
+def get_training_args(
+    conf: dict[str, Any], local_rank: Optional[int]
+) -> TrainingArguments:
     return TrainingArguments(
         output_dir=__get_required_arg("output_dir", conf),
         per_device_train_batch_size=__get_required_arg(
@@ -94,6 +103,8 @@ def get_training_args(conf: dict[str, Any]) -> TrainingArguments:
             "per_device_eval_batch_size", conf
         ),
         eval_accumulation_steps=__get_optional_arg("eval_accumulation_steps", conf, 1),
+        deepspeed=__get_required_arg("deepspeed", conf),
+        local_rank=(local_rank if local_rank else -1),
     )
 
 
@@ -118,14 +129,25 @@ def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
     return model
 
 
-def dataset_gen(dataset_path: str, split: str, limit: int) -> Iterable[dict[str, str]]:
+def dataset_gen(
+    dataset_path: str,
+    split: str,
+    limit: int,
+    max_input_len: int,
+    max_seq_len: int,
+    tokenizer: CodeLlamaTokenizer,
+) -> Generator[dict[str, str], None, None]:
     file_path = split_file_path(dataset_path, split)
     with jsonlines.open(file_path, "r") as fin:
         num_examples = 0
         for obj in fin:
             if limit > 0 and num_examples >= limit:
                 break
-            yield obj
+            new_in, new_out = collate_example(
+                tokenizer, max_input_len, max_seq_len, obj["input"], obj["output"]
+            )
+            new_str = f"{new_in}{new_out}"
+            yield {"text": new_str}
             num_examples += 1
 
 
@@ -134,50 +156,46 @@ RESPONSE_TEMPLATE = "<TACTIC>"
 NEWLINE_RESPONSE_TEMPLATE = f"\n{RESPONSE_TEMPLATE}\n"
 
 
-def collate_input(
+def collate_example(
     tokenizer: CodeLlamaTokenizer,
     max_input_len: int,
+    max_seq_len: int,
     input: str,
+    output: str,
     response_template: str = NEWLINE_RESPONSE_TEMPLATE,
-) -> str:
+) -> tuple[str, str]:
     whole_input_string = f"{input}{response_template}"
-    input_suffix = tokenizer.tokenize(whole_input_string)[(-1 * max_input_len) :]
-    ret_str = tokenizer.convert_tokens_to_string(input_suffix)
-    assert type(ret_str) == str
-    return ret_str
+    input_suffix = tokenizer.encode(whole_input_string)[(-1 * max_input_len) :]
+    final_input_str = tokenizer.decode(input_suffix, skip_special_tokens=True)
+    remaining_toks = max_seq_len - len(input_suffix)
+    output_prefix = tokenizer.encode(output)[:remaining_toks]
+    final_output_str = tokenizer.decode(output_prefix)
+    return final_input_str, final_output_str
 
 
-def formatting_examples_func(
-    examples: dict[str, list[str]], **kwargs: Any
-) -> list[str]:
-    """NOTE: THE TYPE ANNOTATION FOR EXAMPLES MAY NOT BE EXACTLY RIGHT BUT
-    MATCHES MY MENTAL MODEL OF THE DATA STRUCTURE"""
-    assert "tokenizer" in kwargs
-    assert "max_input_len" in kwargs
-    tokenizer = kwargs["tokenizer"]
-    max_input_len = kwargs["max_input_len"]
-    output_strs: list[str] = []
-    for i in range(len(examples["input"])):
-        example_in = examples["input"][i]
-        example_out = examples["output"][i]
-        collated_input = collate_input(tokenizer, max_input_len, example_in)
-        collated_str = f"{collated_input}{example_out}"
-        output_strs.append(collated_str)
-    return output_strs
-
-
-def get_datasets(conf: dict[str, Any]) -> tuple[Dataset, Dataset]:
+def get_datasets(
+    conf: dict[str, Any],
+    tokenizer: CodeLlamaTokenizer,
+    max_input_len: int,
+    max_seq_len: int,
+) -> tuple[Dataset, Dataset]:
     data_path = __get_required_arg("data_path", conf)
     num_eval_examples = __get_optional_arg("num_eval_examples", conf, -1)
     train_kwargs = {
         "dataset_path": data_path,
         "split": TRAIN_NAME,
         "limit": -1,
+        "tokenizer": tokenizer,
+        "max_input_len": max_input_len,
+        "max_seq_len": max_seq_len,
     }
     val_kwargs = {
         "dataset_path": data_path,
         "split": VAL_NAME,
         "limit": num_eval_examples,
+        "tokenizer": tokenizer,
+        "max_input_len": max_input_len,
+        "max_seq_len": max_seq_len,
     }
     train_dataset = Dataset.from_generator(dataset_gen, gen_kwargs=train_kwargs)
     val_dataset = Dataset.from_generator(dataset_gen, gen_kwargs=val_kwargs)
@@ -198,18 +216,19 @@ def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
 
     tokenizer.pad_token = pad_token
     tokenizer.pad_token_id = encoded_ids[1]
-    tokenizer.padding_side = "right"
-    tokenizer.truncation_side = "right"
-    tokenizer.model_max_length = seq_len
+
+    # tokenizer.padding_side = "right"
+    # tokenizer.truncation_side = "right"
+    # tokenizer.model_max_length = seq_len
     return tokenizer
 
 
-def get_trainer(conf: dict[str, Any]) -> SFTTrainer:
+def get_trainer(conf: dict[str, Any], local_rank: Optional[int]) -> SFTTrainer:
     max_seq_len = __get_required_arg("max_seq_len", conf)
     max_input_len = __get_required_arg("max_input_len", conf)
 
     print("\n\nBuilding Training Config...")
-    training_args = get_training_args(conf)
+    training_args = get_training_args(conf, local_rank)
     print("\n\nRetrieving Model...")
     model = get_model(conf)
     print("\n\nRetrieving Tokenizer...")
@@ -217,15 +236,13 @@ def get_trainer(conf: dict[str, Any]) -> SFTTrainer:
     peft_config = get_peft_conf(conf)
 
     print("\n\nConstructing Dataset...")
-    train_dataset, val_dataset = get_datasets(conf)
+    train_dataset, val_dataset = get_datasets(
+        conf, tokenizer, max_input_len, max_seq_len
+    )
 
     response_template_ids = tokenizer.encode(NEWLINE_RESPONSE_TEMPLATE)[2:-1]
     collator = DataCollatorForCompletionOnlyLM(
         response_template_ids, tokenizer=tokenizer
-    )
-
-    formatting_func = functools.partial(
-        formatting_examples_func, tokenizer=tokenizer, max_input_len=max_input_len
     )
 
     print("\n\nBuilding Trainer...")
@@ -235,9 +252,9 @@ def get_trainer(conf: dict[str, Any]) -> SFTTrainer:
         max_seq_length=max_seq_len,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        formatting_func=formatting_func,
         data_collator=collator,
         peft_config=peft_config,
+        dataset_text_field="text",
         tokenizer=tokenizer,
     )
 
@@ -246,11 +263,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train code llama by providing a .yaml config file. As an example, see src/tactic_gen/confs/basic_train.yaml"
     )
+    print(f"<ARGV>{sys.argv}</ARGV")
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="local rank passed from distributed launcher",
+    )
     parser.add_argument("yaml_config", help="yaml config file to use for training.")
     args = parser.parse_args(sys.argv[1:])
     conf = load_config(args.yaml_config)
     make_output_dir(conf)
-    trainer = get_trainer(conf)
+    trainer = get_trainer(conf, args.local_rank)
     train_from_checkpoint = "checkpoint_name" in conf
     if train_from_checkpoint:
         checkpoint_name = conf["checkpoint_name"]

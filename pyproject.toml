@@ -30,6 +30,7 @@ dependencies = [
     "types-PyYAML",
     "types-requests",
     "black",
+    "deepspeed",
 ]
  
 [tool.setuptools.packages.find]

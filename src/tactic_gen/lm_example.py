@@ -166,7 +166,7 @@ class PremiseLmExample(LmExample):
         cls,
         dataset_file: DatasetFile,
         premise_model_wrapper: Optional[LocalPremiseModelWrapper],
-        nstep_sampler: Optional[NStepSampler],
+        n_step_sampler: Optional[NStepSampler],
         partial_proof_suffix: Optional[str] = None,
     ) -> list[LmExample]:
         assert premise_model_wrapper is not None
@@ -193,22 +193,19 @@ class AutoNTacticLmExample(LmExample):
         super(AutoNTacticLmExample, self).__init__(input, output)
 
     @classmethod
-    def examples_from_step(
+    def example_from_step(
         cls,
         step_idx: int,
         proof: Proof,
         n_step_sampler: NStepSampler,
         partial_proof_suffix: Optional[str],
-    ) -> list[LmExample]:
+    ) -> LmExample:
         example_input = BasicLmExample.input_from_step(
             proof.steps[step_idx], proof, partial_proof_suffix
         )
-        output_step_lists = n_step_sampler.sample_steps(proof.steps[step_idx:])
-        resulting_examples: list[LmExample] = []
-        for output_step_list in output_step_lists:
-            output = "".join([fs.step.text for fs in output_step_list])
-            resulting_examples.append(AutoNTacticLmExample(example_input, output))
-        return resulting_examples
+        output_step_list = n_step_sampler.sample_steps(proof.steps[step_idx:])
+        output_target = "".join([fs.step.text for fs in output_step_list])
+        return AutoNTacticLmExample(example_input, output_target)
 
     @classmethod
     def from_dataset_file(
@@ -221,11 +218,11 @@ class AutoNTacticLmExample(LmExample):
         assert n_step_sampler is not None
         dset_examples: list[LmExample] = []
         for proof in dataset_file.proofs:
-            for i, step in enumerate(proof.steps):
-                step_examples = cls.examples_from_step(
+            for i, _ in enumerate(proof.steps):
+                step_example = cls.example_from_step(
                     i, proof, n_step_sampler, partial_proof_suffix
                 )
-                dset_examples.extend(step_examples)
+                dset_examples.append(step_example)
         return dset_examples
 
     @staticmethod
