@@ -28,7 +28,7 @@ from tactic_gen.train_codellama import (
     TRAINING_CONF_NAME,
     load_config,
     get_tokenizer,
-    collate_input,
+    collate_example,
 )
 from model_deployment.codellama_utils import (
     do_beam_sample,
@@ -184,9 +184,19 @@ class CodeLLamaLocalWrapper(ModelWrapper):
                 BaseCodeLLamaLmExample, None
             )
         max_input_len = 448
+        max_seq_len = 512
 
-        def collate_fn(x: str) -> str:
-            return collate_input(tokenizer, max_input_len, x, response_template="")
+        def collate_fn(input_s: str) -> str:
+            output_s = ""
+            collated_in, _ = collate_example(
+                tokenizer,
+                max_input_len,
+                max_seq_len,
+                input_s,
+                output_s,
+                response_template="",
+            )
+            return collated_in
 
         stop_strings = ["."]
         return cls(model, tokenizer, lm_example_conf, stop_strings, collate_fn)
@@ -206,9 +216,18 @@ class CodeLLamaLocalWrapper(ModelWrapper):
         tokenizer = get_tokenizer(model_conf)
         tokenizer.add_eos_token = False
         max_input_len = model_conf["max_input_len"]
+        max_seq_len = model_conf["max_seq_len"]
 
-        def collate_fn(x: str) -> str:
-            return collate_input(tokenizer, max_input_len, x)
+        def collate_fn(input_s: str) -> str:
+            output_s = ""
+            collated_in, _ = collate_example(
+                tokenizer,
+                max_input_len,
+                max_seq_len,
+                input_s,
+                output_s,
+            )
+            return collated_in
 
         stop_strings: list[str] = []
         return cls(model, tokenizer, lm_example_conf, stop_strings, collate_fn)

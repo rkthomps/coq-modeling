@@ -8,22 +8,31 @@ import functools
 
 from yaml import load, Loader
 import jsonlines
+
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-from peft import LoraConfig
+from peft import LoraConfig, LoraModel, get_peft_model, prepare_model_for_kbit_training
 import transformers
 from transformers import (
     LlamaForCausalLM,
     CodeLlamaTokenizer,
     BitsAndBytesConfig,
     TrainingArguments,
+    Trainer,
     HfArgumentParser,
     BatchEncoding,
 )
+from transformers.integrations import HfDeepSpeedConfig
+from deepspeed.inference.quantization.quantization import (
+    _init_group_wise_weight_quantization,
+)
 import torch
-from datasets import Dataset
+from torch.utils.data import Dataset
+
+# from datasets import Dataset
 import numpy as np
 
 from tactic_gen.lm_example import LmExample
+from tactic_gen.codellama_data import LmDataset
 from data_management.split_raw_data import TRAIN_NAME, VAL_NAME, split_file_path
 from data_management.create_lm_dataset import DATA_CONF_NAME
 
@@ -39,7 +48,7 @@ def load_config(path: str) -> dict[str, Any]:
     with open(path, "r") as fin:
         conf = load(fin, Loader=Loader)
     assert type(conf) == dict
-    assert all(type(s) == str for s in conf.keys())
+    assert all([type(s) == str for s in conf.keys()])
     return conf
 
 
@@ -108,7 +117,7 @@ def get_training_args(
     )
 
 
-def get_peft_conf(conf: dict[str, Any]) -> LoraConfig:
+def get_lora_conf(conf: dict[str, Any]) -> LoraConfig:
     return LoraConfig(
         r=__get_required_arg("peft_lora_r", conf),
         lora_alpha=__get_required_arg("peft_lora_alpha", conf),
@@ -125,6 +134,8 @@ def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
     model = LlamaForCausalLM.from_pretrained(
         model_name, quantization_config=quantization_config
     )
+    # https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/inference/quantization/quantization.py
+    # https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/huggingface/zero_inference
     assert type(model) == LlamaForCausalLM
     return model
 
@@ -151,54 +162,20 @@ def dataset_gen(
             num_examples += 1
 
 
-# FROM HERE: https://huggingface.co/docs/trl/sft_trainer#train-on-completions-only
-RESPONSE_TEMPLATE = "<TACTIC>"
-NEWLINE_RESPONSE_TEMPLATE = f"\n{RESPONSE_TEMPLATE}\n"
-
-
-def collate_example(
-    tokenizer: CodeLlamaTokenizer,
-    max_input_len: int,
-    max_seq_len: int,
-    input: str,
-    output: str,
-    response_template: str = NEWLINE_RESPONSE_TEMPLATE,
-) -> tuple[str, str]:
-    whole_input_string = f"{input}{response_template}"
-    input_suffix = tokenizer.encode(whole_input_string)[(-1 * max_input_len) :]
-    final_input_str = tokenizer.decode(input_suffix, skip_special_tokens=True)
-    remaining_toks = max_seq_len - len(input_suffix)
-    output_prefix = tokenizer.encode(output)[:remaining_toks]
-    final_output_str = tokenizer.decode(output_prefix)
-    return final_input_str, final_output_str
-
-
 def get_datasets(
     conf: dict[str, Any],
     tokenizer: CodeLlamaTokenizer,
     max_input_len: int,
     max_seq_len: int,
-) -> tuple[Dataset, Dataset]:
+) -> tuple[LmDataset, LmDataset]:
     data_path = __get_required_arg("data_path", conf)
-    num_eval_examples = __get_optional_arg("num_eval_examples", conf, -1)
-    train_kwargs = {
-        "dataset_path": data_path,
-        "split": TRAIN_NAME,
-        "limit": -1,
-        "tokenizer": tokenizer,
-        "max_input_len": max_input_len,
-        "max_seq_len": max_seq_len,
-    }
-    val_kwargs = {
-        "dataset_path": data_path,
-        "split": VAL_NAME,
-        "limit": num_eval_examples,
-        "tokenizer": tokenizer,
-        "max_input_len": max_input_len,
-        "max_seq_len": max_seq_len,
-    }
-    train_dataset = Dataset.from_generator(dataset_gen, gen_kwargs=train_kwargs)
-    val_dataset = Dataset.from_generator(dataset_gen, gen_kwargs=val_kwargs)
+    num_eval_examples = __get_optional_arg("num_eval_examples", conf, None)
+    train_path = split_file_path(data_path, TRAIN_NAME)
+    train_dataset = LmDataset(train_path, tokenizer, max_input_len, max_seq_len)
+    val_path = split_file_path(data_path, VAL_NAME)
+    val_dataset = LmDataset(
+        val_path, tokenizer, max_input_len, max_seq_len, num_eval_examples
+    )
     return train_dataset, val_dataset
 
 
@@ -223,38 +200,32 @@ def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
     return tokenizer
 
 
-def get_trainer(conf: dict[str, Any], local_rank: Optional[int]) -> SFTTrainer:
+def get_trainer(conf: dict[str, Any], local_rank: Optional[int]) -> Trainer:
     max_seq_len = __get_required_arg("max_seq_len", conf)
     max_input_len = __get_required_arg("max_input_len", conf)
 
     print("\n\nBuilding Training Config...")
     training_args = get_training_args(conf, local_rank)
-    print("\n\nRetrieving Model...")
-    model = get_model(conf)
     print("\n\nRetrieving Tokenizer...")
     tokenizer = get_tokenizer(conf)
-    peft_config = get_peft_conf(conf)
+    print("\n\nRetrieving Model...")
+    model = prepare_model_for_kbit_training(get_model(conf))
+
+    lora_config = get_lora_conf(conf)
+    lora_model = get_peft_model(model, lora_config)
 
     print("\n\nConstructing Dataset...")
     train_dataset, val_dataset = get_datasets(
         conf, tokenizer, max_input_len, max_seq_len
     )
 
-    response_template_ids = tokenizer.encode(NEWLINE_RESPONSE_TEMPLATE)[2:-1]
-    collator = DataCollatorForCompletionOnlyLM(
-        response_template_ids, tokenizer=tokenizer
-    )
-
     print("\n\nBuilding Trainer...")
-    return SFTTrainer(
-        model=model,
+    return Trainer(
+        model=lora_model,
         args=training_args,
-        max_seq_length=max_seq_len,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        data_collator=collator,
-        peft_config=peft_config,
-        dataset_text_field="text",
+        data_collator=train_dataset.collator,
         tokenizer=tokenizer,
     )
 

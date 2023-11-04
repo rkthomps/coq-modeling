@@ -11,6 +11,7 @@ learning_rate: 1.0e-4
 num_train_epochs: 1
 peft_lora_r: 64
 peft_lora_alpha: 16
+deepspeed: /home/ubuntu/coq-modeling/deepspeed.json
 
 # Evaluation Args
 eval_steps: 500 

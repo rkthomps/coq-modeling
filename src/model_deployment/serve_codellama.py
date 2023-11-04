@@ -19,7 +19,7 @@ app = Flask(__name__)
 PREMISE_WRAPPER: Optional[LocalPremiseModelWrapper] = None
 
 PRETRAINED_NAME = (
-    "/home/ubuntu/coq-modeling/models/codellama-7b-n-tac-unif/checkpoint-36600"
+    "/home/ubuntu/coq-modeling/models/codellama-7b-n-tac-unif/checkpoint-36700"
 )
 
 # PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic/checkpoint-20500"
