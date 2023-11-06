@@ -50,8 +50,8 @@ Once you have composed your LmExample subclass, you can use the file [create_lm_
 
 ## Finetuning Code Llama
 To finetune Code Llama, you can run\
-`CUDA_VISIBLE_DEVICES=0 python3 train_codellama.py src/tactic_gen/confs/codellama_basic.yaml`.\
-The value of `CUDA_VISIBLE_DEVICES` indicates the machine to be used for training. Currently, only single-gpu training is supported. You can configure the training by providing a .yaml config file. The file [codellama_basic.yaml](src/tactic_gen/confs/codellama_basic.yaml) is an example. 
+`deepspeed --master_port 12344 --include localhost:1,2 src/tactic_gen/train_codellama.py src/tactic_gen/confs/codellama_basic.yaml`.\
+The value of `--include` indicates the machines to be used for training. You can configure the training by providing a .yaml config file. The file [codellama_basic.yaml](src/tactic_gen/confs/codellama_basic.yaml) is an example. 
 
 ## Evaluation
 To evaluate 
