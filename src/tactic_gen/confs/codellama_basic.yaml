@@ -25,4 +25,4 @@ save_steps: 100
 save_total_limit: 5
 
 # Train from checkpoint
-#checkpoint_name: "/path/to/checkpoint"
+checkpoint_name: "/home/ubuntu/coq-modeling/models/codellama-7b-tpe-1k/checkpoint-15700"

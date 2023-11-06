@@ -42,7 +42,8 @@ class LmDataset(Dataset):
             response_template_ids, tokenizer=tokenizer
         )
         with jsonlines.open(data_path) as fin:
-            for obj in fin:
+            for i, obj in enumerate(fin):
+                print(f"\rCollating example: {i}", end="")
                 clean_in, clean_out = collate_example(
                     tokenizer, max_input_len, max_seq_len, obj["input"], obj["output"]
                 )
