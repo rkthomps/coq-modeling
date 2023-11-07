@@ -100,6 +100,7 @@ def get_training_args(
         gradient_accumulation_steps=__get_optional_arg(
             "gradient_accumulation_steps", conf, 2
         ),
+        optim="paged_adamw_8bit",
         learning_rate=__get_required_arg("learning_rate", conf),
         logging_steps=__get_required_arg("logging_steps", conf),
         num_train_epochs=__get_required_arg("num_train_epochs", conf),
@@ -112,8 +113,9 @@ def get_training_args(
             "per_device_eval_batch_size", conf
         ),
         eval_accumulation_steps=__get_optional_arg("eval_accumulation_steps", conf, 1),
-        deepspeed=__get_required_arg("deepspeed", conf),
+        # deepspeed=__get_required_arg("deepspeed", conf),
         local_rank=(local_rank if local_rank else -1),
+        ddp_find_unused_parameters=False,
     )
 
 
@@ -129,11 +131,21 @@ def get_lora_conf(conf: dict[str, Any]) -> LoraConfig:
 def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
     model_name = __get_required_arg("model_name", conf)
     quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
+        load_in_4bit=True,
+        llm_int8_enable_fp32_cpu_offload=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
     )
+
     model = LlamaForCausalLM.from_pretrained(
-        model_name, quantization_config=quantization_config
+        model_name,
+        quantization_config=quantization_config,
+        load_in_4bit=True,
+        torch_dtype=torch.float16,
     )
+
+    model = prepare_model_for_kbit_training(model)
     # https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/inference/quantization/quantization.py
     # https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/huggingface/zero_inference
     assert type(model) == LlamaForCausalLM
@@ -209,7 +221,7 @@ def get_trainer(conf: dict[str, Any], local_rank: Optional[int]) -> Trainer:
     print("\n\nRetrieving Tokenizer...")
     tokenizer = get_tokenizer(conf)
     print("\n\nRetrieving Model...")
-    model = prepare_model_for_kbit_training(get_model(conf))
+    model = get_model(conf)
 
     lora_config = get_lora_conf(conf)
     lora_model = get_peft_model(model, lora_config)

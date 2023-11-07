@@ -36,13 +36,13 @@
         },
         "overlap_comm": true,
         "contiguous_gradients": true,
-        "sub_group_size": 1e9,
+        "sub_group_size": 1e14,
         "reduce_bucket_size": "auto",
         "stage3_prefetch_bucket_size": "auto",
         "stage3_param_persistence_threshold": "auto",
         "stage3_max_live_parameters": 1e9,
         "stage3_max_reuse_distance": 1e9,
-        "stage3_gather_16bit_weights_on_model_save": true
+        "stage3_gather_fp16_weights_on_model_save": true
     },
     "gradient_accumulation_steps": "auto",
     "gradient_clipping": "auto",
