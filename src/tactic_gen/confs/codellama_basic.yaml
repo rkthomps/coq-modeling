@@ -1,7 +1,7 @@
 # File Paths
-data_path: "/home/ubuntu/coq-modeling/data/auto-tpe-1000"
+data_path: "/home/ubuntu/coq-modeling/data/data-basic"
 model_name: "codellama/CodeLlama-7b-hf"
-output_dir: "/home/ubuntu/coq-modeling/models/codellama-7b-tpe-1k" 
+output_dir: "/home/ubuntu/coq-modeling/models/codellama-7b-basic-dist" 
 
 # Training Args
 max_seq_len: 512
