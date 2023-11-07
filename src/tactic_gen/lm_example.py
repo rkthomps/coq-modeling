@@ -1,13 +1,11 @@
 from __future__ import annotations
 from typing import Any, Type, Optional
 
-import sys, os
-import pdb
-import jsonlines
-
-from tactic_gen.n_step_sampler import NStepSampler
-from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence
+from tactic_gen.n_step_sampler import NStepSampler, OneStepSampler
+from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence, Goal
 from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
+
+END_TOK = "<END>"
 
 
 class LmExample:
@@ -52,6 +50,15 @@ class LmExample:
         raise NotImplementedError
 
     @classmethod
+    def format_goals(cls, goals: list[Goal]) -> str:
+        goal_strings = [goal.to_string() for goal in goals]
+        return "<GOAL-SEP>".join(goal_strings)
+
+    @classmethod
+    def format_steps(cls, steps: list[FocusedStep]) -> str:
+        return "".join([s.step.text for s in steps])
+
+    @classmethod
     def from_json(cls, json_data: Any) -> LmExample:
         input = json_data["input"]
         output = json_data["output"]
@@ -70,13 +77,10 @@ class BasicLmExample(LmExample):
     def input_from_step(
         cls, step: FocusedStep, proof: Proof, partial_proof_suffix: Optional[str]
     ) -> str:
-        goal_strings: list[str] = []
-        for goal in step.goals:
-            goal_strings.append(goal.to_string())
         partial_proof_string = proof.proof_prefix_to_string(
             step, add_to_end=partial_proof_suffix
         )
-        final_goal_string = "<GOAL-SEP>".join(goal_strings)
+        final_goal_string = cls.format_goals(step.goals)
         input = f"{partial_proof_string}<THM-SEP>{final_goal_string}"
         return input
 
@@ -188,6 +192,58 @@ class PremiseLmExample(LmExample):
         return "premise"
 
 
+class GoalLmExample(LmExample):
+    def __init__(self, input: str, output: str) -> None:
+        super(GoalLmExample, self).__init__(input, output)
+
+    @classmethod
+    def format_output(
+        cls, output_steps: list[FocusedStep], next_goals: list[Goal]
+    ) -> str:
+        target_steps = cls.format_steps(output_steps)
+        target_goals = cls.format_goals(next_goals)
+        return f"{target_steps}<END>{target_goals}"
+
+    @classmethod
+    def example_from_step(
+        cls,
+        step_idx: int,
+        proof: Proof,
+        n_step_sampler: NStepSampler,
+        partial_proof_suffix: Optional[str],
+    ) -> LmExample:
+        example_input = BasicLmExample.input_from_step(
+            proof.steps[step_idx], proof, partial_proof_suffix
+        )
+        n_step_result = n_step_sampler.sample_steps(proof.steps[step_idx:])
+        example_output = cls.format_output(
+            n_step_result.steps, n_step_result.resulting_goals
+        )
+        return cls(example_input, example_output)
+
+    @classmethod
+    def from_dataset_file(
+        cls,
+        dataset_file: DatasetFile,
+        premise_model_wrapper: LocalPremiseModelWrapper | None,
+        n_step_sampler: NStepSampler | None,
+        partial_proof_suffix: str | None = None,
+    ) -> list[LmExample]:
+        assert isinstance(n_step_sampler, OneStepSampler)
+        dset_examples: list[LmExample] = []
+        for proof in dataset_file.proofs:
+            for i, _ in enumerate(proof.steps):
+                example = cls.example_from_step(
+                    i, proof, n_step_sampler, partial_proof_suffix
+                )
+                dset_examples.append(example)
+        return dset_examples
+
+    @staticmethod
+    def get_alias() -> str:
+        return "goal-cotrain"
+
+
 class AutoNTacticLmExample(LmExample):
     def __init__(self, input: str, output: str) -> None:
         super(AutoNTacticLmExample, self).__init__(input, output)
@@ -203,8 +259,8 @@ class AutoNTacticLmExample(LmExample):
         example_input = BasicLmExample.input_from_step(
             proof.steps[step_idx], proof, partial_proof_suffix
         )
-        output_step_list = n_step_sampler.sample_steps(proof.steps[step_idx:])
-        output_target = "".join([fs.step.text for fs in output_step_list])
+        n_step_result = n_step_sampler.sample_steps(proof.steps[step_idx:])
+        output_target = "".join([fs.step.text for fs in n_step_result.steps])
         return AutoNTacticLmExample(example_input, output_target)
 
     @classmethod
@@ -306,7 +362,7 @@ class BaseCodeLLamaPremiseLmExample(LmExample):
         cls,
         dataset_file: DatasetFile,
         premise_model_wrapper: Optional[LocalPremiseModelWrapper],
-        nstep_sampler: Optional[NStepSampler],
+        n_step_sampler: Optional[NStepSampler],
         partial_proof_suffix: Optional[str] = None,
     ) -> list[LmExample]:
         assert premise_model_wrapper is not None
@@ -381,25 +437,10 @@ class GPT4BasicLmExample(LmExample):
 
 LMEXAMPLE_ALIASES: dict[str, Type[LmExample]] = {
     BasicLmExample.get_alias(): BasicLmExample,
+    GoalLmExample.get_alias(): GoalLmExample,
     GPT4BasicLmExample.get_alias(): GPT4BasicLmExample,
     PremiseLmExample.get_alias(): PremiseLmExample,
     AutoNTacticLmExample.get_alias(): AutoNTacticLmExample,
     BaseCodeLLamaLmExample.get_alias(): BaseCodeLLamaLmExample,
     BaseCodeLLamaPremiseLmExample.get_alias(): BaseCodeLLamaPremiseLmExample,
 }
-
-
-if __name__ == "__main__":
-    TEST_PATH = (
-        "/Users/kylethompson/UCSD/llm-difference-descriptions/coq-lsp-mining/res/"
-    )
-    all_examples: list[LmExample] = []
-    for dirname in os.listdir(TEST_PATH):
-        absolute_dirname = os.path.join(TEST_PATH, dirname)
-        obj = DatasetFile.from_directory(absolute_dirname)
-        premise_wrapper: Optional[LocalPremiseModelWrapper] = None
-        examples = BasicLmExample.from_dataset_file(obj, premise_wrapper)
-        all_examples.extend(examples)
-
-    with jsonlines.open("test_examples.jsonl", "w") as fout:
-        fout.write_all([e.to_json() for e in all_examples])
