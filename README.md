@@ -50,7 +50,7 @@ Once you have composed your LmExample subclass, you can use the file [create_lm_
 
 ## Finetuning Code Llama
 To finetune Code Llama, you can run\
-`deepspeed --master_port 12344 --include localhost:1,2 src/tactic_gen/train_codellama.py src/tactic_gen/confs/codellama_basic.yaml`.\
+`torchrun --nproc-per-node=4 src/tactic_gen/train_codellama.py src/tactic_gen/confs/test.yaml`.\
 The value of `--include` indicates the machines to be used for training. You can configure the training by providing a .yaml config file. The file [codellama_basic.yaml](src/tactic_gen/confs/codellama_basic.yaml) is an example. 
 
 ## Evaluation
