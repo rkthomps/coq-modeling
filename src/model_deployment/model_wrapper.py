@@ -28,8 +28,8 @@ from tactic_gen.train_codellama import (
     TRAINING_CONF_NAME,
     load_config,
     get_tokenizer,
-    collate_example,
 )
+from tactic_gen.codellama_data import collate_example
 from model_deployment.codellama_utils import (
     do_beam_sample,
 )
