@@ -177,16 +177,57 @@ def get_metric_and_num_proofs(
     return values, nums
 
 
+def get_combined_metric_and_num_proofs(
+    eval_dirs: list[tuple[str, str]],
+    proof_files: set[str],
+    metric: Callable[[EvalSearchResult], float],
+) -> tuple[list[float], list[int]]:
+    metric_sorted_eval_list = [
+        get_sorted_successful_evals(eval_dir, proof_files, metric)
+        for _, eval_dir in eval_dirs
+    ]
+    flattened_sorted_eval_list = [
+        e for eval_results in metric_sorted_eval_list for e in eval_results
+    ]
+    flattened_sorted_eval_list.sort(key=metric)
+    counted_proofs: set[tuple[str, str]] = set()
+    values: list[float] = []
+    nums: list[int] = []
+    for e in flattened_sorted_eval_list:
+        if (e.orig_file_path, e.proof_prefix) in counted_proofs:
+            continue
+        values.append(metric(e))
+        nums.append(len(values))
+        counted_proofs.add((e.orig_file_path, e.proof_prefix))
+    return values, nums
+
+
 def get_times_and_num_proofs(
     eval_dir: str, proof_files: set[str]
 ) -> tuple[list[float], list[int]]:
     return get_metric_and_num_proofs(eval_dir, proof_files, __pos_time_key)
 
 
+def get_combined_times_and_num_proofs(
+    eval_dirs: list[tuple[str, str]],
+    proof_files: set[str],
+) -> tuple[list[float], list[int]]:
+    return get_combined_metric_and_num_proofs(eval_dirs, proof_files, __pos_time_key)
+
+
 def get_expansions_and_num_proofs(
     eval_dir: str, proof_files: set[str]
 ) -> tuple[list[float], list[int]]:
     return get_metric_and_num_proofs(eval_dir, proof_files, __pos_expanded_key)
+
+
+def get_combined_expansions_and_num_proofs(
+    eval_dirs: list[tuple[str, str]],
+    proof_files: set[str],
+) -> tuple[list[float], list[int]]:
+    return get_combined_metric_and_num_proofs(
+        eval_dirs, proof_files, __pos_expanded_key
+    )
 
 
 class ModelStats:
