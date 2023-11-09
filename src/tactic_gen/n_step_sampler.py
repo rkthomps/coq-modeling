@@ -14,7 +14,7 @@ class NStepResult:
     resulting_goals: list[Goal]
 
 
-def __get_next_goals(
+def get_next_goals(
     sampled_steps: list[FocusedStep], all_steps: list[FocusedStep]
 ) -> list[Goal]:
     assert len(sampled_steps) <= len(all_steps)
@@ -50,7 +50,7 @@ class OneStepSampler(NStepSampler):
     def sample_steps(self, steps: list[FocusedStep]) -> NStepResult:
         assert len(steps) >= 1
         sampled_steps = steps[:1]
-        next_goal = __get_next_goals(sampled_steps, steps)
+        next_goal = get_next_goals(sampled_steps, steps)
         return NStepResult(sampled_steps, next_goal)
 
     def to_json(self) -> Any:
@@ -75,7 +75,7 @@ class NStepUniformSampler(NStepSampler):
         assert len(steps) >= 1
         n_steps = random.randint(1, len(steps))
         sampled_steps = steps[:n_steps]
-        next_goal = __get_next_goals(sampled_steps, steps)
+        next_goal = get_next_goals(sampled_steps, steps)
         return NStepResult(sampled_steps, next_goal)
 
     def to_json(self) -> Any:
@@ -109,14 +109,15 @@ class NStepTPESampler(NStepSampler):
         return out_texts
 
     def sample_steps(self, steps: list[FocusedStep]) -> NStepResult:
-        ret_steps: list[FocusedStep] = []
-        for step in steps:
+        assert len(steps) >= 1
+        ret_steps: list[FocusedStep] = [steps[0]]
+        for step in steps[1:]:
             candidate_steps = ret_steps + [step]
             candidate_strs = self.__get_step_texts(candidate_steps)
             if not self.tpe.contains(candidate_strs):
                 break
             ret_steps = candidate_steps
-        remaining_goal = __get_next_goals(ret_steps, steps)
+        remaining_goal = get_next_goals(ret_steps, steps)
         return NStepResult(ret_steps, remaining_goal)
 
     def to_json(self) -> Any:

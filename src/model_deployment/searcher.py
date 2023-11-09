@@ -1,14 +1,10 @@
 from __future__ import annotations
 from typing import Optional, Any
-from enum import Enum
 import heapq
-import pdb
 import time
 import re
-import pickle
 
 import sys, os
-
 
 from tactic_gen.lm_example import LmExample
 from model_deployment.model_wrapper import ModelWrapper, ModelResult
@@ -16,9 +12,6 @@ from model_deployment.node_score import NodeScore
 from model_deployment.goal_comparer import NodeGoal, ParsedObligations
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import ProofSearchTree
-
-from coqlspclient.coq_file import CoqFile, GoalAnswer
-from coqlspclient.coq_lsp_structs import Goal
 
 
 class SearchResult:
@@ -308,9 +301,12 @@ class SearchTreeManager:
             proof_script = ProofSearchTree.combine_tactics(
                 leaf_subtree.combined_model_tactics, tactic
             )
+            start_time = time.time_ns()
             proof_check_result = self.proof_manager.check_proof(
                 proof_script, leaf_subtree.combined_proof_steps
             )
+            end_time = time.time_ns()
+            print(f"Check time: {(end_time - start_time) / 1e9}")
             node_score = self.score_type.from_unit_score(
                 score, num_tokens, self.max_branch
             )

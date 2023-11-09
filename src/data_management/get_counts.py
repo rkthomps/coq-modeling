@@ -10,7 +10,7 @@ from multiprocessing import Pool
 
 from tqdm import tqdm
 
-from coqlspclient.coq_structs import TermType
+from coqpyt.coq.structs import TermType
 
 from premise_selection.premise_filter import PremiseFilter
 from data_management.dataset_file import DatasetFile, Sentence, data_shape_expected

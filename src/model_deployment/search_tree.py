@@ -96,12 +96,12 @@ class ProofSearchTree:
         line_start = start_marker + (self.sideways_bar * 2) + " "
         start = indent + line_start
         step_str = self.steps_proof_str()
+        clean_tactic = self.clean_tactic(step_str)
         if verbose:
-            clean_tactic = self.clean_tactic(step_str)
             clean_score = "{:7.6f}".format(self.score.compute())
             message = f"{start}{clean_score} {clean_tactic}"
         else:
-            message = f"{start}{step_str.strip()}"
+            message = f"{start}{clean_tactic}"
         if self.expanded is not None and self.expanded > 0:
             expanded_len = len(str(self.expanded))
             message = message.replace(" " * expanded_len, str(self.expanded), 1)

@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Optional
 from enum import Enum
 
-from coqlspclient.coq_structs import TermType
+from coqpyt.coq.structs import TermType
 
 import sys, os
 import jsonlines

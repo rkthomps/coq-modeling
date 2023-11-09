@@ -15,8 +15,8 @@ from model_deployment.goal_comparer import (
 from data_management.create_lm_dataset import LmExampleConfig
 from model_deployment.proof_manager import get_fresh_path, ProofManager
 
-from coqlspclient.coq_file import CoqFile
-from coqlspclient.proof_file import ProofFile
+from coqpyt.coq.base_file import CoqFile
+from coqpyt.coq.proof_file import ProofFile
 
 
 test_file_1 = """\
@@ -84,25 +84,29 @@ class GoalComparerTestCase(unittest.TestCase):
 
     def test_inversion(self) -> None:
         lm_example_config = LmExampleConfig.void_config()
-        with CoqFile(self.test_inversion1_loc) as proof_file1:
+        with ProofFile(self.test_inversion1_loc) as proof_file1:
             proof_file1.run()
             pm1 = ProofManager(
                 self.test_inversion1_loc,
                 proof_file1,
-                self.test_inversion1_aux_loc,
                 lm_example_config,
             )
-            pg1 = pm1.get_parsed_goals("", proof_file1.current_goals())
+            pm1.set_proof_point(len(proof_file1.steps) - 2)
+            current_goals = proof_file1.current_goals()
+            assert current_goals is not None
+            pg1 = pm1.get_parsed_goals("", current_goals)
 
-        with CoqFile(self.test_inversion2_loc) as proof_file2:
+        with ProofFile(self.test_inversion2_loc) as proof_file2:
             proof_file2.run()
             pm2 = ProofManager(
                 self.test_inversion2_loc,
                 proof_file2,
-                self.test_inversion2_aux_loc,
                 lm_example_config,
             )
-            pg2 = pm2.get_parsed_goals("", proof_file2.current_goals())
+            pm2.set_proof_point(len(proof_file2.steps) - 2)
+            current_goals = proof_file2.current_goals()
+            assert current_goals is not None
+            pg2 = pm2.get_parsed_goals("", current_goals)
 
         assert len(pg1.obligations) == 1
         assert len(pg2.obligations) == 1
@@ -162,19 +166,9 @@ class GoalComparerTestCase(unittest.TestCase):
             )
         self.test_inversion1_loc = os.path.join(self.test_files_loc, "inversion_1.v")
         self.test_inversion2_loc = os.path.join(self.test_files_loc, "inversion_2.v")
-        self.test_inversion1_aux_loc = os.path.join(self.test_files_loc, "inv1_aux.v")
-        self.test_inversion2_aux_loc = os.path.join(self.test_files_loc, "inv2_aux.v")
-        if os.path.exists(self.test_inversion1_aux_loc):
-            raise ValueError(f"{self.test_inversion1_aux_loc} exists.")
-        if os.path.exists(self.test_inversion2_aux_loc):
-            raise ValueError(f"{self.test_inversion2_aux_loc} exists.")
-        shutil.copy(self.test_inversion1_loc, self.test_inversion1_aux_loc)
-        shutil.copy(self.test_inversion2_loc, self.test_inversion2_aux_loc)
 
     def tearDown(self) -> None:
         os.remove(self.file1_loc)
         os.remove(self.file2_loc)
         os.remove(self.file3_loc)
         os.remove(self.file4_loc)
-        os.remove(self.test_inversion1_aux_loc)
-        os.remove(self.test_inversion2_aux_loc)

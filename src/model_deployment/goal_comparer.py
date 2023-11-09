@@ -1,6 +1,6 @@
 from __future__ import annotations
-from coqlspclient.coq_structs import Step
-from coqlspclient.coq_lsp_structs import Goal, RangedSpan
+from coqpyt.coq.structs import Step, RangedSpan
+from coqpyt.coq.lsp.structs import Goal
 from typing import Any, Optional
 import pdb
 
@@ -451,33 +451,3 @@ def extract_last_definition_body(ast: list[RangedSpan]) -> Any:
     def_expr = last_period["v"]["expr"]
     assert def_expr[0] == "VernacDefinition"
     return def_expr[3]
-
-
-def run_test() -> None:
-    from coqlspclient.coq_file import CoqFile
-
-    test_file1 = "/home/ubuntu/coq-modeling/test-coq-projs/test1.v"
-    with CoqFile(test_file1, timeout=60) as coq_file:
-        ast1 = extract_last_definition_body(coq_file.ast)
-    test_file2 = "/home/ubuntu/coq-modeling/test-coq-projs/test2.v"
-    with CoqFile(test_file2, timeout=60) as coq_file:
-        ast2 = extract_last_definition_body(coq_file.ast)
-    one_to_two_mapping: dict[str, Optional[str]] = {}
-    two_name_set: set[str] = set()
-    fresh_var_mapping: dict[str, str] = {}
-    # pdb.set_trace()
-    print(
-        compare_expressions_under_substitution(
-            ast1, ast2, one_to_two_mapping, two_name_set, fresh_var_mapping
-        )
-    )
-    print(one_to_two_mapping)
-    print(two_name_set)
-
-    # exp1 = {"a": [1, 2, {"b": [3, {"f": [4, 5, 6]}, 5]}]}
-    # exp2 = {"a": [1, 2, {"b": [3, {"f": [4, 5, 6]}, 5]}]}
-    # print(compare_expressions_under_substitution(exp1, exp2, {}, set()))
-
-
-if __name__ == "__main__":
-    run_test()

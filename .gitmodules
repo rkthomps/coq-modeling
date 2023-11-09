@@ -1,4 +1,4 @@
 [submodule "coq-lsp-pyclient"]
 	path = coq-lsp-pyclient
 	url = https://github.com/sr-lab/coq-lsp-pyclient
-	branch = refactor_proof_state
+	branch = refactor_package

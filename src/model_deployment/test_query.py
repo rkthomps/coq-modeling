@@ -17,7 +17,7 @@ from model_deployment.node_score import (
 )
 from data_management.create_lm_dataset import LmExampleConfig
 
-from coqlspclient.proof_file import ProofFile
+from coqpyt.coq.proof_file import ProofFile
 
 # WRAPPER = GPT4Wrapper()
 # EXAMPLE_TYPE = GPT4BasicLmExample
@@ -30,8 +30,8 @@ NODE_SCORE_TYPE = TokenLengthNormalizedScore
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
+# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/examples/rev.v"
@@ -41,10 +41,10 @@ TIMEOUT = 600
 BRANCH = 4
 EXPANSIONS = 500
 
-hidden_file_path, aux_hidden_file_path = initialize_hidden_files(TEST_FILE)
-with ProofFile(hidden_file_path, timeout=60) as proof_file:
+with ProofFile(TEST_FILE, timeout=60) as proof_file:
+    proof_point = len(proof_file.steps) - 3
     with ProofManager(
-        hidden_file_path, proof_file, aux_hidden_file_path, WRAPPER.lm_example_config
+        TEST_FILE, proof_file, proof_point, WRAPPER.lm_example_config
     ) as proof_manager:
         tree_manager = SearchTreeManager(
             WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, TIMEOUT

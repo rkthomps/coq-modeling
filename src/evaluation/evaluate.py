@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Any, Iterable
+from typing import Any, Iterable, Generator, Optional
+from dataclasses import dataclass
 import json
 import sys, os
 import re
@@ -12,10 +13,11 @@ from threading import Thread
 from enum import Enum
 
 
-from coqlspclient.coq_file import CoqFile
-from coqlspclient.proof_file import ProofFile
+from coqpyt.coq.base_file import CoqFile
+from coqpyt.coq.proof_file import ProofFile
 
 from tactic_gen.lm_example import LmExample, LMEXAMPLE_ALIASES
+from tactic_gen.step_parser import lex, IdTok
 from data_management.split_raw_data import SPLITS, assignment_shape_expected
 from data_management.create_lm_dataset import LmExampleConfig
 from model_deployment.search_tree import ProofSearchTree
@@ -23,7 +25,7 @@ from model_deployment.searcher import SearchTreeManager, SearchResult
 from model_deployment.proof_manager import (
     ProofManager,
     SEARCH_TOKEN,
-    hidden_files_from_prefix,
+    get_fresh_path,
     ProofCheckResult,
     TacticResult,
 )
@@ -41,20 +43,27 @@ from yaml import load, Loader
 
 class EvalSearchResult:
     def __init__(
-        self, search_result: SearchResult, orig_file_path: str, proof_prefix: str
+        self,
+        search_result: SearchResult,
+        orig_file_path: str,
+        thm_name: str,
+        thm_idx: int,
     ) -> None:
-        assert type(search_result) == SearchResult
-        assert type(orig_file_path) == str
-        assert type(proof_prefix) == str
+        assert isinstance(search_result, SearchResult)
+        assert isinstance(orig_file_path, str)
+        assert isinstance(thm_name, str)
+        assert isinstance(thm_idx, int)
         self.search_result = search_result
         self.orig_file_path = orig_file_path
-        self.proof_prefix = proof_prefix
+        self.thm_name = thm_name
+        self.thm_idx = thm_idx
 
     def to_json(self) -> Any:
         return {
             "search_result": self.search_result.to_json(),
             "orig_file_path": self.orig_file_path,
-            "proof_prefix": self.proof_prefix,
+            "thm_name": self.thm_name,
+            "thm_idx": self.thm_idx,
         }
 
     def get_save_name(self, file_tree_loc: str = "") -> str:
@@ -65,7 +74,7 @@ class EvalSearchResult:
             .lstrip(DESIRED_PREFIX)
         )
         save_path_name = orig_file_basename.replace("/", "-").replace("\\", "-")
-        save_name = f"{save_path_name}:{len(self.proof_prefix)}.json"
+        save_name = f"{save_path_name}:{self.thm_name}:{self.thm_idx}.json"
         return save_name
 
     def save(self, out_dir: str, file_tree_loc: str = "") -> None:
@@ -79,37 +88,25 @@ class EvalSearchResult:
         search_result_data = json_data["search_result"]
         search_result = SearchResult.eval_from_json(search_result_data)
         orig_file_path = json_data["orig_file_path"]
-        proof_prefix = json_data["proof_prefix"]
-        return cls(search_result, orig_file_path, proof_prefix)
+        thm_name = json_data["thm_name"]
+        thm_idx = json_data["thm_idx"]
+        return cls(search_result, orig_file_path, thm_name, thm_idx)
 
     @classmethod
     def from_json(cls, json_data: Any) -> EvalSearchResult:
         search_result_data = json_data["search_result"]
         search_result = SearchResult.from_json(search_result_data)
         orig_file_path = json_data["orig_file_path"]
-        proof_prefix = json_data["proof_prefix"]
-        return cls(search_result, orig_file_path, proof_prefix)
-
-    @classmethod
-    def name_to_v_file(cls, json_path: str) -> str:
-        json_dirname = os.path.dirname(json_path)
-        json_basename = os.path.basename(json_path)
-        match = re.match(r"(.*?\.v):\d+?\.json", json_basename)
-        assert match is not None
-        (prefix,) = match.groups()
-        return os.path.join(json_dirname, prefix.replace("-", "_"))
+        thm_name = json_data["thm_name"]
+        thm_idx = json_data["thm_idx"]
+        return cls(search_result, orig_file_path, thm_name, thm_idx)
 
 
-class ThreadResult(Enum):
-    FOUND_PROOF = 1
-    NO_PROOF_FOUND = 2
-    ERROR = 3
-    EMPTY = 4
-
-
+@dataclass
 class ThreadReturnObj:
-    def __init__(self, result: ThreadResult) -> None:
-        self.result = result
+    num_proofs_found: int
+    num_proofs_attempted: int
+    num_errors: int
 
 
 # Need a proof
@@ -149,7 +146,7 @@ class Evaluator:
         self.node_score_type = node_score_type
         self.coq_file_timeout = coq_file_timeout
 
-    def proof_generator(self) -> Iterable[tuple[str, str, str, str]]:
+    def proof_file_generator(self) -> Generator[tuple[str, str], None, None]:
         with open(self.assignments_loc, "r") as fin:
             assignment = json.load(fin)
         assert assignment_shape_expected(assignment)
@@ -165,138 +162,131 @@ class Evaluator:
         with open("safe_val.txt", "r") as fin:
             eligible_files = json.load(fin)
 
-        all_proof_prefixes: list[tuple[str, str]] = []
-        print("Indexing Proofs...")
-        for file in tqdm(eligible_files):
+        for file in eligible_files:
             physical_path = mapping[file]
-            with open(physical_path, "r") as fin:
-                contents = fin.read()
-            proof_tok = "Proof."
-            proof_loc = contents.find(proof_tok)
-            while proof_loc != -1:
-                file_prefix = (
-                    f"{contents[:(proof_loc + len(proof_tok))]} {SEARCH_TOKEN}"
-                )
-                all_proof_prefixes.append((physical_path, file_prefix))
-                proof_loc = contents.find(proof_tok, proof_loc + 1)
-
-        # random.shuffle(all_proof_prefixes)
-        for file, proof_prefix in all_proof_prefixes:
-            hidden_file_path, aux_hidden_file_path = hidden_files_from_prefix(
-                file, proof_prefix
-            )
-            with CoqFile(aux_hidden_file_path) as coq_file:
-                if len(coq_file.steps) < 3:
-                    continue
-                statement_text = coq_file.steps[-3].text
-                if not ("Theorem" in statement_text or "Lemma" in statement_text):
-                    print("Skipping proof for: ", statement_text)
-                    continue
-            yield file, proof_prefix, hidden_file_path, aux_hidden_file_path
+            yield file, physical_path
 
     def get_search_result(
         self,
         orig_file: str,
-        proof_prefix: str,
-        hidden_file: str,
-        aux_hidden_file: str,
+        proof_file: ProofFile,
+        thm_idx: int,
         lm_example_conf: LmExampleConfig,
     ) -> SearchResult:
-        print(f"File: {orig_file}")
-        start = time.time_ns()
-        with ProofFile(hidden_file) as proof_file:
-            end = time.time_ns()
-            print("Proof file inst:", (end - start) / 1e9)
-            with ProofManager(
-                hidden_file, proof_file, aux_hidden_file, lm_example_conf
-            ) as proof_manager:
-                initial_check = proof_manager.check_proof("", [])
-                if initial_check.tactic_result in (
-                    TacticResult.INVALID,
-                    TacticResult.COMPLETE,
-                ):
-                    print(
-                        f"Skipping {hidden_file} with result {initial_check.tactic_result.name}."
-                    )
-                    raise ValueError(
-                        f"Skipping {hidden_file} with result {initial_check.tactic_result.name}."
-                    )
-                searcher = SearchTreeManager(
-                    self.model_wrapper,
-                    proof_manager,
-                    self.node_score_type,
-                    self.branching_factor,
-                    self.max_leaf_expansions,
-                    self.timeout,
+        with ProofManager(
+            orig_file, proof_file, thm_idx, lm_example_conf
+        ) as proof_manager:
+            initial_check = proof_manager.check_proof("", [])
+            if initial_check.tactic_result in (
+                TacticResult.INVALID,
+                TacticResult.COMPLETE,
+            ):
+                # TODO: thm name would be nice
+                print(
+                    f"Skipping {orig_file} with result {initial_check.tactic_result.name}."
                 )
-                search_result = searcher.search()
+                raise ValueError(
+                    f"Skipping {orig_file} with result {initial_check.tactic_result.name}."
+                )
+            searcher = SearchTreeManager(
+                self.model_wrapper,
+                proof_manager,
+                self.node_score_type,
+                self.branching_factor,
+                self.max_leaf_expansions,
+                self.timeout,
+            )
+            search_result = searcher.search()
         return search_result
 
     def search_thread(
         self,
         orig_file: str,
-        proof_prefix: str,
         hidden_file: str,
-        aux_hidden_file: str,
+        thm_names_and_indices: list[tuple[str, int]],
         lm_example_conf: LmExampleConfig,
         result_hole: ThreadReturnObj,
     ) -> None:
-        try:
-            search_result = self.get_search_result(
-                orig_file,
-                proof_prefix,
-                hidden_file,
-                aux_hidden_file,
-                lm_example_conf,
-            )
-            eval_search_result = EvalSearchResult(
-                search_result, orig_file, proof_prefix
-            )
-            eval_search_result.search_result.search_tree.pretty_print(verbose=False)
-            eval_search_result.save(self.results_loc, self.file_tree_loc)
-            if search_result.found_proof():
-                result_hole.result = ThreadResult.FOUND_PROOF
-            else:
-                result_hole.result = ThreadResult.NO_PROOF_FOUND
-        except:
-            error_str = traceback.format_exc()
-            error_loc = os.path.join(self.results_loc, "errors.txt")
-            with open(error_loc, "a") as fout:
-                fout.write(error_str + "\n\n")
-            result_hole.result = ThreadResult.ERROR
+        with ProofFile(hidden_file) as proof_file:
+            for thm_name, thm_idx in thm_names_and_indices:
+                try:
+                    search_result = self.get_search_result(
+                        orig_file, proof_file, thm_idx, lm_example_conf
+                    )
+                    eval_search_result = EvalSearchResult(
+                        search_result, orig_file, thm_name, thm_idx
+                    )
+                    eval_search_result.search_result.search_tree.pretty_print(
+                        verbose=False
+                    )
+                    eval_search_result.save(self.results_loc, self.file_tree_loc)
+                    if search_result.found_proof():
+                        result_hole.num_proofs_found += 1
+                except:
+                    error_str = traceback.format_exc()
+                    error_loc = os.path.join(self.results_loc, "errors.txt")
+                    with open(error_loc, "a") as fout:
+                        fout.write(error_str + "\n\n")
+                    result_hole.num_errors += 1
+                finally:
+                    result_hole.num_proofs_attempted += 1
+
+    @staticmethod
+    def __get_thm_name(step_text: str) -> Optional[str]:
+        match lex(step_text):
+            case [IdTok(name="Lemma"), IdTok(name=l), *_]:
+                return l
+            case [IdTok(name="Theorem"), IdTok(name=t), *_]:
+                return t
+            case _:
+                return None
+
+    def __get_thm_names_and_indices(self, file: str) -> list[tuple[str, int]]:
+        thm_indices: list[tuple[str, int]] = []
+        with CoqFile(file) as coq_file:
+            cur_step = 0
+            while cur_step < len(coq_file.steps):
+                coq_file.exec(1)
+                if coq_file.in_proof:
+                    thm_name = self.__get_thm_name(coq_file.steps[cur_step].text)
+                    if thm_name:
+                        thm_indices.append((thm_name, cur_step))
+                cur_step += 1
+        return thm_indices
 
     def evaluate(self) -> None:
-        generator = self.proof_generator()
+        file_generator = self.proof_file_generator()
         num_proof_attempts = 0
         num_correct_proofs = 0
         num_errors = 0
         lm_example_conf = self.model_wrapper.lm_example_config
-        for orig_file, proof_prefix, hidden_file, aux_hidden_file in generator:
-            if num_proof_attempts >= self.num_proofs:
-                break
-            # Note I don't need to use locks or anything yet since I'm joining right away.
-            thread_result = ThreadReturnObj(ThreadResult.EMPTY)
+        for _, physical_path in file_generator:
+            thm_names_and_indices = self.__get_thm_names_and_indices(physical_path)
+            if len(thm_names_and_indices) == 0:
+                continue
+            file_dirname = os.path.dirname(physical_path)
+            file_basename = os.path.basename(physical_path)
+            hidden_file = get_fresh_path(file_dirname, file_basename)
+
+            thread_result = ThreadReturnObj(0, 0, 0)
             search_thread = Thread(
                 target=self.search_thread,
                 args=(
-                    orig_file,
-                    proof_prefix,
+                    physical_path,
                     hidden_file,
-                    aux_hidden_file,
+                    thm_names_and_indices,
                     lm_example_conf,
                     thread_result,
                 ),
             )
+
             search_thread.start()
-            search_thread.join(timeout=(self.timeout * 1.5 + 60))
-            match thread_result.result:
-                case ThreadResult.FOUND_PROOF:
-                    num_correct_proofs += 1
-                case ThreadResult.ERROR | ThreadResult.EMPTY:
-                    num_errors += 1
-                case _:
-                    pass
-            num_proof_attempts += 1
+            search_thread.join(
+                timeout=(self.timeout * 1.5 * len(thm_names_and_indices) + 60)
+            )
+            num_correct_proofs += thread_result.num_proofs_found
+            num_proof_attempts += thread_result.num_proofs_attempted
+            num_errors += thread_result.num_errors
 
             print(f"Correct Proofs: {num_correct_proofs}")
             print(f"Proof Attempts: {num_proof_attempts}")

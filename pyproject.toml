@@ -3,8 +3,8 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name="coq-modeling"
-version="0.0.1"
+name = "coq-modeling"
+version = "0.0.1"
 dependencies = [
     "torch",
     "transformers",
@@ -32,6 +32,6 @@ dependencies = [
     "black",
     "deepspeed",
 ]
- 
+
 [tool.setuptools.packages.find]
 where = ["src", "coq-lsp-pyclient"]
