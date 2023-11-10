@@ -128,6 +128,19 @@ def get_shortest_failed_proof(
             fout.write(contents)
 
 
+def get_ground_truth_proof(eval_obj: EvalSearchResult) -> Optional[str]:
+    with open(eval_obj.orig_file_path, "r") as fin:
+        orig_file_str = fin.read()
+    clean_proof_prefix = eval_obj.proof_prefix.rstrip().rstrip(SEARCH_TOKEN).rstrip()
+    if not orig_file_str.startswith(clean_proof_prefix):
+        return None
+    remaining_file = orig_file_str[len(clean_proof_prefix) :]
+    qed_idx = remaining_file.find("Qed.")
+    if qed_idx == -1:
+        return None
+    return remaining_file[: (qed_idx + 1)]
+
+
 def get_ground_truth_proofs(
     eval_dir: str, proof_files: list[str]
 ) -> list[Optional[str]]:
@@ -136,21 +149,7 @@ def get_ground_truth_proofs(
         with open(os.path.join(eval_dir, pf), "r") as fin:
             eval_data = json.load(fin)
             eval_obj = EvalSearchResult.eval_from_json(eval_data)
-        with open(eval_obj.orig_file_path, "r") as fin:
-            orig_file_str = fin.read()
-        clean_proof_prefix = (
-            eval_obj.proof_prefix.rstrip().rstrip(SEARCH_TOKEN).rstrip()
-        )
-        if not orig_file_str.startswith(clean_proof_prefix):
-            ground_truths.append(None)
-            continue
-        assert orig_file_str.startswith(clean_proof_prefix)
-        remaining_file = orig_file_str[len(clean_proof_prefix) :]
-        qed_idx = remaining_file.find("Qed.")
-        if qed_idx == -1:
-            ground_truths.append(None)
-        else:
-            ground_truths.append(remaining_file[: (qed_idx + 1)])
+        ground_truths.append(get_ground_truth_proof(eval_obj))
     return ground_truths
 
 

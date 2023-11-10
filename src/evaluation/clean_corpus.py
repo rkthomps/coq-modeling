@@ -1,5 +1,6 @@
 import sys, os
 import argparse
+import time
 
 from evaluation.compile_corpus import clean_directory
 
@@ -18,7 +19,15 @@ def clean_search_waste(dir_loc: str) -> None:
         for file in files:
             no_underscores = file.lstrip("_")
             no_aux = no_underscores.lstrip("aux_")
-            if (len(no_aux) < len(file)) and no_aux.endswith(".v") and no_aux in files:
+            file_loc = os.path.join(root, file)
+            seconds_since_modified = time.time() - os.path.getmtime(file_loc)
+            days_since_modified = seconds_since_modified / (60 * 60 * 24)
+            if (
+                (len(no_aux) < len(file))
+                and no_aux.endswith(".v")
+                and no_aux in files
+                and days_since_modified > 1
+            ):
                 to_remove_paths.append(os.path.join(root, file))
     print("Removing: ", to_remove_paths)
     for remove_path in to_remove_paths:

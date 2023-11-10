@@ -34,6 +34,7 @@ from evaluation.impose_file_hierarchy import (
     FILE_MAPPING_NAME,
     DESIRED_PREFIX,
 )
+from evaluation.clean_corpus import clean_search_waste
 
 from tqdm import tqdm
 from yaml import load, Loader
@@ -57,19 +58,24 @@ class EvalSearchResult:
             "proof_prefix": self.proof_prefix,
         }
 
-    def get_save_name(self, file_tree_loc: str = "") -> str:
+    @staticmethod
+    def get_save_loc(
+        output_loc: str, orig_file_path: str, proof_prefix: str, file_tree_loc: str = ""
+    ) -> str:
         orig_file_basename = (
-            self.orig_file_path.lstrip(file_tree_loc)
+            orig_file_path.lstrip(file_tree_loc)
             .lstrip("/")
             .lstrip('"')
             .lstrip(DESIRED_PREFIX)
         )
         save_path_name = orig_file_basename.replace("/", "-").replace("\\", "-")
-        save_name = f"{save_path_name}:{len(self.proof_prefix)}.json"
-        return save_name
+        save_name = f"{save_path_name}:{len(proof_prefix)}.json"
+        return os.path.join(output_loc, save_name)
 
     def save(self, out_dir: str, file_tree_loc: str = "") -> None:
-        save_loc = os.path.join(out_dir, self.get_save_name(file_tree_loc))
+        save_loc = self.get_save_loc(
+            out_dir, self.orig_file_path, self.proof_prefix, file_tree_loc
+        )
         with open(save_loc, "w") as fout:
             fout.write(json.dumps(self.to_json(), indent=2))
 
@@ -265,15 +271,31 @@ class Evaluator:
                 fout.write(error_str + "\n\n")
             result_hole.result = ThreadResult.ERROR
 
+    def __was_success(self, search_loc: str) -> bool:
+        with open(search_loc, "r") as fin:
+            result_data = json.load(fin)
+            e_obj = EvalSearchResult.eval_from_json(result_data)
+            return e_obj.search_result.found_proof()
+
     def evaluate(self) -> None:
         generator = self.proof_generator()
         num_proof_attempts = 0
         num_correct_proofs = 0
         num_errors = 0
         lm_example_conf = self.model_wrapper.lm_example_config
+        clean_search_waste(self.file_tree_loc)
         for orig_file, proof_prefix, hidden_file, aux_hidden_file in generator:
             if num_proof_attempts >= self.num_proofs:
                 break
+            will_save_loc = EvalSearchResult.get_save_loc(
+                self.results_loc, orig_file, proof_prefix, self.file_tree_loc
+            )
+            if os.path.exists(will_save_loc):
+                print(f"Skipping evaluation of {will_save_loc}. File exists.")
+                if self.__was_success(will_save_loc):
+                    num_correct_proofs += 1
+                num_proof_attempts += 1
+                continue
             # Note I don't need to use locks or anything yet since I'm joining right away.
             thread_result = ThreadReturnObj(ThreadResult.EMPTY)
             search_thread = Thread(
@@ -303,6 +325,16 @@ class Evaluator:
             print(f"Num Errors: {num_errors}")
 
 
+def __check_continue() -> bool:
+    while True:
+        s = input("Continue Anyway? :")
+        if s.startswith("y"):
+            return True
+        if s.startswith("n"):
+            return False
+        print("Respond with yes or no.")
+
+
 def evaluate(evaluate_conf_loc: str) -> None:
     with open(evaluate_conf_loc, "r") as fin:
         evaluate_conf = load(fin, Loader=Loader)
@@ -322,10 +354,12 @@ def evaluate(evaluate_conf_loc: str) -> None:
     node_score_type = NODE_SCORE_ALIASES[evaluate_conf["node_score"]]
 
     if os.path.exists(results_loc):
-        print(f"{results_loc} exists.", file=sys.stderr)
-        exit(1)
-    os.makedirs(results_loc)
-    shutil.copy(evaluate_conf_loc, results_loc)
+        print(f"WARNING: {results_loc} exists. Continue anyway?", file=sys.stderr)
+        if not __check_continue():
+            raise ValueError("Result directory already exists!")
+    else:
+        os.makedirs(results_loc)
+        shutil.copy(evaluate_conf_loc, results_loc)
 
     # model_wrapper.get_recs(LmExample("hi", "there"), 2)
 
