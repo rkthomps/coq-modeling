@@ -97,7 +97,8 @@ def should_stop_now(
     stop_strings: list[str],
 ) -> bool:
     """input ids is a one dimensional tensor"""
-    cur_candidate = tokenizer.decode(input_ids[-1:])
+    consider_len = 1
+    cur_candidate = tokenizer.decode(input_ids[(-1 * consider_len) :])
     any_matched = True
     while any_matched:
         any_matched = False
@@ -105,6 +106,8 @@ def should_stop_now(
             if stop_string in cur_candidate:
                 return True
             any_matched |= fuzzy_starts_with(cur_candidate, stop_string)
+        consider_len += 1
+        cur_candidate = tokenizer.decode(input_ids[(-1 * consider_len) :])
     return False
 
 
@@ -177,9 +180,8 @@ def do_beam_sample(
         ordered_next_token_ids = all_next_inputs[ordered_indices]
         next_batch_indices: list[int] = []
         for i, token_ids in enumerate(ordered_next_token_ids):
-            if (
-                token_ids[-1] == tokenizer.eos_token_id
-                or should_stop_now(token_ids, tokenizer, stop_strings) 
+            if token_ids[-1] == tokenizer.eos_token_id or should_stop_now(
+                token_ids, tokenizer, stop_strings
             ):
                 new_candidate = CompletedCandidate(token_ids, ordered_next_scores[i])
                 heapq.heappush(completed_heap, new_candidate)

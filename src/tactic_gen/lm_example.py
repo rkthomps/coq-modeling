@@ -9,6 +9,8 @@ END_TOK = "<END>"
 
 
 class LmExample:
+    TACTIC_STOP_STRINGS: list[str] = []
+
     def __init__(self, input: str, output: str) -> None:
         assert type(input) == str
         assert type(output) == str
@@ -193,6 +195,8 @@ class PremiseLmExample(LmExample):
 
 
 class GoalLmExample(LmExample):
+    TACTIC_STOP_STRINGS = [END_TOK]
+
     def __init__(self, input: str, output: str) -> None:
         super(GoalLmExample, self).__init__(input, output)
 
@@ -202,7 +206,7 @@ class GoalLmExample(LmExample):
     ) -> str:
         target_steps = cls.format_steps(output_steps)
         target_goals = cls.format_goals(next_goals)
-        return f"{target_steps}<END>{target_goals}"
+        return f"{target_steps}{END_TOK}{target_goals}"
 
     @classmethod
     def example_from_step(

@@ -1,10 +1,8 @@
-
-
 import sys, os
 import re
 import argparse
 import subprocess
-from impose_file_hierarchy import DESIRED_PREFIX
+from evaluation.impose_file_hierarchy import DESIRED_PREFIX
 
 PROJECT_NAME = "_CoqProject"
 MAKEFILE_NAME = "CoqMakefile"
@@ -12,6 +10,7 @@ MAKEFILE_CONF_NAME = "CoqMakefile.conf"
 SPECIAL_FILES = [PROJECT_NAME, MAKEFILE_NAME, MAKEFILE_CONF_NAME]
 
 COQ_PROJECT_PREFIX = "-R theories CoqRepos"
+
 
 def clean_directory(dir_loc: str) -> None:
     parent_loc = os.path.dirname(dir_loc)
@@ -45,7 +44,9 @@ def compile_directory(dir_loc: str, num_cores: int) -> None:
         coq_project_loc = os.path.join(parent_loc, PROJECT_NAME)
         with open(coq_project_loc, "w") as fout:
             fout.write(get_coq_project_contents(dir_loc))
-        p_create_make = subprocess.run(["coq_makefile", "-f", PROJECT_NAME, "-o", MAKEFILE_NAME])
+        p_create_make = subprocess.run(
+            ["coq_makefile", "-f", PROJECT_NAME, "-o", MAKEFILE_NAME]
+        )
         assert p_create_make.returncode == 0
         p_make = subprocess.run(["make", "-j", str(num_cores), "-f", MAKEFILE_NAME])
         if p_make.returncode == 0:
@@ -59,8 +60,13 @@ def compile_directory(dir_loc: str, num_cores: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Compile a set of coq repos.")
-    parser.add_argument("tree_parent_loc", help="Location of the output directory from impose_file_hierarchy.py.")
-    parser.add_argument("--num_cores", "-n", type=int, help="Number of jobs to use when running make.")
+    parser.add_argument(
+        "tree_parent_loc",
+        help="Location of the output directory from impose_file_hierarchy.py.",
+    )
+    parser.add_argument(
+        "--num_cores", "-n", type=int, help="Number of jobs to use when running make."
+    )
     args = parser.parse_args(sys.argv[1:])
 
     num_cores = 1
