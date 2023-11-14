@@ -4,6 +4,7 @@ import sys, os
 import shutil
 import argparse
 
+from typeguard import typechecked
 import jsonlines
 from tqdm import tqdm
 from yaml import load, Loader
@@ -58,6 +59,7 @@ def create_lm_dataset(example_config: LmExampleConfig) -> None:
         os.remove(unshuffled_output_path)
 
 
+@typechecked
 class LmExampleConfig:
     def __init__(
         self,
@@ -67,13 +69,6 @@ class LmExampleConfig:
         premise_wrapper: Optional[LocalPremiseModelWrapper],
         n_step_sampler: Optional[NStepSampler],
     ) -> None:
-        assert type(partitioned_dataset_loc) == str
-        assert type(output_dataset_loc) == str
-        assert type(format_type) == type
-        if premise_wrapper is not None:
-            assert isinstance(premise_wrapper, LocalPremiseModelWrapper)
-        if n_step_sampler is not None:
-            assert isinstance(n_step_sampler, NStepSampler)
         self.partitioned_dataset_loc = partitioned_dataset_loc
         self.output_dataset_loc = output_dataset_loc
         self.format_type = format_type

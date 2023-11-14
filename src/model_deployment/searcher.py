@@ -9,11 +9,14 @@ import sys, os
 from tactic_gen.lm_example import LmExample
 from model_deployment.model_wrapper import ModelWrapper, ModelResult
 from model_deployment.node_score import NodeScore
-from model_deployment.goal_comparer import NodeGoal, ParsedObligations
+from model_deployment.goal_comparer import ParsedObligations
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import ProofSearchTree
 
+from typeguard import typechecked
 
+
+@typechecked
 class SearchResult:
     def __init__(
         self, search_tree: ProofSearchTree, qed_node: Optional[ProofSearchTree]
@@ -60,6 +63,7 @@ class SearchResult:
         return cls(search_tree, qed_node)
 
 
+@typechecked
 class SearchTreeManager:
     def __init__(
         self,
@@ -70,12 +74,6 @@ class SearchTreeManager:
         max_num_leaf_expansions: int,
         timeout: int,
     ) -> None:
-        assert isinstance(model_wrapper, ModelWrapper)
-        assert type(proof_manager) == ProofManager
-        assert type(score_type) == type
-        assert type(max_branch) == int
-        assert type(max_num_leaf_expansions) == int
-        assert type(timeout) == int
         self.model_wrapper = model_wrapper
         self.proof_manager = proof_manager
         self.score_type = score_type

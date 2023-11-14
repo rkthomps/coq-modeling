@@ -1,14 +1,13 @@
 from __future__ import annotations
 from typing import Any, Optional
 from enum import Enum
-
-from coqpyt.coq.structs import TermType
-
 import sys, os
 import jsonlines
-import json
-import pdb
 import re
+
+from typeguard import typechecked
+from coqpyt.coq.structs import TermType
+
 
 STEPS_NAME = "steps.jsonl"
 FILE_CONTEXT_NAME = "file_context.jsonl"
@@ -29,6 +28,7 @@ def data_shape_expected(raw_data_loc: str) -> bool:
     return True
 
 
+@typechecked
 class Sentence:
     bad_sentence_endings: set[str] = set()
 
@@ -40,17 +40,12 @@ class Sentence:
         sentence_type: TermType,
         line: int,
     ):
-        assert type(text) == str
         try:
             assert text.strip().endswith(".")
         except AssertionError:
             if text.strip() not in self.bad_sentence_endings:
                 self.bad_sentence_endings.add(text.strip())
                 print(f"{file_path}:{line} Not Sentence: {text.strip()}")
-        assert type(file_path) == str
-        assert all([type(m) == str for m in module])
-        assert type(sentence_type) == TermType
-        assert type(line) == int
         self.text = text
         self.file_path = file_path
         self.module = module
@@ -85,10 +80,9 @@ class Sentence:
         return cls(text, file_path, module, term_type, line)
 
 
+@typechecked
 class FileContext:
     def __init__(self, file: str, sentences: list[Sentence]) -> None:
-        assert type(file) == str
-        assert all([type(s) == Sentence for s in sentences])
         self.file = file
         self.sentences = sentences
 
@@ -101,10 +95,9 @@ class FileContext:
         return cls(file, sentences)
 
 
+@typechecked
 class Term:
     def __init__(self, term: Sentence, term_context: list[Sentence]):
-        assert type(term) == Sentence
-        assert all([type(t) == Sentence for t in term_context])
         self.term = term
         self.term_context = term_context
 
@@ -136,6 +129,7 @@ class Term:
         return cls(term, context)
 
 
+@typechecked
 class Step:
     bad_tactic_endings: set[str] = set()
 
@@ -147,7 +141,6 @@ class Step:
             if text.strip() not in self.bad_tactic_endings:
                 self.bad_tactic_endings.add(text.strip())
                 print("Bad Tactic Ending", text)
-        assert all([type(s) == Sentence for s in context])
         self.text = text
         self.context = context
 
@@ -165,11 +158,9 @@ class Step:
         return cls(text, context)
 
 
+@typechecked
 class Goal:
     def __init__(self, hyps: list[str], goal: str) -> None:
-        assert type(hyps) == list
-        assert all([type(h) == str for h in hyps])
-        assert type(goal) == str
         self.hyps = hyps
         self.goal = goal
 
@@ -188,6 +179,7 @@ class Goal:
         return cls(hyps, hyp_goal[1])
 
 
+@typechecked
 class FocusedStep:
     def __init__(
         self,
@@ -197,11 +189,6 @@ class FocusedStep:
         goals: list[Goal],
         next_steps: list[Step],
     ) -> None:
-        assert type(term) == Term
-        assert type(step) == Step
-        assert type(n_step) == int
-        assert all([type(g) == Goal for g in goals])
-        assert all([type(s) == Step for s in next_steps])
         self.term = term
         self.step = step
         self.n_step = n_step
@@ -242,12 +229,9 @@ class FocusedStep:
         return cls(term, step, n_step, goals, steps)
 
 
+@typechecked
 class Proof:
     def __init__(self, theorem: Term, steps: list[FocusedStep]) -> None:
-        assert type(theorem) == Term
-        assert type(steps) == list
-        assert all([type(fs) == FocusedStep for fs in steps])
-
         self.theorem = theorem
         self.steps = steps
 
@@ -276,14 +260,12 @@ class Proof:
         return proof
 
 
+@typechecked
 class DatasetFile:
     def __init__(
         self, file: str, avail_premises: list[Sentence], proofs: list[Proof]
     ) -> None:
         # TODO: Turn into list of proofs.
-        assert type(file) == str
-        assert all([type(p) == Sentence for p in avail_premises])
-        assert all([type(p) == Proof for p in proofs])
         self.file = file
         self.avail_premises = avail_premises
         self.proofs = proofs

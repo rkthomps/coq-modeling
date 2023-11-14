@@ -1,23 +1,22 @@
 from __future__ import annotations
 from typing import Any
 
+from dataclasses import dataclass
+from typeguard import typechecked
+
 import sys, os
 
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
 from coqpyt.coq.structs import TermType
 
 
+@dataclass
 class FilteredResult:
-    def __init__(
-        self, pos_premises: list[Sentence], avail_premises: list[Sentence]
-    ) -> None:
-        assert type(pos_premises) == list
-        assert all([type(p) == Sentence for p in pos_premises])
-        assert all([type(p) == Sentence for p in avail_premises])
-        self.pos_premises = pos_premises
-        self.avail_premises = avail_premises
+    pos_premises: list[Sentence]
+    avail_premises: list[Sentence]
 
 
+@typechecked
 class PremiseFilter:
     def __init__(
         self,
@@ -25,12 +24,6 @@ class PremiseFilter:
         non_coq_excludes: list[TermType] = [],
         general_excludes: list[TermType] = [],
     ) -> None:
-        assert type(coq_excludes) == list
-        assert type(non_coq_excludes) == list
-        assert type(general_excludes) == list
-        assert all([type(t) == TermType for t in coq_excludes])
-        assert all([type(t) == TermType for t in non_coq_excludes])
-        assert all([type(t) == TermType for t in general_excludes])
         self.coq_excludes = coq_excludes
         self.non_coq_excludes = non_coq_excludes
         self.general_excludes = general_excludes

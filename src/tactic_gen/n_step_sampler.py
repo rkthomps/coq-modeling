@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import Any
 from dataclasses import dataclass
 
+from typeguard import typechecked
+
 from data_management.dataset_file import FocusedStep, Goal
 from tactic_gen.tactic_pair_encoding import TacticPairEncoding
 from tactic_gen.step_parser import normalize, lex, tokens2str
@@ -65,6 +67,7 @@ class OneStepSampler(NStepSampler):
         return "one"
 
 
+@typechecked
 class NStepUniformSampler(NStepSampler):
     def __init__(self, samples_per_step: int) -> None:
         assert type(samples_per_step) == int
@@ -93,6 +96,7 @@ class NStepUniformSampler(NStepSampler):
         return "uniform"
 
 
+@typechecked
 class NStepTPESampler(NStepSampler):
     def __init__(self, tpe: TacticPairEncoding) -> None:
         self.tpe = tpe

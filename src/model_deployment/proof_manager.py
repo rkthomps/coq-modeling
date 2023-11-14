@@ -11,6 +11,8 @@ from enum import Enum
 import pdb
 import jsonlines
 
+from typeguard import typechecked
+
 from data_management.dataset_file import DatasetFile, STEPS_NAME, FILE_CONTEXT_NAME
 from data_management.create_lm_dataset import LmExampleConfig
 from data_management.get_counts import remove_comments
@@ -35,6 +37,7 @@ class TacticResult(Enum):
     INVALID = 3
 
 
+@typechecked
 class ProofCheckResult:
     def __init__(
         self,
@@ -43,9 +46,6 @@ class ProofCheckResult:
         current_goals: Optional[GoalAnswer],
         parsed_current_goals: Optional[ParsedObligations],
     ) -> None:
-        assert type(tactic_result) == TacticResult
-        assert type(valid_steps) == list
-        assert all([type(s) == str for s in valid_steps])
         self.tactic_result = tactic_result
         self.valid_steps = valid_steps
         self.current_goals = current_goals
@@ -65,7 +65,7 @@ def proc_file_path(file_path: str) -> str:
 
 
 def get_context(context: list[Term]) -> list[dict[str, Any]]:
-    res = []
+    res: list[dict[str, Any]] = []
     for term in context:
         res.append(
             {
@@ -100,7 +100,7 @@ def get_fresh_path(dirname: str, fresh_base: str) -> str:
 
 
 def get_last_proof_data_points(proof: ProofTerm) -> Any:
-    data_points = []
+    data_points: list[dict[str, Any]] = []
     for i, step in enumerate(proof.steps):
         assert step.goals.goals is not None
         goals = list(map(lambda goal: repr(goal), step.goals.goals.goals))
@@ -168,6 +168,7 @@ def hidden_files_from_prefix(orig_file_path: str, file_prefix: str) -> tuple[str
     return fresh_file_path, fresh_aux_file_path
 
 
+@typechecked
 class ProofManager:
     TIMEOUT = 60
 
@@ -251,7 +252,7 @@ class ProofManager:
     def __add_step_to_proof_file(self, step: str) -> None:
         assert self.proof_point is not None
         insert_idx = self.proof_point + self.__num_proof_steps
-        self.proof_file.add_step(step, insert_idx)
+        self.proof_file.add_step(insert_idx, step)
         self.__num_proof_steps += 1
 
     def __delete_step_from_proof_file(self) -> None:

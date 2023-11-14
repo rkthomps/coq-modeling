@@ -7,6 +7,7 @@ import requests
 
 import torch
 from yaml import load, Loader
+from typeguard import typechecked
 
 from coqpyt.coq.structs import TermType
 
@@ -29,6 +30,7 @@ from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Senten
 from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME
 
 
+@typechecked
 class PremiseModelWrapper:
     def __init__(
         self,
@@ -36,9 +38,6 @@ class PremiseModelWrapper:
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
     ) -> None:
-        assert type(context_format) == type
-        assert type(premise_format) == type
-        assert type(premise_filter) == PremiseFilter
         self.context_format = context_format
         self.premise_format = premise_format
         self.premise_filter = premise_filter
@@ -69,6 +68,7 @@ class PremiseModelWrapper:
             yield premises[idx]
 
 
+@typechecked
 class RoundRobinCache:
     def __init__(self, max_size: int = 50000) -> None:
         self.cache: dict[str, torch.Tensor] = {}
@@ -93,6 +93,7 @@ class RoundRobinCache:
         return self.cache[key]
 
 
+@typechecked
 class LocalPremiseModelWrapper(PremiseModelWrapper):
     MAX_CACHE_SIZE = 50000
 
@@ -169,6 +170,7 @@ class LocalPremiseModelWrapper(PremiseModelWrapper):
         )
 
 
+@typechecked
 class PremiseServerModelWrapper(PremiseModelWrapper):
     def __init__(
         self,

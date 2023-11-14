@@ -12,17 +12,16 @@ from transformers.generation.utils import SampleDecoderOnlyOutput
 import torch
 from torch import LongTensor, FloatTensor
 from torch.nn import functional as F
+from typeguard import typechecked
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
+@typechecked
 class SampleResult:
     def __init__(
         self, tactics: list[str], scores: list[float], num_tokens: list[int]
     ) -> None:
-        assert all([type(t) == str for t in tactics])
-        assert all([type(s) == float for s in scores])
-        assert all([type(t) == int for t in num_tokens])
         self.tactics = tactics
         self.scores = scores
         self.num_tokens = num_tokens
@@ -177,9 +176,8 @@ def do_beam_sample(
         ordered_next_token_ids = all_next_inputs[ordered_indices]
         next_batch_indices: list[int] = []
         for i, token_ids in enumerate(ordered_next_token_ids):
-            if (
-                token_ids[-1] == tokenizer.eos_token_id
-                or should_stop_now(token_ids, tokenizer, stop_strings) 
+            if token_ids[-1] == tokenizer.eos_token_id or should_stop_now(
+                token_ids, tokenizer, stop_strings
             ):
                 new_candidate = CompletedCandidate(token_ids, ordered_next_scores[i])
                 heapq.heappush(completed_heap, new_candidate)

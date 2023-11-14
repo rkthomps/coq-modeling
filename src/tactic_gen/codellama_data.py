@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 from transformers import CodeLlamaTokenizer, BatchEncoding
 from trl import DataCollatorForCompletionOnlyLM
 import jsonlines
+from typeguard import typechecked
 
 from tactic_gen.lm_example import LmExample
 
@@ -29,6 +30,7 @@ def collate_example(
     return final_input_str, final_output_str
 
 
+@typechecked
 class LmDataset(Dataset):
     def __init__(
         self,

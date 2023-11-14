@@ -3,6 +3,7 @@ import shutil
 import argparse
 from typing import Any
 
+from typeguard import typechecked
 import jsonlines
 from tqdm import tqdm
 from yaml import load, Loader
@@ -23,6 +24,7 @@ from data_management.jsonl_utils import shuffle
 PREMISE_DATA_CONF_NAME = "premise-data-config.yaml"
 
 
+@typechecked
 def get_examples_from_project(
     project_obj: DatasetFile,
     num_negatives_per_positive: int,
@@ -49,6 +51,7 @@ def get_examples_from_project(
     return training_examples
 
 
+@typechecked
 def create_premise_dataset(
     partitioned_dataset_loc: str,
     output_dataset_loc: str,

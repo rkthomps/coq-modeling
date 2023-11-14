@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import Any, Type, Optional
 
+from typeguard import typechecked
+
 from tactic_gen.n_step_sampler import NStepSampler, OneStepSampler
 from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence, Goal
 from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
@@ -8,6 +10,7 @@ from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
 END_TOK = "<END>"
 
 
+@typechecked
 class LmExample:
     def __init__(self, input: str, output: str) -> None:
         assert type(input) == str

@@ -8,13 +8,14 @@ import requests
 import json
 import math
 
+from typeguard import typechecked
 from transformers import (
     LlamaForCausalLM,
     CodeLlamaTokenizer,
     BitsAndBytesConfig,
 )
-
 import torch
+import openai
 
 from data_management.create_lm_dataset import LmExampleConfig, DATA_CONF_NAME
 from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
@@ -34,9 +35,8 @@ from model_deployment.codellama_utils import (
     do_beam_sample,
 )
 
-import openai
 
-
+@typechecked
 class ModelResult:
     def __init__(
         self,
@@ -44,10 +44,6 @@ class ModelResult:
         score_list: list[float],
         num_tokens_list: list[int],
     ) -> None:
-        assert all([type(t) == str for t in next_tactic_list])
-        assert all([type(s) == float for s in score_list])
-        assert all([type(t) == int for t in num_tokens_list])
-        assert len(next_tactic_list) == len(score_list)
         self.next_tactic_list = next_tactic_list
         self.score_list = score_list
         self.num_tokens_list = num_tokens_list
@@ -67,9 +63,9 @@ class ModelResult:
         return cls(next_tactic_list, score_list, num_tokens_list)
 
 
+@typechecked
 class ModelWrapper:
     def __init__(self, lm_example_config: LmExampleConfig) -> None:
-        assert type(lm_example_config) == LmExampleConfig
         self.lm_example_config = lm_example_config
 
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
@@ -84,6 +80,7 @@ class ModelWrapper:
         raise NotImplementedError
 
 
+@typechecked
 class CodeLLamaLocalWrapper(ModelWrapper):
     def __init__(
         self,
@@ -95,10 +92,6 @@ class CodeLLamaLocalWrapper(ModelWrapper):
         batch_size: int = 2,
     ) -> None:
         super(CodeLLamaLocalWrapper, self).__init__(lm_example_conf)
-        assert type(model) == LlamaForCausalLM
-        assert type(tokenizer) == CodeLlamaTokenizer
-        assert type(stop_strings) == list
-        assert all([type(s) == str for s in stop_strings])
         self.model = model
         self.tokenizer = tokenizer
         self.stop_strings = stop_strings
@@ -264,12 +257,12 @@ FORMAT_NAME = "/format"
 INFERENCE_NAME = "/codellama"
 
 
+@typechecked
 class CodeLLamaServer(ModelWrapper):
     """Finetuned version of codellama"""
 
     def __init__(self, server_url: str, lm_example_conf: LmExampleConfig) -> None:
         super(CodeLLamaServer, self).__init__(lm_example_conf)
-        assert type(server_url) == str
         self.server_url = server_url.rstrip("/") + INFERENCE_NAME
 
     def get_recs(self, example: LmExample, n: int) -> ModelResult:

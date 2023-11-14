@@ -12,6 +12,10 @@ import traceback
 from threading import Thread
 from enum import Enum
 
+from typeguard import typechecked
+from tqdm import tqdm
+from yaml import load, Loader
+
 
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.proof_file import ProofFile
@@ -37,10 +41,8 @@ from evaluation.impose_file_hierarchy import (
     DESIRED_PREFIX,
 )
 
-from tqdm import tqdm
-from yaml import load, Loader
 
-
+@typechecked
 class EvalSearchResult:
     def __init__(
         self,
@@ -49,10 +51,6 @@ class EvalSearchResult:
         thm_name: str,
         thm_idx: int,
     ) -> None:
-        assert isinstance(search_result, SearchResult)
-        assert isinstance(orig_file_path, str)
-        assert isinstance(thm_name, str)
-        assert isinstance(thm_idx, int)
         self.search_result = search_result
         self.orig_file_path = orig_file_path
         self.thm_name = thm_name
@@ -110,6 +108,7 @@ class ThreadReturnObj:
 
 
 # Need a proof
+@typechecked
 class Evaluator:
     def __init__(
         self,
@@ -125,15 +124,6 @@ class Evaluator:
         node_score_type: type[NodeScore],
         coq_file_timeout: int = 60,
     ) -> None:
-        assert type(assignment_loc) == str
-        assert type(results_loc) == str
-        assert type(split) == str
-        assert type(timeout) == int
-        assert type(num_proofs) == int
-        assert type(max_leaf_expansions) == int
-        assert type(branching_factor) == int
-        assert isinstance(model_wrapper, ModelWrapper)
-        assert type(node_score_type) == type
         self.assignments_loc = assignment_loc
         self.results_loc = results_loc
         self.file_tree_loc = file_tree_loc
