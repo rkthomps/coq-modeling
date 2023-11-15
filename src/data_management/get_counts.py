@@ -350,15 +350,12 @@ def get_file_aggregator(file_dirname: str) -> FileResult:
     return FileResult.from_file(dset_file)
 
 
-def get_arguments(partitioned_dataset_loc: str) -> list[tuple[str]]:
+def get_arguments(raw_dataset_loc: str) -> list[tuple[str]]:
     args: list[tuple[str]] = []
-    for split in SPLITS:
-        split_loc = os.path.join(partitioned_dataset_loc, split)
-        assert data_shape_expected(split_loc)
-        print(f"Getting Counts for {split}...")
-        for coq_file_dir in tqdm(os.listdir(split_loc)):
-            coq_file_dir_loc = os.path.join(split_loc, coq_file_dir)
-            args.append((coq_file_dir_loc,))
+    assert data_shape_expected(raw_dataset_loc)
+    for coq_file_dir in os.listdir(raw_dataset_loc):
+        coq_file_dir_loc = os.path.join(raw_dataset_loc, coq_file_dir)
+        args.append((coq_file_dir_loc,))
     return args
 
 

@@ -6,7 +6,7 @@ from functools import reduce
 import sys, os
 import json
 from model_deployment.searcher import ProofSearchTree
-from evaluation.evaluate import EvalSearchResult, SEARCH_TOKEN
+from evaluation.evaluate import EvalSearchResult, SuccessfulSearch, FailedSearch
 
 
 def __get_json_file_names(dir: str) -> list[str]:
@@ -28,42 +28,43 @@ def get_eval_results(eval_dir: str, proof_files: set[str]) -> list[EvalSearchRes
         eval_data_loc = os.path.join(eval_dir, proof_file)
         with open(eval_data_loc, "r") as fin:
             eval_data = json.load(fin)
-            eval_obj = EvalSearchResult.eval_from_json(eval_data)
+            eval_obj = EvalSearchResult.from_json(eval_data)
             eval_results.append(eval_obj)
     return eval_results
 
 
-def __pos_expanded_key(e: EvalSearchResult) -> int:
-    path_to_qed = e.search_result.search_tree.get_path_to_qed()
+def __pos_expanded_key(s: SuccessfulSearch) -> int:
+    path_to_qed = s.search_tree.get_path_to_qed()
     assert len(path_to_qed) >= 2
     assert path_to_qed[-2].expanded is not None
     return path_to_qed[-2].expanded
 
 
-def __pos_time_key(e: EvalSearchResult) -> float:
-    assert e.search_result.qed_node is not None
-    return e.search_result.qed_node.creation_time / 1e9
+def __pos_time_key(s: SuccessfulSearch) -> float:
+    return s.qed_node.creation_time / 1e9
 
 
 def get_successful_evals(eval_dir: str, proof_files: set[str]) -> set[str]:
-    sucessful_proofs: set[str] = set()
+    successful_proofs: set[str] = set()
     for pf in proof_files:
-        with open(os.path.join(eval_dir, pf), "r") as fin:
-            eval_data = json.load(fin)
-            eval_obj = EvalSearchResult.eval_from_json(eval_data)
-            if eval_obj.search_result.found_proof():
-                sucessful_proofs.add(pf)
-    return sucessful_proofs
+        eval_obj = EvalSearchResult.load(pf)
+        match eval_obj.search_result:
+            case SuccessfulSearch():
+                successful_proofs.add(pf)
+            case _:
+                pass
+    return successful_proofs
 
 
 def get_failed_evals(eval_dir: str, proof_files: set[str]) -> set[str]:
     failed_proofs: set[str] = set()
     for pf in proof_files:
-        with open(os.path.join(eval_dir, pf), "r") as fin:
-            eval_data = json.load(fin)
-            eval_obj = EvalSearchResult.eval_from_json(eval_data)
-            if not eval_obj.search_result.found_proof():
+        eval_obj = EvalSearchResult.load(pf)
+        match eval_obj.search_result:
+            case FailedSearch():
                 failed_proofs.add(pf)
+            case _:
+                pass
     return failed_proofs
 
 
@@ -99,21 +100,20 @@ def get_shortest_failed_proof(
     eval_dirs: list[tuple[str, str]], output_loc: str
 ) -> None:
     assert len(eval_dirs) > 0
-    eval_dir_paths = [eval_dir for eval_name, eval_dir in eval_dirs]
+    eval_dir_paths = [eval_dir for _, eval_dir in eval_dirs]
     shared_thms = find_shared_proofs(eval_dir_paths)
     dir_failed_proofs = [get_failed_evals(p, shared_thms) for p in eval_dir_paths]
     assert len(dir_failed_proofs) > 0
     all_failed: set[str] = dir_failed_proofs[0]
     for dir_failed in dir_failed_proofs[1:]:
         all_failed &= dir_failed
+
     all_failed_list = list(all_failed)
-    all_failed_ground_truths = get_ground_truth_proofs(
+    all_failed_ground_truth_steps = get_ground_truth_proof_steps(
         eval_dir_paths[0], all_failed_list
     )
-    failed_and_gt: list[tuple[str, str]] = []
-    for failed_proof, failed_gt in zip(all_failed_list, all_failed_ground_truths):
-        if failed_gt is not None:
-            failed_and_gt.append((failed_proof, failed_gt))
+
+    failed_and_gt = list(zip(all_failed_list, all_failed_ground_truth_steps))
 
     failed_and_gt.sort(key=lambda x: len(x[1]))
     if os.path.exists(output_loc):
@@ -128,51 +128,43 @@ def get_shortest_failed_proof(
             fout.write(contents)
 
 
-def get_ground_truth_proofs(
+def get_ground_truth_proof_steps(
     eval_dir: str, proof_files: list[str]
-) -> list[Optional[str]]:
-    ground_truths: list[Optional[str]] = []
+) -> list[list[str]]:
+    ground_truths: list[list[str]] = []
     for pf in proof_files:
-        with open(os.path.join(eval_dir, pf), "r") as fin:
-            eval_data = json.load(fin)
-            eval_obj = EvalSearchResult.eval_from_json(eval_data)
-        with open(eval_obj.orig_file_path, "r") as fin:
-            orig_file_str = fin.read()
-        clean_proof_prefix = (
-            eval_obj.proof_prefix.rstrip().rstrip(SEARCH_TOKEN).rstrip()
-        )
-        if not orig_file_str.startswith(clean_proof_prefix):
-            ground_truths.append(None)
-            continue
-        assert orig_file_str.startswith(clean_proof_prefix)
-        remaining_file = orig_file_str[len(clean_proof_prefix) :]
-        qed_idx = remaining_file.find("Qed.")
-        if qed_idx == -1:
-            ground_truths.append(None)
-        else:
-            ground_truths.append(remaining_file[: (qed_idx + 1)])
+        eval_loc = os.path.join(eval_dir, pf)
+        eval_obj = EvalSearchResult.load(eval_loc)
+        ground_truths.append(eval_obj.ground_truth_steps)
     return ground_truths
 
 
 def get_sorted_successful_evals(
-    eval_dir: str, proof_files: set[str], sort_key: Callable[[EvalSearchResult], float]
-) -> list[EvalSearchResult]:
-    eval_results = get_eval_results(eval_dir, proof_files)
-    pos_eval_results = [e for e in eval_results if e.search_result.found_proof()]
-    pos_eval_results.sort(key=sort_key)
-    return pos_eval_results
+    eval_dir: str, proof_files: set[str], sort_key: Callable[[SuccessfulSearch], float]
+) -> list[tuple[EvalSearchResult, float]]:
+    results_and_keys: list[tuple[EvalSearchResult, float]] = []
+    for pf in proof_files:
+        eval_loc = os.path.join(eval_dir, pf)
+        eval_obj = EvalSearchResult.load(eval_loc)
+        match eval_obj.search_result:
+            case SuccessfulSearch():
+                results_and_keys.append((eval_obj, sort_key(eval_obj.search_result)))
+            case _:
+                pass
+    results_and_keys.sort(key=lambda t: t[1])
+    return results_and_keys
 
 
 def get_metric_and_num_proofs(
-    eval_dir: str, proof_files: set[str], metric: Callable[[EvalSearchResult], float]
+    eval_dir: str, proof_files: set[str], metric: Callable[[SuccessfulSearch], float]
 ) -> tuple[list[float], list[int]]:
     metric_sorted_successful_evals = get_sorted_successful_evals(
         eval_dir, proof_files, metric
     )
     values: list[float] = []
     nums: list[int] = []
-    for eval in metric_sorted_successful_evals:
-        values.append(metric(eval))
+    for _, value in metric_sorted_successful_evals:
+        values.append(value)
         nums.append(len(values))
     return values, nums
 
@@ -267,7 +259,7 @@ PATH_IDX = 1
 def assemble_coq_file_contents(
     eval_dirs: list[tuple[str, str]],
     proof_name: str,
-    ground_truth: Optional[str] = None,
+    ground_truth_steps: list[str],
 ) -> str:
     assert len(eval_dirs) > 0
     eval_paths = [d[PATH_IDX] for d in eval_dirs]

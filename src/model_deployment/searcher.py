@@ -17,50 +17,85 @@ from typeguard import typechecked
 
 
 @typechecked
-class SearchResult:
-    def __init__(
-        self, search_tree: ProofSearchTree, qed_node: Optional[ProofSearchTree]
-    ) -> None:
+class SuccessfulSearch:
+    def __init__(self, search_tree: ProofSearchTree, qed_node: ProofSearchTree) -> None:
         self.search_tree = search_tree
         self.qed_node = qed_node
 
-    def found_proof(self) -> bool:
-        return self.qed_node is not None
-
     def get_proof(self) -> str:
-        if not self.found_proof():
-            raise ValueError("Search did not yeild proof.")
-        assert self.qed_node is not None
         return self.qed_node.steps_to_str(self.qed_node.combined_proof_steps)
 
     def to_json(self) -> Any:
-        json_data = {"search_tree": self.search_tree.to_json()}
-        if self.qed_node:
-            json_data["qed_node"] = self.qed_node.to_json()
-        return json_data
+        return {
+            "alias": self.get_alias(),
+            "search_tree": self.search_tree.to_json(),
+            "qed_node": self.qed_node.to_json(),
+        }
 
     @classmethod
-    def eval_from_json(cls, json_data: Any) -> SearchResult:
-        """Less precise version of to_json. Good for compatibility."""
-        search_tree_data = json_data["search_tree"]
-        search_tree = ProofSearchTree.eval_from_json(search_tree_data)
-        if "qed_node" in json_data:
-            qed_node_data = json_data["qed_node"]
-            qed_node = ProofSearchTree.eval_from_json(qed_node_data)
-        else:
-            qed_node = None
+    def from_json(cls, json_data: Any) -> Any:
+        search_tree = ProofSearchTree.from_json(json_data["search_tree"])
+        qed_node = ProofSearchTree.from_json(json_data["qed_node"])
         return cls(search_tree, qed_node)
 
+    @staticmethod
+    def get_alias() -> str:
+        return "success"
+
+
+@typechecked
+class FailedSearch:
+    def __init__(self, search_tree: ProofSearchTree) -> None:
+        self.search_tree = search_tree
+
+    def to_json(self) -> Any:
+        return {"alias": self.get_alias(), "search_tree": self.search_tree.to_json()}
+
     @classmethod
-    def from_json(cls, json_data: Any) -> SearchResult:
-        search_tree_data = json_data["search_tree"]
-        search_tree = ProofSearchTree.from_json(search_tree_data)
-        if "qed_node" in json_data:
-            qed_node_data = json_data["qed_node"]
-            qed_node = ProofSearchTree.from_json(qed_node_data)
-        else:
-            qed_node = None
-        return cls(search_tree, qed_node)
+    def from_json(cls, json_data: Any) -> Any:
+        search_tree = ProofSearchTree.from_json(json_data["search_tree"])
+        return cls(search_tree)
+
+    @staticmethod
+    def get_alias() -> str:
+        return "failure"
+
+
+@typechecked
+class ErroredSearch:
+    def __init__(self, message: str, error_after: float) -> None:
+        self.message = message
+        self.error_after = error_after
+
+    def to_json(self) -> Any:
+        return {
+            "alias": self.get_alias(),
+            "message": self.message,
+            "error_after": self.error_after,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> Any:
+        return cls(json_data["message"], json_data["error_after"])
+
+    @staticmethod
+    def get_alias() -> str:
+        return "error"
+
+
+SearchResult = SuccessfulSearch | FailedSearch | ErroredSearch
+
+
+def search_result_from_json(json_data: Any) -> SearchResult:
+    match json_data["alias"]:
+        case "success":
+            return SuccessfulSearch.from_json(json_data)
+        case "failure":
+            return FailedSearch.from_json(json_data)
+        case "error":
+            return ErroredSearch.from_json(json_data)
+        case a:
+            raise ValueError(f"Unknown search result alias: f{a}")
 
 
 @typechecked
@@ -118,7 +153,7 @@ class SearchTreeManager:
             combined_proof_steps, target_combined_steps
         )
 
-    def search(self, print_trees: bool = False) -> SearchResult:
+    def search(self, print_trees: bool = False) -> SuccessfulSearch | FailedSearch:
         start = time.time_ns()
         for i in range(self.max_num_leaf_expansions):
             cur = time.time_ns()
@@ -130,9 +165,9 @@ class SearchTreeManager:
             possible_complete_node = self.search_step(i, start)
             if print_trees:
                 self.search_tree.pretty_print(verbose=True)
-            if possible_complete_node is not None:
-                return SearchResult(self.search_tree, possible_complete_node)
-        return SearchResult(self.search_tree, None)
+            if possible_complete_node:
+                return SuccessfulSearch(self.search_tree, possible_complete_node)
+        return FailedSearch(self.search_tree)
 
     def __get_complete_child_node(
         self,

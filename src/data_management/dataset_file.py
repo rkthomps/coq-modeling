@@ -3,6 +3,7 @@ from typing import Any, Optional
 from enum import Enum
 import sys, os
 import jsonlines
+import json
 import re
 
 from typeguard import typechecked
@@ -261,13 +262,50 @@ class Proof:
 
 
 @typechecked
-class DatasetFile:
+class FileContext:
     def __init__(
-        self, file: str, avail_premises: list[Sentence], proofs: list[Proof]
+        self, file: str, workspace: str, repository: str, avail_premises: list[Sentence]
     ) -> None:
-        # TODO: Turn into list of proofs.
         self.file = file
+        self.workspace = workspace
+        self.repository = repository
         self.avail_premises = avail_premises
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> FileContext:
+        file = json_data["file"]
+        workspace = json_data["workspace"]
+        repository = json_data["repository"]
+        avail_premises: list[Sentence] = []
+        for sentence_data in json_data["context"]:
+            avail_premises.append(Sentence.from_json(sentence_data))
+        return cls(file, workspace, repository, avail_premises)
+
+    @classmethod
+    def from_directory(cls, dir_path: str) -> FileContext:
+        file_context_loc = os.path.join(dir_path, FILE_CONTEXT_NAME)
+        file_context_data: Optional[Any] = None
+        with open(file_context_loc, "r") as fin:
+            for line in fin:
+                match file_context_data:
+                    case None:
+                        file_context_data = json.loads(line)
+                    case _:
+                        raise ValueError(
+                            f"File context data {file_context_loc} has more than one line."
+                        )
+        match file_context_data:
+            case None:
+                raise ValueError(f"File context data {file_context_loc} had no lines")
+            case a:
+                return cls.from_json(a)
+
+
+@typechecked
+class DatasetFile:
+    def __init__(self, file_context: FileContext, proofs: list[Proof]) -> None:
+        # TODO: Turn into list of proofs.
+        self.file_context = file_context
         self.proofs = proofs
 
     def proofs_to_string(self) -> str:
@@ -276,7 +314,7 @@ class DatasetFile:
 
     def get_premises_before(self, proof: Proof) -> list[Sentence]:
         premises_before: set[Sentence] = set()
-        for premise in self.avail_premises:
+        for premise in self.file_context.avail_premises:
             if premise.file_path == proof.theorem.term.file_path:
                 if premise.line >= proof.theorem.term.line:
                     continue
@@ -284,28 +322,13 @@ class DatasetFile:
         return list(premises_before)
 
     @classmethod
-    def __get_file_data(cls, file_context_loc: str) -> tuple[str, list[Sentence]]:
-        file_context_json_lines: list[Any] = []
-        with jsonlines.open(file_context_loc, "r") as fin:
-            for obj in fin:
-                file_context_json_lines.append(obj)
-        assert len(file_context_json_lines) == 1
-        file_context_json_data = file_context_json_lines[0]
-
-        file = file_context_json_data["file"]
-
-        avail_premises: list[Sentence] = []
-        for sentence_data in file_context_json_data["context"]:
-            avail_premises.append(Sentence.from_json(sentence_data))
-
-        return file, avail_premises
-
-    @classmethod
-    def __get_proofs(cls, steps_loc: str) -> list[Proof]:
+    def get_proofs(cls, dset_loc: str) -> list[Proof]:
+        steps_loc = os.path.join(dset_loc, STEPS_NAME)
         steps: list[FocusedStep] = []
-        with jsonlines.open(steps_loc, "r") as fin:
-            for obj in fin:
-                steps.append(FocusedStep.from_json(obj))
+        with open(steps_loc, "r") as fin:
+            for line in fin:
+                json_data = json.loads(line)
+                steps.append(FocusedStep.from_json(json_data))
 
         if len(steps) == 0:
             return []
@@ -332,15 +355,11 @@ class DatasetFile:
 
     @classmethod
     def from_directory(cls, dir_path: str) -> DatasetFile:
-        file_context_loc = os.path.join(dir_path, FILE_CONTEXT_NAME)
         steps_loc = os.path.join(dir_path, STEPS_NAME)
-        assert os.path.exists(file_context_loc)
-        assert os.path.exists(steps_loc)
+        file_context = FileContext.from_directory(dir_path)
+        proofs = cls.get_proofs(steps_loc)
 
-        file, avail_premises = cls.__get_file_data(file_context_loc)
-        proofs = cls.__get_proofs(steps_loc)
-
-        return cls(file, avail_premises, proofs)
+        return cls(file_context, proofs)
 
 
 if __name__ == "__main__":

@@ -2,3 +2,13 @@
 	path = coq-lsp-pyclient
 	url = https://github.com/sr-lab/coq-lsp-pyclient
 	branch = refactor_package
+
+[submodule "CPDT"]
+	path = test/test_files/coq-mini-dataset/repos/yalhessi-CPDT
+	url = https://github.com/yalhessi/CPDT
+	ignore = untracked
+
+[submodule "verified-verifier"]
+	path = test/test_files/coq-mini-dataset/repos/yalhessi-verified-verifier
+	url = https://github.com/yalhessi/verified-verifier
+	ignore = untracked
