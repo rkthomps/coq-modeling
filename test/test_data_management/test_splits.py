@@ -1,11 +1,10 @@
-import unittest
 import os
 import pdb
 
 from data_management.splits import DataSplit, Project, FileInfo
 
 
-class SplitsCase(unittest.TestCase):
+class TestSplits:
     def test_partition_mini_dataset(self) -> None:
         ds = DataSplit.create(self.data_path, time_sorted=True)
         file_info1 = FileInfo(
@@ -33,11 +32,12 @@ class SplitsCase(unittest.TestCase):
 
         expected_ds = DataSplit([exp_train_project], [], [])
         ds.train_projects[0].files.sort(key=lambda f: f.dp_name)
-        self.assertEqual(ds, expected_ds)
+        assert ds == expected_ds
 
-    def setUp(self) -> None:
-        self.data_path = os.path.join("test", "test_files", "coq-mini-dataset")
-        if not os.path.exists(self.data_path):
+    @classmethod
+    def setup_class(cls) -> None:
+        cls.data_path = os.path.join("test", "test_files", "coq-mini-dataset")
+        if not os.path.exists(cls.data_path):
             raise FileNotFoundError(
-                f"{self.data_path} not found. Run tests from root project dir."
+                f"{cls.data_path} not found. Run tests from root project dir."
             )

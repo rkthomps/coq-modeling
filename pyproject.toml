@@ -20,6 +20,7 @@ dependencies = [
     "pyyaml",
     "flask",
     "pytest",
+    "hypothesis",
     "evaluate",
     "numpy",
     "termcolor",

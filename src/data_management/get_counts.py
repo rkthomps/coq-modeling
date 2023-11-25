@@ -15,7 +15,7 @@ from coqpyt.coq.structs import TermType
 
 from premise_selection.premise_filter import PremiseFilter
 from data_management.dataset_file import DatasetFile, Sentence, data_shape_expected
-from data_management.split_raw_data import SPLITS
+from data_management.splits import DATA_POINTS_NAME
 
 
 def remove_comments(step_text: str) -> str:
@@ -359,26 +359,26 @@ def get_arguments(raw_dataset_loc: str) -> list[tuple[str]]:
     return args
 
 
-ANALYSIS_NAME = "analysis.json"
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "partitioned_dataset_loc", type=str, help="Location of partitioned raw data."
+        "dataset_loc",
+        type=str,
+        help="Location of raw data with datapoints and repos underneith.",
     )
+    parser.add_argument("out_loc", help="Where to put the resulting json file.")
     parser.add_argument(
         "--num_procs", "-n", type=int, help="Number of cores to use to calc result"
     )
     args = parser.parse_args(sys.argv[1:])
-    out_loc = os.path.join(args.partitioned_dataset_loc, ANALYSIS_NAME)
-    if os.path.exists(out_loc):
-        print(f"{out_loc} exists.", sys.stderr)
-        exit(1)
+    if os.path.exists(args.out_loc):
+        raise ValueError(f"{args.out_loc} exists.")
 
     n_procs = 1
     if args.num_procs is not None:
         n_procs = args.num_procs
-    arguments = get_arguments(args.partitioned_dataset_loc)
+    data_points_loc = os.path.join(args.dataset_loc, DATA_POINTS_NAME)
+    arguments = get_arguments(data_points_loc)
 
     print("Processing")
     with Pool(n_procs) as pool:
@@ -389,4 +389,4 @@ if __name__ == "__main__":
     for result in results:
         cur_file_aggregator = FileResult.merge(cur_file_aggregator, result)
 
-    cur_file_aggregator.save(out_loc)
+    cur_file_aggregator.save(args.out_loc)

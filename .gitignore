@@ -1,6 +1,7 @@
 # Data and model locations
 raw-data
 data
+data-small
 models
 preprocessing
 evals

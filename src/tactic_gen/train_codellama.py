@@ -9,8 +9,7 @@ import functools
 from yaml import load, Loader
 import jsonlines
 
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-from peft import LoraConfig, LoraModel, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 import transformers
 from transformers import (
     LlamaForCausalLM,
@@ -33,7 +32,7 @@ import numpy as np
 
 from tactic_gen.lm_example import LmExample
 from tactic_gen.codellama_data import LmDataset
-from data_management.split_raw_data import TRAIN_NAME, VAL_NAME, split_file_path
+from data_management.splits import Split, split2str, split_file_path
 from data_management.create_lm_dataset import DATA_CONF_NAME
 
 
@@ -152,28 +151,6 @@ def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
     return model
 
 
-def dataset_gen(
-    dataset_path: str,
-    split: str,
-    limit: int,
-    max_input_len: int,
-    max_seq_len: int,
-    tokenizer: CodeLlamaTokenizer,
-) -> Generator[dict[str, str], None, None]:
-    file_path = split_file_path(dataset_path, split)
-    with jsonlines.open(file_path, "r") as fin:
-        num_examples = 0
-        for obj in fin:
-            if limit > 0 and num_examples >= limit:
-                break
-            new_in, new_out = collate_example(
-                tokenizer, max_input_len, max_seq_len, obj["input"], obj["output"]
-            )
-            new_str = f"{new_in}{new_out}"
-            yield {"text": new_str}
-            num_examples += 1
-
-
 def get_datasets(
     conf: dict[str, Any],
     tokenizer: CodeLlamaTokenizer,
@@ -182,9 +159,9 @@ def get_datasets(
 ) -> tuple[LmDataset, LmDataset]:
     data_path = __get_required_arg("data_path", conf)
     num_eval_examples = __get_optional_arg("num_eval_examples", conf, None)
-    train_path = split_file_path(data_path, TRAIN_NAME)
+    train_path = split_file_path(data_path, Split.TRAIN)
     train_dataset = LmDataset(train_path, tokenizer, max_input_len, max_seq_len)
-    val_path = split_file_path(data_path, VAL_NAME)
+    val_path = split_file_path(data_path, Split.VAL)
     val_dataset = LmDataset(
         val_path, tokenizer, max_input_len, max_seq_len, num_eval_examples
     )

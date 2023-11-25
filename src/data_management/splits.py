@@ -12,6 +12,7 @@ import math
 import json
 import time
 import pytz
+import requests
 from enum import Enum
 
 import argparse
@@ -102,6 +103,44 @@ class Project:
             return INVALID_DATE
 
     @classmethod
+    def __count_star_items(cls, response: Any) -> int:
+        match response:
+            case [{"starred_at": _}, *l_rest]:
+                return 1 + cls.__count_star_items(l_rest)
+            case _:
+                return 0
+
+    @classmethod
+    def __get_git_username_and_token(cls) -> tuple[str, str]:
+        match os.environ:
+            case {"GIT_USR": git_usr, "GIT_TOK": git_tok}:
+                return git_usr, git_tok
+            case _:
+                raise ValueError(
+                    "Must have GIT_USR and GIT_TOK env variables set to use git api to retreive repo stars."
+                )
+
+    def get_num_stars(self) -> int:
+        split_start_idx = 0
+        dash_idx = self.repo_name.find("-", split_start_idx)
+        while 0 <= dash_idx < len(self.repo_name) - 1:
+            usr = self.repo_name[:dash_idx]
+            repo = self.repo_name[(dash_idx + 1) :]
+            url = f"https://api.github.com/repos/{usr}/{repo}/stargazers"
+            username, token = self.__get_git_username_and_token()
+            repo_response = requests.get(
+                url,
+                headers={"Accept": "application/vnd.github.v3.star+json"},
+                auth=(username, token),
+            )
+            try:
+                return self.__count_star_items(repo_response.json())
+            except ValueError:
+                split_start_idx = dash_idx + 1
+                dash_idx = self.repo_name.find("-", split_start_idx)
+        return -1
+
+    @classmethod
     def from_json(cls, json_data: Any) -> Project:
         repo_name = json_data["repo_name"]
         files = [FileInfo.from_json(f_data) for f_data in json_data["files"]]
@@ -134,6 +173,16 @@ def split2str(sp: Split) -> str:
             return "val"
         case Split.TEST:
             return "test"
+
+
+def split_file_path(
+    parent_dir: str, split: Split, shuffled: bool = True, deduplicated: bool = True
+) -> str:
+    shuffled_str = "shuffled" if shuffled else "unshuffled"
+    deduped_str = "deduplicated" if deduplicated else "undeduplicated"
+    return os.path.join(
+        parent_dir, f"{split2str(split)}-{deduped_str}-{shuffled_str}.jsonl"
+    )
 
 
 @typechecked
@@ -172,6 +221,15 @@ class DataSplit:
                 return self.__get_shuffled_files(self.val_projects, data_loc)
             case Split.TEST:
                 return self.__get_shuffled_files(self.test_projects, data_loc)
+
+    def get_project_list(self, split: Split) -> list[Project]:
+        match split:
+            case Split.TRAIN:
+                return self.train_projects
+            case Split.VAL:
+                return self.val_projects
+            case Split.TEST:
+                return self.test_projects
 
     def to_json(self) -> Any:
         return {
@@ -308,6 +366,10 @@ class DataSplit:
                 test_projs.append(remaining_proj)
                 test_thms |= remaining_proj_thms
         return cls(train_projs, val_projs, test_projs)
+
+    @classmethod
+    def void_split(cls) -> DataSplit:
+        return cls([], [], [])
 
     @classmethod
     def create(cls, data_loc: str, time_sorted: bool) -> DataSplit:

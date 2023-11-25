@@ -64,6 +64,9 @@ class EvalSearchResult:
     def get_save_name(self) -> str:
         save_name = f"{self.file.dp_name}:{self.thm_name}:{self.thm_idx}.json"
         return save_name
+    
+    def get_ground_truth_str(self) -> str:
+        return "".join(self.ground_truth_steps)
 
     def save(self, out_dir: str) -> None:
         save_loc = os.path.join(out_dir, self.get_save_name())

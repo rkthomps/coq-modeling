@@ -9,11 +9,8 @@ import torch
 
 from typeguard import typechecked
 
-from data_management.split_raw_data import (
-    SPLITS,
-    TRAIN_NAME,
-    VAL_NAME,
-    TEST_NAME,
+from data_management.splits import (
+    Split,
     split_file_path,
 )
 from premise_selection.premise_example import PremiseTrainingExample
@@ -37,7 +34,7 @@ class PremiseSelectionDataset(Dataset):
     def __init__(
         self,
         premise_data_path: str,
-        splits: list[str],
+        splits: list[Split],
         tokenizer: ByT5Tokenizer,
         max_seq_len: int,
     ) -> None:
@@ -124,19 +121,19 @@ class PremiseDataModule(pl.LightningDataModule):
     def setup(self, stage: Optional[str]) -> None:
         self.train_ds = PremiseSelectionDataset(
             self.premise_data_path,
-            [TRAIN_NAME],
+            [Split.TRAIN],
             self.tokenizer,
             self.max_seq_len,
         )
         self.val_ds = PremiseSelectionDataset(
             self.premise_data_path,
-            [VAL_NAME],
+            [Split.VAL],
             self.tokenizer,
             self.max_seq_len,
         )
         self.predict_ds = PremiseSelectionDataset(
             self.premise_data_path,
-            [TRAIN_NAME, VAL_NAME, TEST_NAME],
+            [Split.TRAIN, Split.VAL, Split.TEST],
             self.tokenizer,
             self.max_seq_len,
         )

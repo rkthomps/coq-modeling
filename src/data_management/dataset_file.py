@@ -82,21 +82,6 @@ class Sentence:
 
 
 @typechecked
-class FileContext:
-    def __init__(self, file: str, sentences: list[Sentence]) -> None:
-        self.file = file
-        self.sentences = sentences
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> FileContext:
-        file = json_data["file"]
-        sentences: list[Sentence] = []
-        for sentence_data in json_data["context"]:
-            sentences.append(Sentence.from_json(sentence_data))
-        return cls(file, sentences)
-
-
-@typechecked
 class Term:
     def __init__(self, term: Sentence, term_context: list[Sentence]):
         self.term = term
@@ -355,9 +340,8 @@ class DatasetFile:
 
     @classmethod
     def from_directory(cls, dir_path: str) -> DatasetFile:
-        steps_loc = os.path.join(dir_path, STEPS_NAME)
         file_context = FileContext.from_directory(dir_path)
-        proofs = cls.get_proofs(steps_loc)
+        proofs = cls.get_proofs(dir_path)
 
         return cls(file_context, proofs)
 

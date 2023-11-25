@@ -1,5 +1,5 @@
-import unittest
 import pdb
+import pytest
 
 from data_management.dataset_file import FocusedStep, Goal
 from tactic_gen.tactic_pair_encoding import TacticPairEncoding
@@ -7,7 +7,7 @@ from tactic_gen.n_step_sampler import NStepTPESampler, NStepResult
 from tactic_gen.step_parser import normalize, tokens2str, lex
 
 
-class NStepSamplerCase(unittest.TestCase):
+class TestNStepSampler:
     def test_tpe_sampler_1(self):
         norm_intros = tokens2str(normalize(lex("intros.")))
         norm_destruct = tokens2str(normalize(lex("destruct.")))
@@ -34,9 +34,9 @@ class NStepSamplerCase(unittest.TestCase):
         exp3 = NStepResult([fs1, fs3], fs3.goals)
         act3 = sampler.sample_steps([fs1, fs3, fs3])
 
-        with self.assertRaises(AssertionError):
+        with pytest.raises(AssertionError):
             sampler.sample_steps([])
 
-        self.assertEqual(exp1, act1)
-        self.assertEqual(exp2, act2)
-        self.assertEqual(exp3, act3)
+        assert exp1 == act1
+        assert exp2 == act2
+        assert exp3 == act3

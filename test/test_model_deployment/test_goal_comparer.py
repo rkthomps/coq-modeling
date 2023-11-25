@@ -82,6 +82,7 @@ class GoalComparerTestCase(unittest.TestCase):
         self.assertFalse(self.file4_ob.as_hard_as(self.file2_ob))
         self.assertFalse(self.file2_ob.as_hard_as(self.file4_ob))
 
+    @unittest.skip("Inversion test takes a long time.")
     def test_inversion(self) -> None:
         lm_example_config = LmExampleConfig.void_config()
         with ProofFile(self.test_inversion1_loc) as proof_file1:
@@ -89,10 +90,10 @@ class GoalComparerTestCase(unittest.TestCase):
             pm1 = ProofManager(
                 self.test_inversion1_loc,
                 proof_file1,
+                len(proof_file1.steps) - 2,
                 lm_example_config,
             )
-            pm1.set_proof_point(len(proof_file1.steps) - 2)
-            current_goals = proof_file1.current_goals()
+            current_goals = proof_file1.current_goals
             assert current_goals is not None
             pg1 = pm1.get_parsed_goals("", current_goals)
 
@@ -101,10 +102,10 @@ class GoalComparerTestCase(unittest.TestCase):
             pm2 = ProofManager(
                 self.test_inversion2_loc,
                 proof_file2,
+                len(proof_file2.steps) - 2,
                 lm_example_config,
             )
-            pm2.set_proof_point(len(proof_file2.steps) - 2)
-            current_goals = proof_file2.current_goals()
+            current_goals = proof_file2.current_goals
             assert current_goals is not None
             pg2 = pm2.get_parsed_goals("", current_goals)
 

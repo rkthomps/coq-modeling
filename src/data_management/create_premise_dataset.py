@@ -8,7 +8,7 @@ import jsonlines
 from tqdm import tqdm
 from yaml import load, Loader
 
-from data_management.dataset_file import DatasetFile, data_shape_expected
+from data_management.dataset_file import DatasetFile
 from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
     CONTEXT_ALIASES,
@@ -17,7 +17,12 @@ from premise_selection.premise_formatter import (
 )
 from premise_selection.premise_example import PremiseTrainingExample
 from premise_selection.premise_filter import PremiseFilter
-from data_management.split_raw_data import SPLITS, split_file_path
+from data_management.splits import (
+    DataSplit,
+    Split,
+    split_file_path,
+    DATA_POINTS_NAME,
+)
 from data_management.jsonl_utils import shuffle
 
 
@@ -53,7 +58,8 @@ def get_examples_from_project(
 
 @typechecked
 def create_premise_dataset(
-    partitioned_dataset_loc: str,
+    data_split: DataSplit,
+    data_loc: str,
     output_dataset_loc: str,
     num_negatives_per_positive: int,
     num_in_file_negatives_per_positive: int,
@@ -65,29 +71,26 @@ def create_premise_dataset(
         print(f"Dataset already exists at {output_dataset_loc}", file=sys.stderr)
         exit(1)
     os.makedirs(output_dataset_loc)
-    for split in SPLITS:
-        split_loc = os.path.join(partitioned_dataset_loc, split)
+    for split in Split:
         unshuffled_output_path = split_file_path(
             output_dataset_loc, split, shuffled=False
         )
         output_writer = jsonlines.open(unshuffled_output_path, "a")
-        if not os.path.exists(split_loc):
-            print(f"{split_loc} does not exist.", file=sys.stderr)
-            exit(1)
-        assert data_shape_expected(split_loc)
         print(f"Processing {split}...")
-        for project in tqdm(os.listdir(split_loc)[:1]):
-            project_loc = os.path.join(split_loc, project)
-            project_obj = DatasetFile.from_directory(project_loc)
-            training_json_examples = get_examples_from_project(
-                project_obj,
-                num_negatives_per_positive,
-                num_in_file_negatives_per_positive,
-                context_format,
-                premise_format,
-                premise_filter,
-            )
-            output_writer.write_all(training_json_examples)
+        for project in data_split.get_project_list(split):
+            for file in project.files:
+                file_loc = os.path.join(data_loc, DATA_POINTS_NAME, file.dp_name)
+                dp_obj = DatasetFile.from_directory(file_loc)
+                training_json_examples = get_examples_from_project(
+                    dp_obj,
+                    num_negatives_per_positive,
+                    num_in_file_negatives_per_positive,
+                    context_format,
+                    premise_format,
+                    premise_filter,
+                )
+                output_writer.write_all(training_json_examples)
+
         output_writer.close()
         shuffled_output_path = split_file_path(output_dataset_loc, split, shuffled=True)
         print(f"Shuffling {split} to {shuffled_output_path}")
@@ -109,7 +112,8 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
     with open(args.yaml_config, "r") as fin:
         conf = load(fin, Loader=Loader)
-    partitioned_data_loc = conf["partitioned_data_loc"]
+    data_split = DataSplit.load(conf["data_split"])
+    data_loc = conf["data_loc"]
     output_dataset_loc = conf["output_dataset_loc"]
     num_negatives_per_positive = conf["num_negatives_per_positive"]
     num_in_file_negatives_per_positive = conf["num_in_file_negatives_per_positive"]
@@ -120,7 +124,8 @@ if __name__ == "__main__":
     premise_filter = PremiseFilter.from_json(conf["premise_filter"])
 
     create_premise_dataset(
-        partitioned_data_loc,
+        data_split,
+        data_loc,
         output_dataset_loc,
         num_negatives_per_positive,
         num_in_file_negatives_per_positive,
