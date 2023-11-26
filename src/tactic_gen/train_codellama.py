@@ -5,6 +5,7 @@ import re
 import time
 import argparse
 import functools
+import subprocess
 
 from yaml import load, Loader
 import jsonlines
@@ -64,6 +65,8 @@ def make_output_dir(conf: dict[str, Any]) -> None:
 
 
 TRAINING_CONF_NAME = "training_conf.yaml"
+REQS_NAME = "requirements.txt"
+GIT_NAME = "git.json"
 
 
 def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
@@ -72,6 +75,12 @@ def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
     data_conf_loc = os.path.join(data_path, DATA_CONF_NAME)
     shutil.copy(conf_path, os.path.join(output_dir, TRAINING_CONF_NAME))
     shutil.copy(data_conf_loc, os.path.join(output_dir, DATA_CONF_NAME))
+    reqs = subprocess.check_output([sys.executable, "-m", "pip", "freeze"])
+    with open(os.path.join(output_dir, REQS_NAME), "wb") as fout:
+        fout.write(reqs)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"])
+    with open(os.path.join(output_dir, GIT_NAME), "wb") as fout:
+        fout.write(commit)
 
 
 def __get_required_arg(key: str, conf: dict[str, Any]) -> Any:

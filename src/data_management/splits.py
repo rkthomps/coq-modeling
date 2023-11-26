@@ -21,7 +21,7 @@ from typeguard import typechecked
 import git
 from tqdm import tqdm
 
-from data_management.dataset_file import DatasetFile, FileContext, FILE_CONTEXT_NAME
+from data_management.dataset_file import DatasetFile, FileContext, FILE_CONTEXT_NAME, Proof
 
 
 REPOS_NAME = "repos"
@@ -39,6 +39,9 @@ class FileInfo:
         self.file = file
         self.workspace = workspace
         self.repository = repository
+    
+    def __hash__(self) -> int:
+        return hash((self.dp_name, self.file, self.workspace, self.repository))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, FileInfo):
@@ -49,6 +52,14 @@ class FileInfo:
             and self.workspace == other.workspace
             and self.repository == other.repository
         )
+    
+    def get_dp(self, data_loc: str) -> DatasetFile:
+        dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
+        return DatasetFile.from_directory(dp_loc)
+    
+    def get_proofs(self, data_loc: str) -> list[Proof]:
+        dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
+        return DatasetFile.get_proofs(dp_loc)
 
     def __repr__(self) -> str:
         return str(self.__dict__)

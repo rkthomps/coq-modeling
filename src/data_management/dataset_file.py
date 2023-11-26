@@ -231,7 +231,6 @@ class Proof:
         self,
         stop_step: FocusedStep,
         include_proof: bool = False,
-        add_to_end: Optional[str] = None,
     ) -> str:
         """Print the tactics of the proof up to but not including the given step"""
         proof = self.theorem.term.text
@@ -241,8 +240,6 @@ class Proof:
             if step == stop_step:
                 break
             proof += step.step.text
-        if add_to_end:
-            proof += add_to_end
         return proof
 
 

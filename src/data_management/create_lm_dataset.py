@@ -13,6 +13,7 @@ from yaml import load, Loader
 from tactic_gen.n_step_sampler import NStepSampler
 from tactic_gen.lm_example import LmExample, BasicLmExample, LMEXAMPLE_ALIASES
 from data_management.splits import DataSplit, Split, split_file_path, DATA_POINTS_NAME
+from data_management.samples import ExampleSample, sample_to_json, sample_from_json
 from data_management.jsonl_utils import shuffle, deduplicate
 from data_management.dataset_file import DatasetFile
 from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
@@ -22,15 +23,13 @@ from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
 class LmExampleConfig:
     def __init__(
         self,
-        data_split: DataSplit,
-        data_loc: str,
+        example_sample: ExampleSample,
         output_dataset_loc: str,
         format_type: Type[LmExample],
         premise_wrapper: Optional[LocalPremiseModelWrapper],
         n_step_sampler: Optional[NStepSampler],
     ) -> None:
-        self.data_split = data_split
-        self.data_loc = data_loc
+        self.example_sample = example_sample
         self.output_dataset_loc = output_dataset_loc
         self.format_type = format_type
         self.premise_wrapper = premise_wrapper
@@ -38,8 +37,7 @@ class LmExampleConfig:
 
     def to_json(self) -> Any:
         json_data: Any = {
-            "data_split": self.data_split.to_json(),
-            "data_loc": self.data_loc,
+            "example_sample": sample_to_json(self.example_sample),
             "output_dataset_loc": self.output_dataset_loc,
             "format_alias": self.format_type.get_alias(),
         }
@@ -53,8 +51,7 @@ class LmExampleConfig:
 
     @classmethod
     def from_json(cls, json_data: Any) -> LmExampleConfig:
-        data_split = DataSplit.load(json_data["data_split"])
-        data_loc = json_data["data_loc"]
+        example_sample = sample_from_json(json_data["example_sample"])
         output_dataset_loc = json_data["output_dataset_loc"]
         format_type_alias = json_data["format_alias"]
         format_type = LMEXAMPLE_ALIASES[format_type_alias]

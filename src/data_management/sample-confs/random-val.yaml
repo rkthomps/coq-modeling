@@ -1,0 +1,6 @@
+alias: "RandomSample"
+data_split_loc: /home/kthompson/coq-modeling/splits/random-split.json
+split: val 
+data_loc: /data/benchmarks/coq-dataset
+sample_prop: 0.15
+seed: 1
