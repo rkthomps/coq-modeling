@@ -1,8 +1,10 @@
 from __future__ import annotations
-from coqlspclient.coq_structs import Step
-from coqlspclient.coq_lsp_structs import Goal, RangedSpan
+from coqpyt.coq.structs import Step, RangedSpan
+from coqpyt.coq.lsp.structs import Goal
 from typing import Any, Optional
 import pdb
+
+from typeguard import typechecked
 
 from model_deployment.search_tree import ProofSearchTree
 
@@ -17,16 +19,16 @@ def extract_body_from_step(step: Step) -> Any:
     return def_expr[3]
 
 
+@typechecked
 class ParsedHyp:
     def __init__(self, ids: list[str], ast: Any) -> None:
-        assert all([type(i) == str for i in ids])
         self.ids = ids
         self.ast = ast
 
 
+@typechecked
 class ParsedObligation:
     def __init__(self, hyps: list[ParsedHyp], goal_ast: Any) -> None:
-        assert all([type(h) == ParsedHyp for h in hyps])
         self.hyps = hyps
         self.goal_ast = goal_ast
 
@@ -139,9 +141,9 @@ class ParsedObligation:
         return hyps_covered
 
 
+@typechecked
 class ParsedObligations:
     def __init__(self, obligations: list[ParsedObligation]) -> None:
-        assert all([type(o) == ParsedObligation for o in obligations])
         self.obligations = obligations
 
     def as_hard_as(self, other: ParsedObligations) -> bool:
@@ -166,53 +168,6 @@ class ParsedObligations:
         return None
 
 
-class Obligation:
-    def __init__(self, goal: Goal) -> None:
-        self.goal = goal
-
-    def as_hard_as(self, other: Obligation) -> bool:
-        """This obligation is as hard as other if it
-        has the same number or fewer hyps."""
-        if self.goal.ty != other.goal.ty:
-            return False
-        this_hyps_covered: list[bool] = []
-        for this_hyp in self.goal.hyps:
-            this_hyp_covered = False
-            for other_hyp in other.goal.hyps:
-                if (
-                    sorted(this_hyp.names) == sorted(other_hyp.names)
-                    and this_hyp.ty == other_hyp.ty
-                ):
-                    this_hyp_covered = True
-            this_hyps_covered.append(this_hyp_covered)
-        return all(this_hyps_covered)
-
-
-class NodeGoal:
-    def __init__(self, goals: list[Goal]) -> None:
-        self.obligations = [Obligation(g) for g in goals]
-
-    def as_hard_as(self, other: NodeGoal) -> bool:
-        """This list of obligations is as hard as other if it
-        has the same or more goals"""
-        other_obligations_covered: list[bool] = []
-        for other_obligation in other.obligations:
-            other_obligation_covered = False
-            for this_obligation in self.obligations:
-                if this_obligation.as_hard_as(other_obligation):
-                    other_obligation_covered = True
-            other_obligations_covered.append(other_obligation_covered)
-        return all(other_obligations_covered)
-
-    def makes_progress(self, others: list[NodeGoal]) -> bool:
-        """A set of obligations 'makes progress' if it is strictly easier than
-        any previously seen set of obligations"""
-        for other in others:
-            if self.as_hard_as(other):
-                return False
-        return True
-
-
 class CoqName:
     def __init__(self, id: str) -> None:
         assert type(id) == str
@@ -221,21 +176,21 @@ class CoqName:
     @classmethod
     def from_json(cls, json_data: Any) -> CoqName:
         """Example: ["Name", ["Id", "l"]]"""
-        assert type(json_data) == list
-        assert len(json_data) == 2
-        assert json_data[0] == "Name"
-        assert json_data[1][0] == "Id"
-        return cls(json_data[1][1])
+        match json_data:
+            case ["Name", ["Id", name]]:
+                return cls(name)
+            case _:
+                raise ValueError(
+                    (
+                        f"Shape of CoqName incorrect. "
+                        'Expected ["Name", ["Id", _]]. Got {json_data}'
+                    )
+                )
 
 
+@typechecked
 class CoqQualId:
     def __init__(self, dirpath: list[list[str]], id: str) -> None:
-        assert type(dirpath) == list
-        for ol in dirpath:
-            assert type(ol) == list
-            for el in ol:
-                assert type(el) == str
-        assert type(id) == str
         self.dirpath = dirpath
         self.id = id
 
@@ -254,22 +209,27 @@ class CoqQualId:
     @classmethod
     def from_json(cls, json_data: Any) -> CoqQualId:
         """Ex: ['Ser_Qualid', ['DirPath', []], ['Id', 'Some']]"""
-        assert type(json_data) == list
-        assert len(json_data) == 3
-        assert json_data[0] == "Ser_Qualid"
-        assert json_data[1][0] == "DirPath"
-        assert json_data[2][0] == "Id"
-        return cls(json_data[1][1], json_data[2][1])
+        match json_data:
+            case ["Ser_Qualid", ["DirPath", d], ["Id", name]]:
+                return cls(d, name)
+            case _:
+                raise ValueError(
+                    (
+                        f"Expected Qualid to have shape "
+                        f'["Ser_Qualid", ["DirPath", <dirpath>], ["Id", <id>]] '
+                        f"got {json_data}"
+                    )
+                )
 
 
 def __is_local_assm(ast: Any) -> bool:
-    if type(ast) != list:
-        return False
-    if len(ast) == 0:
-        return False
-    if ast[0] == "CLocalAssum":
-        return True
-    return __is_local_assm(ast[0])
+    match ast:
+        case ["CLocalAssum", *_]:
+            return True
+        case [h, *_]:
+            return __is_local_assm(h)
+        case _:
+            return False
 
 
 def __compare_dicts_under_substitution(
@@ -279,8 +239,7 @@ def __compare_dicts_under_substitution(
     avail_names_two: set[str],
     fresh_var_mapping: dict[str, str],
 ) -> bool:
-    assert type(goal1_ast) == dict
-    if type(goal2_ast) != dict:
+    if not isinstance(goal2_ast, dict):
         return False
     if len(goal1_ast) != len(goal2_ast):
         return False
@@ -354,7 +313,7 @@ def __compare_lists_under_substitution(
     fresh_var_mapping: dict[str, str],
 ) -> bool:
     assert type(exp1_ast) == list
-    if type(exp2_ast) != list:
+    if not isinstance(exp2_ast, list):
         return False
     if len(exp1_ast) == 0:
         return len(exp2_ast) == 0
@@ -451,33 +410,3 @@ def extract_last_definition_body(ast: list[RangedSpan]) -> Any:
     def_expr = last_period["v"]["expr"]
     assert def_expr[0] == "VernacDefinition"
     return def_expr[3]
-
-
-def run_test() -> None:
-    from coqlspclient.coq_file import CoqFile
-
-    test_file1 = "/home/ubuntu/coq-modeling/test-coq-projs/test1.v"
-    with CoqFile(test_file1, timeout=60) as coq_file:
-        ast1 = extract_last_definition_body(coq_file.ast)
-    test_file2 = "/home/ubuntu/coq-modeling/test-coq-projs/test2.v"
-    with CoqFile(test_file2, timeout=60) as coq_file:
-        ast2 = extract_last_definition_body(coq_file.ast)
-    one_to_two_mapping: dict[str, Optional[str]] = {}
-    two_name_set: set[str] = set()
-    fresh_var_mapping: dict[str, str] = {}
-    # pdb.set_trace()
-    print(
-        compare_expressions_under_substitution(
-            ast1, ast2, one_to_two_mapping, two_name_set, fresh_var_mapping
-        )
-    )
-    print(one_to_two_mapping)
-    print(two_name_set)
-
-    # exp1 = {"a": [1, 2, {"b": [3, {"f": [4, 5, 6]}, 5]}]}
-    # exp2 = {"a": [1, 2, {"b": [3, {"f": [4, 5, 6]}, 5]}]}
-    # print(compare_expressions_under_substitution(exp1, exp2, {}, set()))
-
-
-if __name__ == "__main__":
-    run_test()

@@ -5,7 +5,9 @@ import argparse
 import heapq
 import json
 import csv
+
 from tqdm import tqdm
+from typeguard import typechecked
 
 from data_management.dataset_file import DatasetFile, FocusedStep, data_shape_expected
 from tactic_gen.step_parser import tokens2str, normalize, lex, get_id_strs
@@ -13,6 +15,7 @@ from tactic_gen.step_parser import tokens2str, normalize, lex, get_id_strs
 STEP_DELIM = " <++> "
 
 
+@typechecked
 class TacticPairEncoding:
     def __init__(self, vocab: dict[str, int]) -> None:
         assert type(vocab) == dict

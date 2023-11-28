@@ -1,15 +1,21 @@
-
 from __future__ import annotations
 from typing import Any
+from typeguard import typechecked
 
 import json
 
 
 FORMAT_ENDPOINT = "/formatters"
+
+
+@typechecked
 class FormatResponse:
-    def __init__(self, context_format_alias: str, 
-                 premise_format_alias: str,
-                 premise_filter_data: Any) -> None:
+    def __init__(
+        self,
+        context_format_alias: str,
+        premise_format_alias: str,
+        premise_filter_data: Any,
+    ) -> None:
         assert type(context_format_alias) == str
         assert type(premise_format_alias) == str
         self.context_format_alias = context_format_alias
@@ -32,10 +38,12 @@ class FormatResponse:
 
 
 PREMISE_ENDPOINT = "/premise"
+
+
 class PremiseResponse:
     def __init__(self, premise_scores: list[float]) -> None:
         assert type(premise_scores) == list
-        assert(all([float(p) for p in premise_scores]))
+        assert all([float(p) for p in premise_scores])
         self.premise_scores = premise_scores
 
     def to_json(self) -> Any:
@@ -47,6 +55,7 @@ class PremiseResponse:
         return cls(premise_scores)
 
 
+@typechecked
 class PremiseRequest:
     def __init__(self, context: str, premises: list[str]) -> None:
         assert type(context) == str

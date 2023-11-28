@@ -1,10 +1,17 @@
 # Data and model locations
 raw-data
 data
+data-small
 models
+models-small
 preprocessing
 evals
 reports
+samples
+analysis
+
+# Temporary
+test_size.py
 
 # Examples
 examples

@@ -1,5 +1,4 @@
-
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 import math
 import jsonlines
@@ -7,6 +6,7 @@ import json
 import random
 import os
 from tqdm import tqdm
+
 
 def count_lines(jsonl_file: str) -> int:
     num_lines = 0
@@ -16,138 +16,98 @@ def count_lines(jsonl_file: str) -> int:
     return num_lines
 
 
-class SortedBuffer:
-    def __init__(self) -> None:
-        self.sorted_list: list[tuple[int, Any]] = []
-
-    def insert(self, insert_key: int, insert_value: Any) -> None:
-        insert_idx = 0
-        while insert_idx < len(self.sorted_list):
-            cur_key, cur_values = self.sorted_list[insert_idx]
-            if insert_key > cur_key:
-                break
-            insert_idx += 1
-        self.sorted_list.insert(insert_idx, (insert_key, insert_value))
-
-    def get_objects(self) -> Iterable[Any]:
-        for _, v in self.sorted_list:
-            yield v
-
-    def size(self) -> int:
-        return len(self.sorted_list)
-
-
-def __write_range(in_file: str, 
-                out_file: str, 
-                start_num:int, 
-                end_num:int, 
-                mapping: list[int]) -> None:
-    buffer = SortedBuffer() 
-    with jsonlines.open(in_file, "r") as fin:
-        for i, obj in enumerate(fin):
+def __write_range(
+    in_file: str, out_file: str, start_num: int, end_num: int, mapping: list[int]
+) -> None:
+    # buffer = SortedBuffer()
+    buffer_size = end_num - start_num
+    buffer: list[Optional[str]] = [None] * buffer_size
+    with open(in_file, "r") as fin:
+        for i, line in enumerate(fin):
             shuffled_index = mapping[i]
-            if start_num <= shuffled_index and shuffled_index < end_num:
-                buffer.insert(shuffled_index, obj)
-    assert buffer.size() == (end_num - start_num)
+            if start_num <= shuffled_index < end_num:
+                buffer_index = shuffled_index - start_num
+                buffer[buffer_index] = line
 
-    with jsonlines.open(out_file, "a") as fout:
-        for obj in buffer.get_objects():
-            fout.write(obj)
+    with open(out_file, "a") as fout:
+        for out_str in buffer:
+            match out_str:
+                case None:
+                    raise ValueError("Expected str to write")
+                case _:
+                    fout.write(out_str)
 
 
-def shuffle(in_file: str, out_file:str, buffer_size:int = 10000) -> None:
+def shuffle(in_file: str, out_file: str, buffer_size: int = 100000) -> None:
     assert not (in_file == out_file)
     assert not os.path.exists(out_file)
+    if buffer_size < 1:
+        raise ValueError("Buffer size cannot be less than one.")
     input_num_lines = count_lines(in_file)
+    assert input_num_lines > 0
+    # Can quickly go from input -> assignment
+    # But I want to be able to go from assignment -> input
     assignment = list(range(input_num_lines))
     random.shuffle(assignment)
     num_passes = math.ceil(input_num_lines / buffer_size)
     for pass_num in tqdm(range(num_passes)):
         start_idx = pass_num * buffer_size
-        end_idx = min(start_idx + buffer_size, input_num_lines) 
+        end_idx = min(start_idx + buffer_size, input_num_lines)
         __write_range(in_file, out_file, start_idx, end_idx, assignment)
 
 
-def split(in_file: str, out_files_and_freqs: dict[str, float]) -> None:
-    sum_freqs = sum([freq for _, freq in out_files_and_freqs.items()])
-    assert sum_freqs == 1 
-    for file, _ in out_files_and_freqs.items():
-        assert file != in_file
-
-    writers: list[jsonlines.Writer] = []
-    weights: list[float] = []
-    for filename, freq in out_files_and_freqs.items():
-        writers.append(jsonlines.open(filename, "a"))
-        weights.append(freq)
-
-    with jsonlines.open(in_file, "r") as fin:
-        for obj in fin:
-            selected_writers = random.choices(writers, weights)
-            assert len(selected_writers) == 1
-            writer = selected_writers[0]
-            writer.write(obj)
-
-    for writer in writers:
-        writer.close()
+def __load_cmp_chunk(in_file: str, start: int, end: int) -> tuple[set[str], int]:
+    chunk_set: set[str] = set()
+    num_duplicates = 0
+    with open(in_file, "r") as fin:
+        for i, line in enumerate(fin):
+            if i >= end:
+                return chunk_set, num_duplicates
+            if i < start:
+                continue
+            if line in chunk_set:
+                num_duplicates += 1
+            chunk_set.add(line)
+    return chunk_set, num_duplicates
 
 
-def merge(files: list[str], out_file: str) -> None:
-    unique_files = set(files)
-    assert out_file not in unique_files
-    with jsonlines.open(out_file, "w") as fout: 
-        for in_file in unique_files:
-            with jsonlines.open(in_file, "r") as fin:
-                for obj in fin:
-                    fout.write(obj)
+def __vet_chunk(chunk: set[str], in_file: str, vet_start: int) -> int:
+    chunk_num_duplicates = 0
+    with open(in_file, "r") as fin:
+        for i, line in enumerate(fin):
+            if i < vet_start:
+                continue
+            try:
+                chunk.remove(line)
+                chunk_num_duplicates += 1
+            except KeyError:
+                continue
+    return chunk_num_duplicates
 
 
-def get_obj_frequencies(in_file: str) -> dict[str, int]:
-    frequencies: dict[str, int] = {}
-    with jsonlines.open(in_file, "r") as fin:
-        for obj in fin:
-            obj_str = json.dumps(obj)
-            if obj_str not in frequencies:
-                frequencies[obj_str] = 0
-            frequencies[obj_str] = frequencies[obj_str] + 1
-    return frequencies
-
-def multiset_eq(file1: str, file2: str) -> bool:
-    return get_obj_frequencies(file1) == get_obj_frequencies(file2)
+def __write_chunk(chunk: set[str], out_file: str) -> None:
+    with open(out_file, "a") as fout:
+        for line in chunk:
+            fout.write(line)
 
 
-def test_shuffle(test_file: str) -> None:
-    shuffled_file_loc = test_file + "_shuffled"
-    num_lines = count_lines(test_file)
-    test_buffer_sizes = [1, num_lines // 3, num_lines // 2 + 5, num_lines, num_lines + 10]
-    for buff_size in test_buffer_sizes:
-        shuffle(test_file, shuffled_file_loc)
-        assert multiset_eq(test_file, shuffled_file_loc) 
-        os.remove(shuffled_file_loc)
-
-
-def get_random_weights(sum_weights: float, num_samples: int) -> list[float]:
-    assert num_samples >= 1
-    if num_samples == 1:
-        return [1 - sum_weights]
-    sampled_weight = random.uniform(0, 1 - sum_weights)
-    return [sampled_weight] + get_random_weights(sum_weights + sampled_weight, num_samples - 1)
-
-
-def test_split(test_file: str) -> None:
-    for num_splits in range(1, 11):
-        weights = get_random_weights(0, num_splits)
-        files = [test_file + f"_{n}" for n in range(num_splits)]
-        split(test_file, dict(zip(files, weights)))
-        merge_file = test_file + f"_merged"
-        merge(files, merge_file)
-        assert multiset_eq(test_file, merge_file)
-        for file in files:
-            os.remove(file)
-        os.remove(merge_file)
-
-
-if __name__ == "__main__":
-    shuffle("data/data-points-partial-split/train-shuffled.jsonl", "bingo-ringo-bongo")
-    #shuffle("test_examples.jsonl", "examples-shuffled.jsonl", buffer_size=1000)
-
-
+def deduplicate(in_file: str, out_file: str, buffer_size: int = 100000) -> int:
+    assert not (in_file == out_file)
+    assert not os.path.exists(out_file)
+    if buffer_size < 1:
+        raise ValueError("Buffer size cannot be less than one.")
+    input_num_lines = count_lines(in_file)
+    assert input_num_lines > 0
+    num_passes = math.ceil(input_num_lines / buffer_size)
+    num_duplicates = 0
+    for i in tqdm(range(num_passes)):
+        chunk_start = i * buffer_size
+        chunk_end = min(chunk_start + buffer_size, input_num_lines)
+        chunk_set, init_num_dups = __load_cmp_chunk(in_file, chunk_start, chunk_end)
+        if chunk_end < input_num_lines:
+            vet_num_dups = __vet_chunk(chunk_set, in_file, chunk_end)
+        else:
+            vet_num_dups = 0
+        num_duplicates += init_num_dups + vet_num_dups
+        __write_chunk(chunk_set, out_file)
+    return num_duplicates

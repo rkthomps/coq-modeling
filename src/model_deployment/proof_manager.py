@@ -11,6 +11,8 @@ from enum import Enum
 import pdb
 import jsonlines
 
+from typeguard import typechecked
+
 from data_management.dataset_file import DatasetFile, STEPS_NAME, FILE_CONTEXT_NAME
 from data_management.create_lm_dataset import LmExampleConfig
 from data_management.get_counts import remove_comments
@@ -22,11 +24,11 @@ from model_deployment.goal_comparer import (
     extract_body_from_step,
 )
 
-
-from coqlspclient.coq_structs import ProofTerm, Term, Step, RangedSpan
-from coqlspclient.coq_lsp_structs import Goal, GoalAnswer
-from coqlspclient.proof_file import ProofFile
-from coqlspclient.coq_file import CoqFile
+from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep, CoqChange
+from coqpyt.coq.structs import ProofTerm, Term
+from coqpyt.coq.lsp.structs import Goal, GoalAnswer
+from coqpyt.coq.proof_file import ProofFile
+from coqpyt.coq.base_file import CoqFile
 
 
 class TacticResult(Enum):
@@ -35,6 +37,7 @@ class TacticResult(Enum):
     INVALID = 3
 
 
+@typechecked
 class ProofCheckResult:
     def __init__(
         self,
@@ -43,9 +46,6 @@ class ProofCheckResult:
         current_goals: Optional[GoalAnswer],
         parsed_current_goals: Optional[ParsedObligations],
     ) -> None:
-        assert type(tactic_result) == TacticResult
-        assert type(valid_steps) == list
-        assert all([type(s) == str for s in valid_steps])
         self.tactic_result = tactic_result
         self.valid_steps = valid_steps
         self.current_goals = current_goals
@@ -65,7 +65,7 @@ def proc_file_path(file_path: str) -> str:
 
 
 def get_context(context: list[Term]) -> list[dict[str, Any]]:
-    res = []
+    res: list[dict[str, Any]] = []
     for term in context:
         res.append(
             {
@@ -100,7 +100,7 @@ def get_fresh_path(dirname: str, fresh_base: str) -> str:
 
 
 def get_last_proof_data_points(proof: ProofTerm) -> Any:
-    data_points = []
+    data_points: list[dict[str, Any]] = []
     for i, step in enumerate(proof.steps):
         assert step.goals.goals is not None
         goals = list(map(lambda goal: repr(goal), step.goals.goals.goals))
@@ -168,34 +168,72 @@ def hidden_files_from_prefix(orig_file_path: str, file_prefix: str) -> tuple[str
     return fresh_file_path, fresh_aux_file_path
 
 
+@typechecked
 class ProofManager:
     TIMEOUT = 60
-    LAST_TACTIC_IDX = -3  # -1 is garbage. -2 is "Admitted.". -3 is last tactic.
 
     def __init__(
         self,
         file_path: str,
         proof_file: ProofFile,
-        aux_file_path: str,
+        proof_point: int,
         lm_example_config: LmExampleConfig,
     ) -> None:
         file_dir = os.path.dirname(file_path)
+        file_basename = os.path.basename(file_path)
         self.file_path = file_path
         self.example_type = lm_example_config.format_type
         self.premise_wrapper = lm_example_config.premise_wrapper
         self.n_step_sampler = lm_example_config.n_step_sampler
         self.__search_dir_path = get_fresh_path(file_dir, ".proof-search")
-        self.aux_file_path = aux_file_path
-        with open(self.aux_file_path, "r") as fin:
-            self.file_prefix = fin.read()
+        self.aux_file_path = get_fresh_path(file_dir, f"aux_{file_basename}")
 
         self.proof_file = proof_file
-        self.base_num_steps = len(proof_file.steps)
-        self.proof_start_idx = self.__get_last_tactic_idx() + 1  # No tactics yet!
-        self.last_proof_attempted: str | None = None
+        self.proof_point = proof_point
+        self.__proof_stored_steps = self.__replace_proof_with_admitted_stub(
+            self.proof_point
+        )
+        self.__num_proof_steps = 0
 
-    def __get_last_tactic_idx(self) -> int:
-        return len(self.proof_file.steps) + self.LAST_TACTIC_IDX
+    def __num_steps_to_delete(self, delete_after: int) -> int:
+        step = self.proof_file.steps[delete_after + 1]
+        for proof in self.proof_file.proofs:
+            for i, proof_step in enumerate(proof.steps):
+                if proof_step.ast.range == step.ast.range:
+                    num_steps_to_delete = len(proof.steps) - i
+                    return num_steps_to_delete
+        step_text = self.proof_file.steps[delete_after + 1].text
+        raise ValueError(f"Step {step_text} is not in any proof.")
+
+    def __get_whole_proof_delete_steps(
+        self, delete_after: int
+    ) -> tuple[list[CoqChange], list[str]]:
+        delete_num = self.__num_steps_to_delete(delete_after)
+        last_delete_step_idx = delete_after + delete_num
+        delete_steps: list[CoqChange] = [
+            CoqDeleteStep(i) for i in range(last_delete_step_idx, delete_after, -1)
+        ]
+        delete_step_texts = [
+            s.text
+            for s in self.proof_file.steps[delete_after + 1 : last_delete_step_idx + 1]
+        ]
+        return delete_steps, delete_step_texts
+
+    def __replace_proof_with_admitted_stub(self, delete_after: int) -> list[str]:
+        delete_steps, delete_step_texts = self.__get_whole_proof_delete_steps(
+            delete_after
+        )
+        add_steps: list[CoqChange] = [CoqAddStep("\nAdmitted.", delete_after)]
+        self.proof_file.change_steps(delete_steps + add_steps)
+        return delete_step_texts
+
+    def __restore_proof_file(self) -> None:
+        delete_steps, _ = self.__get_whole_proof_delete_steps(self.proof_point)
+        add_steps: list[CoqChange] = [
+            CoqAddStep(s, self.proof_point + i)
+            for i, s in enumerate(self.__proof_stored_steps)
+        ]
+        self.proof_file.change_steps(delete_steps + add_steps)
 
     def __is_proof_prefix(self, steps1: list[str], steps2: list[str]) -> bool:
         if len(steps1) > len(steps2):
@@ -206,8 +244,22 @@ class ProofManager:
         return True
 
     def __get_current_partial_proof(self) -> list[str]:
-        stop_idx = self.LAST_TACTIC_IDX + 1  # Include last tactic
-        return [s.text for s in self.proof_file.steps[self.proof_start_idx : stop_idx]]
+        assert self.proof_point is not None
+        start_idx = self.proof_point + 1
+        stop_idx = start_idx + self.__num_proof_steps  # Include last tactic
+        return [s.text for s in self.proof_file.steps[start_idx:stop_idx]]
+
+    def __add_step_to_proof_file(self, step: str) -> None:
+        assert self.proof_point is not None
+        insert_idx = self.proof_point + self.__num_proof_steps
+        self.proof_file.add_step(insert_idx, step)
+        self.__num_proof_steps += 1
+
+    def __delete_step_from_proof_file(self) -> None:
+        assert self.proof_point is not None
+        delete_idx = self.proof_point + self.__num_proof_steps
+        self.proof_file.delete_step(delete_idx)
+        self.__num_proof_steps -= 1
 
     def set_proof_file(
         self,
@@ -215,29 +267,31 @@ class ProofManager:
         target_combined_proof: str,
         partial_proof_suffix: str,
     ) -> None:
-        assert len(self.proof_file.steps) >= self.base_num_steps
         current_partial_proof = self.__get_current_partial_proof()
         while not self.__is_proof_prefix(current_partial_proof, valid_steps):
-            to_remove_index = self.__get_last_tactic_idx()
-            self.proof_file.delete_step(to_remove_index)
+            self.__delete_step_from_proof_file()
             current_partial_proof = self.__get_current_partial_proof()
         prefix_len = len(current_partial_proof)
         remaining_current_proof = valid_steps[prefix_len:]
         for step in remaining_current_proof:
-            last_tactic_idx = self.__get_last_tactic_idx()
-            self.proof_file.add_step(step, last_tactic_idx)
+            self.__add_step_to_proof_file(step)
         final_partial_proof = self.__get_current_partial_proof()
         assert (
             target_combined_proof == "".join(final_partial_proof) + partial_proof_suffix
         )
 
     def __update_aux_file(self, partial_proof: str) -> None:
+        assert self.proof_point is not None
+        steps_to_proof = self.proof_file.steps[: (self.proof_point + 1)]
+        file_prefix = "".join([s.text for s in steps_to_proof])
         with open(self.aux_file_path, "w") as fout:
-            fout.write(f"{self.file_prefix}{partial_proof}")
+            fout.write(f"{file_prefix}{partial_proof}")
 
     def __get_valid_steps(self, valid_coq_file: CoqFile) -> list[str]:
         assert valid_coq_file.is_valid
-        suffix_steps = valid_coq_file.steps[self.proof_start_idx : -1]
+        assert self.proof_point is not None
+        first_tactic_idx = self.proof_point + 1
+        suffix_steps = valid_coq_file.steps[first_tactic_idx:-1]
         nonempty_steps: list[str] = []
         for s in suffix_steps:
             if len(s.text.strip()) > 0:
@@ -325,6 +379,7 @@ class ProofManager:
                     parsed_obligations,
                 )
 
+        assert current_goals is not None
         parsed_obligations = self.get_parsed_goals(partial_proof, current_goals)
         return ProofCheckResult(
             TacticResult.VALID, new_valid_steps, current_goals, parsed_obligations
@@ -399,12 +454,10 @@ class ProofManager:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        self.__restore_proof_file()
         self.close()
 
     def close(self) -> None:
-        if os.path.exists(self.file_path):
-            os.remove(self.file_path)
-            pass
         if os.path.exists(self.aux_file_path):
             os.remove(self.aux_file_path)
             pass

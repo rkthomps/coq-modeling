@@ -5,12 +5,12 @@ import re
 import time
 import argparse
 import functools
+import subprocess
 
 from yaml import load, Loader
 import jsonlines
 
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-from peft import LoraConfig, LoraModel, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 import transformers
 from transformers import (
     LlamaForCausalLM,
@@ -33,7 +33,7 @@ import numpy as np
 
 from tactic_gen.lm_example import LmExample
 from tactic_gen.codellama_data import LmDataset
-from data_management.split_raw_data import TRAIN_NAME, VAL_NAME, split_file_path
+from data_management.splits import Split, split2str, split_file_path
 from data_management.create_lm_dataset import DATA_CONF_NAME
 
 
@@ -65,6 +65,8 @@ def make_output_dir(conf: dict[str, Any]) -> None:
 
 
 TRAINING_CONF_NAME = "training_conf.yaml"
+REQS_NAME = "requirements.txt"
+GIT_NAME = "git.txt"
 
 
 def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
@@ -73,6 +75,12 @@ def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
     data_conf_loc = os.path.join(data_path, DATA_CONF_NAME)
     shutil.copy(conf_path, os.path.join(output_dir, TRAINING_CONF_NAME))
     shutil.copy(data_conf_loc, os.path.join(output_dir, DATA_CONF_NAME))
+    reqs = subprocess.check_output([sys.executable, "-m", "pip", "freeze"])
+    with open(os.path.join(output_dir, REQS_NAME), "wb") as fout:
+        fout.write(reqs)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"])
+    with open(os.path.join(output_dir, GIT_NAME), "wb") as fout:
+        fout.write(commit)
 
 
 def __get_required_arg(key: str, conf: dict[str, Any]) -> Any:
@@ -105,7 +113,7 @@ def get_training_args(
         logging_steps=__get_required_arg("logging_steps", conf),
         num_train_epochs=__get_required_arg("num_train_epochs", conf),
         max_steps=__get_optional_arg("max_steps", conf, -1),
-        save_steps=__get_required_arg("save_steps", conf),
+        save_strategy="epoch",
         save_total_limit=__get_required_arg("save_total_limit", conf),
         evaluation_strategy="steps",
         eval_steps=__get_required_arg("eval_steps", conf),
@@ -152,28 +160,6 @@ def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
     return model
 
 
-def dataset_gen(
-    dataset_path: str,
-    split: str,
-    limit: int,
-    max_input_len: int,
-    max_seq_len: int,
-    tokenizer: CodeLlamaTokenizer,
-) -> Generator[dict[str, str], None, None]:
-    file_path = split_file_path(dataset_path, split)
-    with jsonlines.open(file_path, "r") as fin:
-        num_examples = 0
-        for obj in fin:
-            if limit > 0 and num_examples >= limit:
-                break
-            new_in, new_out = collate_example(
-                tokenizer, max_input_len, max_seq_len, obj["input"], obj["output"]
-            )
-            new_str = f"{new_in}{new_out}"
-            yield {"text": new_str}
-            num_examples += 1
-
-
 def get_datasets(
     conf: dict[str, Any],
     tokenizer: CodeLlamaTokenizer,
@@ -182,9 +168,9 @@ def get_datasets(
 ) -> tuple[LmDataset, LmDataset]:
     data_path = __get_required_arg("data_path", conf)
     num_eval_examples = __get_optional_arg("num_eval_examples", conf, None)
-    train_path = split_file_path(data_path, TRAIN_NAME)
+    train_path = split_file_path(data_path, Split.TRAIN)
     train_dataset = LmDataset(train_path, tokenizer, max_input_len, max_seq_len)
-    val_path = split_file_path(data_path, VAL_NAME)
+    val_path = split_file_path(data_path, Split.VAL)
     val_dataset = LmDataset(
         val_path, tokenizer, max_input_len, max_seq_len, num_eval_examples
     )

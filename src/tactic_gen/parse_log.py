@@ -1,9 +1,14 @@
 from __future__ import annotations
 from typing import Any, Union
 
+from typeguard import typechecked
+
+
+@typechecked
 class TrainLog:
-    def __init__(self, epoch: float, learning_rate: float, 
-                 loss: float, step: int) -> None:
+    def __init__(
+        self, epoch: float, learning_rate: float, loss: float, step: int
+    ) -> None:
         assert type(epoch) == float
         assert type(learning_rate) == float
         assert type(loss) == float
@@ -30,9 +35,15 @@ class TrainLog:
 
 
 class EvalLog:
-    def __init__(self, epoch: float, eval_loss: float, 
-                 eval_runtime: float, eval_samples_per_second: float,
-                 eval_steps_per_second: float, step: int) -> None:
+    def __init__(
+        self,
+        epoch: float,
+        eval_loss: float,
+        eval_runtime: float,
+        eval_samples_per_second: float,
+        eval_steps_per_second: float,
+        step: int,
+    ) -> None:
         assert type(epoch) == float
         assert type(eval_loss) == float
         assert type(eval_runtime) == float
@@ -54,12 +65,18 @@ class EvalLog:
         eval_samples_per_second = json_data["eval_samples_per_second"]
         eval_steps_per_second = json_data["eval_steps_per_second"]
         step = json_data["step"]
-        return cls(epoch, eval_loss, eval_runtime, eval_samples_per_second, 
-                   eval_steps_per_second, step)
+        return cls(
+            epoch,
+            eval_loss,
+            eval_runtime,
+            eval_samples_per_second,
+            eval_steps_per_second,
+            step,
+        )
 
 
 def parse_log_entry(json_data: Any) -> Union[EvalLog, TrainLog]:
-    try: 
+    try:
         return EvalLog.from_json(json_data)
     except KeyError:
         return TrainLog.from_json(json_data)
@@ -83,6 +100,3 @@ def parse_eval_logs(json_list: list[Any]) -> list[EvalLog]:
         if isinstance(log, EvalLog):
             eval_logs.append(log)
     return eval_logs
-
-
-

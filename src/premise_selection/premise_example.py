@@ -3,6 +3,8 @@ from typing import Optional, Type, Any
 import random
 import pdb
 
+from typeguard import typechecked
+
 from data_management.dataset_file import FocusedStep, Proof, DatasetFile
 from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
@@ -13,6 +15,7 @@ from premise_selection.premise_formatter import (
 from premise_selection.premise_filter import PremiseFilter
 
 
+@typechecked
 class PremiseTrainingExample:
     def __init__(
         self,
@@ -21,11 +24,6 @@ class PremiseTrainingExample:
         neg_premises: list[str],
         all_pos_premises: list[str],
     ):
-        assert type(context) == str
-        assert type(pos_premise) == str
-        assert type(neg_premises) == list
-        assert all([type(p) == str for p in neg_premises])
-        assert all([type(p) == str for p in all_pos_premises])
         self.context = context
         self.pos_premise = pos_premise
         self.neg_premises = neg_premises

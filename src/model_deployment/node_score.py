@@ -2,7 +2,10 @@ from __future__ import annotations
 from typing import Any
 import math
 
+from typeguard import typechecked
 
+
+@typechecked
 class NodeScore:
     def __init__(self) -> None:
         pass
@@ -43,10 +46,9 @@ class NodeScore:
         raise NotImplementedError
 
 
+@typechecked
 class TokenLengthNormalizedScore(NodeScore):
     def __init__(self, sequence_score: int | float, proof_num_tokens: int):
-        assert type(sequence_score) == int or type(sequence_score) == float
-        assert type(proof_num_tokens) == int
         self.sequence_score = sequence_score
         self.proof_num_tokens = proof_num_tokens
 
@@ -94,9 +96,9 @@ class TokenLengthNormalizedScore(NodeScore):
         return "token-normalized-score"
 
 
+@typechecked
 class LastTacGreedyScore(NodeScore):
     def __init__(self, sequence_score: int | float) -> None:
-        assert type(sequence_score) == int or type(sequence_score) == float
         self.sequence_score = sequence_score
 
     def compute(self) -> float:
@@ -132,10 +134,9 @@ class LastTacGreedyScore(NodeScore):
         return "last-tac-greedy-score"
 
 
+@typechecked
 class DepthFirstScore(NodeScore):
     def __init__(self, proof_num_tactics: int, sequence_score: int | float) -> None:
-        assert type(proof_num_tactics) == int
-        assert type(sequence_score) == int or type(sequence_score) == float
         self.proof_num_tactics = proof_num_tactics
         self.sequence_score = sequence_score
 
@@ -191,10 +192,9 @@ class DepthFirstScore(NodeScore):
         return "depth-first-score"
 
 
+@typechecked
 class BreadthFirstScore(NodeScore):
     def __init__(self, proof_num_tactics: int, sequence_score: int | float) -> None:
-        assert type(proof_num_tactics) == int
-        assert type(sequence_score) == int or type(sequence_score) == float
         self.proof_num_tactics = proof_num_tactics
         self.sequence_score = sequence_score
 
@@ -251,13 +251,11 @@ class BreadthFirstScore(NodeScore):
         return "breadth-first-score"
 
 
+@typechecked
 class BranchNormalizedScore(NodeScore):
     def __init__(
         self, sequence_score: int | float, proof_num_tactics: int, branching_factor: int
     ) -> None:
-        assert type(sequence_score) == float or type(sequence_score) == int
-        assert type(proof_num_tactics) == int
-        assert type(branching_factor) == int
         self.sequence_score = sequence_score
         self.proof_num_tactics = proof_num_tactics
         self.branching_factor = branching_factor

@@ -1,14 +1,14 @@
 from __future__ import annotations
 from typing import Any, Optional
 from enum import Enum
-
-from coqlspclient.coq_structs import TermType
-
 import sys, os
 import jsonlines
 import json
-import pdb
 import re
+
+from typeguard import typechecked
+from coqpyt.coq.structs import TermType
+
 
 STEPS_NAME = "steps.jsonl"
 FILE_CONTEXT_NAME = "file_context.jsonl"
@@ -29,6 +29,7 @@ def data_shape_expected(raw_data_loc: str) -> bool:
     return True
 
 
+@typechecked
 class Sentence:
     bad_sentence_endings: set[str] = set()
 
@@ -40,17 +41,12 @@ class Sentence:
         sentence_type: TermType,
         line: int,
     ):
-        assert type(text) == str
         try:
             assert text.strip().endswith(".")
         except AssertionError:
             if text.strip() not in self.bad_sentence_endings:
                 self.bad_sentence_endings.add(text.strip())
                 print(f"{file_path}:{line} Not Sentence: {text.strip()}")
-        assert type(file_path) == str
-        assert all([type(m) == str for m in module])
-        assert type(sentence_type) == TermType
-        assert type(line) == int
         self.text = text
         self.file_path = file_path
         self.module = module
@@ -85,26 +81,9 @@ class Sentence:
         return cls(text, file_path, module, term_type, line)
 
 
-class FileContext:
-    def __init__(self, file: str, sentences: list[Sentence]) -> None:
-        assert type(file) == str
-        assert all([type(s) == Sentence for s in sentences])
-        self.file = file
-        self.sentences = sentences
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> FileContext:
-        file = json_data["file"]
-        sentences: list[Sentence] = []
-        for sentence_data in json_data["context"]:
-            sentences.append(Sentence.from_json(sentence_data))
-        return cls(file, sentences)
-
-
+@typechecked
 class Term:
     def __init__(self, term: Sentence, term_context: list[Sentence]):
-        assert type(term) == Sentence
-        assert all([type(t) == Sentence for t in term_context])
         self.term = term
         self.term_context = term_context
 
@@ -136,6 +115,7 @@ class Term:
         return cls(term, context)
 
 
+@typechecked
 class Step:
     bad_tactic_endings: set[str] = set()
 
@@ -147,7 +127,6 @@ class Step:
             if text.strip() not in self.bad_tactic_endings:
                 self.bad_tactic_endings.add(text.strip())
                 print("Bad Tactic Ending", text)
-        assert all([type(s) == Sentence for s in context])
         self.text = text
         self.context = context
 
@@ -165,11 +144,9 @@ class Step:
         return cls(text, context)
 
 
+@typechecked
 class Goal:
     def __init__(self, hyps: list[str], goal: str) -> None:
-        assert type(hyps) == list
-        assert all([type(h) == str for h in hyps])
-        assert type(goal) == str
         self.hyps = hyps
         self.goal = goal
 
@@ -188,6 +165,7 @@ class Goal:
         return cls(hyps, hyp_goal[1])
 
 
+@typechecked
 class FocusedStep:
     def __init__(
         self,
@@ -197,11 +175,6 @@ class FocusedStep:
         goals: list[Goal],
         next_steps: list[Step],
     ) -> None:
-        assert type(term) == Term
-        assert type(step) == Step
-        assert type(n_step) == int
-        assert all([type(g) == Goal for g in goals])
-        assert all([type(s) == Step for s in next_steps])
         self.term = term
         self.step = step
         self.n_step = n_step
@@ -242,12 +215,9 @@ class FocusedStep:
         return cls(term, step, n_step, goals, steps)
 
 
+@typechecked
 class Proof:
     def __init__(self, theorem: Term, steps: list[FocusedStep]) -> None:
-        assert type(theorem) == Term
-        assert type(steps) == list
-        assert all([type(fs) == FocusedStep for fs in steps])
-
         self.theorem = theorem
         self.steps = steps
 
@@ -261,7 +231,6 @@ class Proof:
         self,
         stop_step: FocusedStep,
         include_proof: bool = False,
-        add_to_end: Optional[str] = None,
     ) -> str:
         """Print the tactics of the proof up to but not including the given step"""
         proof = self.theorem.term.text
@@ -271,59 +240,92 @@ class Proof:
             if step == stop_step:
                 break
             proof += step.step.text
-        if add_to_end:
-            proof += add_to_end
         return proof
 
 
-class DatasetFile:
+@typechecked
+class FileContext:
     def __init__(
-        self, file: str, avail_premises: list[Sentence], proofs: list[Proof]
+        self, file: str, workspace: str, repository: str, avail_premises: list[Sentence]
     ) -> None:
-        # TODO: Turn into list of proofs.
-        assert type(file) == str
-        assert all([type(p) == Sentence for p in avail_premises])
-        assert all([type(p) == Proof for p in proofs])
         self.file = file
+        self.workspace = workspace
+        self.repository = repository
         self.avail_premises = avail_premises
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> FileContext:
+        file = json_data["file"]
+        workspace = json_data["workspace"]
+        repository = json_data["repository"]
+        avail_premises: list[Sentence] = []
+        for sentence_data in json_data["context"]:
+            avail_premises.append(Sentence.from_json(sentence_data))
+        return cls(file, workspace, repository, avail_premises)
+
+    @classmethod
+    def from_directory(cls, dir_path: str) -> FileContext:
+        file_context_loc = os.path.join(dir_path, FILE_CONTEXT_NAME)
+        file_context_data: Optional[Any] = None
+        with open(file_context_loc, "r") as fin:
+            for line in fin:
+                match file_context_data:
+                    case None:
+                        file_context_data = json.loads(line)
+                    case _:
+                        raise ValueError(
+                            f"File context data {file_context_loc} has more than one line."
+                        )
+        match file_context_data:
+            case None:
+                raise ValueError(f"File context data {file_context_loc} had no lines")
+            case a:
+                return cls.from_json(a)
+
+
+@typechecked
+class DatasetFile:
+    def __init__(self, file_context: FileContext, proofs: list[Proof]) -> None:
+        # TODO: Turn into list of proofs.
+        self.file_context = file_context
         self.proofs = proofs
+        self.out_of_file_avail_premises = self.__get_oof_avail_premises()
+        self.in_file_avail_premises = self.__get_in_file_avail_premises()
 
     def proofs_to_string(self) -> str:
         proof_strings = [p.proof_text_to_string() for p in self.proofs]
         return "\n\n".join(proof_strings)
 
+    def __get_oof_avail_premises(self) -> list[Sentence]:
+        oof_premises: set[Sentence] = set()
+        for premise in self.file_context.avail_premises:
+            if premise.file_path != self.file_context.file:
+                oof_premises.add(premise)
+        return list(oof_premises)
+
+    def __get_in_file_avail_premises(self) -> list[Sentence]:
+        in_file_premises: set[Sentence] = set()
+        for premise in self.file_context.avail_premises:
+            if premise.file_path == self.file_context.file:
+                in_file_premises.add(premise)
+        return list(in_file_premises)
+
+    def get_in_file_premises_before(self, proof: Proof) -> list[Sentence]:
+        return [
+            p for p in self.in_file_avail_premises if p.line < proof.theorem.term.line
+        ]
+
     def get_premises_before(self, proof: Proof) -> list[Sentence]:
-        premises_before: set[Sentence] = set()
-        for premise in self.avail_premises:
-            if premise.file_path == proof.theorem.term.file_path:
-                if premise.line >= proof.theorem.term.line:
-                    continue
-            premises_before.add(premise)
-        return list(premises_before)
+        return self.out_of_file_avail_premises + self.get_in_file_premises_before(proof)
 
     @classmethod
-    def __get_file_data(cls, file_context_loc: str) -> tuple[str, list[Sentence]]:
-        file_context_json_lines: list[Any] = []
-        with jsonlines.open(file_context_loc, "r") as fin:
-            for obj in fin:
-                file_context_json_lines.append(obj)
-        assert len(file_context_json_lines) == 1
-        file_context_json_data = file_context_json_lines[0]
-
-        file = file_context_json_data["file"]
-
-        avail_premises: list[Sentence] = []
-        for sentence_data in file_context_json_data["context"]:
-            avail_premises.append(Sentence.from_json(sentence_data))
-
-        return file, avail_premises
-
-    @classmethod
-    def __get_proofs(cls, steps_loc: str) -> list[Proof]:
+    def get_proofs(cls, dset_loc: str) -> list[Proof]:
+        steps_loc = os.path.join(dset_loc, STEPS_NAME)
         steps: list[FocusedStep] = []
-        with jsonlines.open(steps_loc, "r") as fin:
-            for obj in fin:
-                steps.append(FocusedStep.from_json(obj))
+        with open(steps_loc, "r") as fin:
+            for line in fin:
+                json_data = json.loads(line)
+                steps.append(FocusedStep.from_json(json_data))
 
         if len(steps) == 0:
             return []
@@ -350,15 +352,10 @@ class DatasetFile:
 
     @classmethod
     def from_directory(cls, dir_path: str) -> DatasetFile:
-        file_context_loc = os.path.join(dir_path, FILE_CONTEXT_NAME)
-        steps_loc = os.path.join(dir_path, STEPS_NAME)
-        assert os.path.exists(file_context_loc)
-        assert os.path.exists(steps_loc)
+        file_context = FileContext.from_directory(dir_path)
+        proofs = cls.get_proofs(dir_path)
 
-        file, avail_premises = cls.__get_file_data(file_context_loc)
-        proofs = cls.__get_proofs(steps_loc)
-
-        return cls(file, avail_premises, proofs)
+        return cls(file_context, proofs)
 
 
 if __name__ == "__main__":

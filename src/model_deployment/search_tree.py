@@ -3,10 +3,13 @@ from typing import Optional, Any
 
 import re
 
+from typeguard import typechecked
+
 from model_deployment.node_score import NodeScore, BranchNormalizedScore
 from termcolor import colored
 
 
+@typechecked
 class ProofSearchTree:
     uni_sideways_t = "\u251c"
     sideways_bar = "\u2500"
@@ -29,19 +32,6 @@ class ProofSearchTree:
         children: Optional[list[ProofSearchTree]] = None,
         redundant_to_str: Optional[str] = None,
     ) -> None:
-        assert type(valid) == bool
-        assert type(final_tactic) == bool
-        assert type(makes_progress) == bool
-        assert type(valid_proof_steps) == list
-        assert all([type(s) == str for s in valid_proof_steps])
-        assert type(combined_proofs_steps) == list
-        assert all([type(s) == str for s in combined_proofs_steps])
-        assert type(goal) == str
-        assert type(model_tactic) == str
-        assert type(combined_model_tactics) == str
-        assert isinstance(score, NodeScore)
-        assert type(creation_time) == int
-        assert expanded is None or type(expanded) == int
         self.valid = valid
         self.final_tactic = final_tactic
         self.makes_progress = makes_progress
@@ -57,8 +47,6 @@ class ProofSearchTree:
         if children is None:
             self.children = []
         else:
-            assert type(children) == list
-            assert all([type(c) == ProofSearchTree for c in children])
             self.children = children
 
     def combined_proof_str(self) -> str:
@@ -91,17 +79,17 @@ class ProofSearchTree:
         start_marker: str = uni_l,
         indent: str = "",
         last_child: bool = True,
-        verbose=True,
+        verbose: bool = True,
     ) -> None:
         line_start = start_marker + (self.sideways_bar * 2) + " "
         start = indent + line_start
         step_str = self.steps_proof_str()
+        clean_tactic = self.clean_tactic(step_str)
         if verbose:
-            clean_tactic = self.clean_tactic(step_str)
             clean_score = "{:7.6f}".format(self.score.compute())
             message = f"{start}{clean_score} {clean_tactic}"
         else:
-            message = f"{start}{step_str.strip()}"
+            message = f"{start}{clean_tactic}"
         if self.expanded is not None and self.expanded > 0:
             expanded_len = len(str(self.expanded))
             message = message.replace(" " * expanded_len, str(self.expanded), 1)

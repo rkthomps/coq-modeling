@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import Any
 from dataclasses import dataclass
 
+from typeguard import typechecked
+
 from data_management.dataset_file import FocusedStep, Goal
 from tactic_gen.tactic_pair_encoding import TacticPairEncoding
 from tactic_gen.step_parser import normalize, lex, tokens2str
@@ -23,29 +25,8 @@ def get_next_goals(
     return all_steps[len(sampled_steps)].goals
 
 
-class NStepSampler:
-    def __init__(self) -> None:
-        pass
-
-    def sample_steps(self, steps: list[FocusedStep]) -> NStepResult:
-        raise NotImplementedError
-
-    def to_json(self) -> Any:
-        return {"alias": self.get_alias()}
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> NStepSampler:
-        alias = json_data["alias"]
-        return ALIASES[alias].from_json(json_data)
-
-    @staticmethod
-    def get_alias() -> str:
-        raise NotImplementedError
-
-
-class OneStepSampler(NStepSampler):
-    def __init__(self) -> None:
-        pass
+class OneStepSampler:
+    ALIAS = "one"
 
     def sample_steps(self, steps: list[FocusedStep]) -> NStepResult:
         assert len(steps) >= 1
@@ -53,22 +34,12 @@ class OneStepSampler(NStepSampler):
         next_goal = get_next_goals(sampled_steps, steps)
         return NStepResult(sampled_steps, next_goal)
 
-    def to_json(self) -> Any:
-        return super(OneStepSampler, self).to_json()
 
-    @classmethod
-    def from_json(cls, json_data: Any) -> OneStepSampler:
-        return cls()
+@typechecked
+class NStepUniformSampler:
+    ALIAS = "uniform"
 
-    @staticmethod
-    def get_alias() -> str:
-        return "one"
-
-
-class NStepUniformSampler(NStepSampler):
     def __init__(self, samples_per_step: int) -> None:
-        assert type(samples_per_step) == int
-        super(NStepUniformSampler, self).__init__()
         self.samples_per_step = samples_per_step
 
     def sample_steps(self, steps: list[FocusedStep]) -> NStepResult:
@@ -79,21 +50,22 @@ class NStepUniformSampler(NStepSampler):
         return NStepResult(sampled_steps, next_goal)
 
     def to_json(self) -> Any:
-        parent_json_repr = super(NStepUniformSampler, self).to_json()
-        self_json_repr = {"samples_per_step": self.samples_per_step}
-        return parent_json_repr | self_json_repr
+        return {"samples_per_step": self.samples_per_step}
 
     @classmethod
     def from_json(cls, json_data: Any) -> NStepUniformSampler:
         samples_per_step = json_data["samples_per_step"]
         return cls(samples_per_step)
 
-    @staticmethod
-    def get_alias() -> str:
-        return "uniform"
+    @classmethod
+    def from_conf(cls, conf: Any) -> NStepUniformSampler:
+        return cls.from_json(conf)
 
 
-class NStepTPESampler(NStepSampler):
+@typechecked
+class NStepTPESampler:
+    ALIAS = "tpe"
+
     def __init__(self, tpe: TacticPairEncoding) -> None:
         self.tpe = tpe
 
@@ -109,8 +81,9 @@ class NStepTPESampler(NStepSampler):
         return out_texts
 
     def sample_steps(self, steps: list[FocusedStep]) -> NStepResult:
-        ret_steps: list[FocusedStep] = []
-        for step in steps:
+        assert len(steps) >= 1
+        ret_steps: list[FocusedStep] = [steps[0]]
+        for step in steps[1:]:
             candidate_steps = ret_steps + [step]
             candidate_strs = self.__get_step_texts(candidate_steps)
             if not self.tpe.contains(candidate_strs):
@@ -120,9 +93,7 @@ class NStepTPESampler(NStepSampler):
         return NStepResult(ret_steps, remaining_goal)
 
     def to_json(self) -> Any:
-        parent_json_repr = super(NStepTPESampler, self).to_json()
-        self_json_repr = {"tpe": self.tpe.to_json()}
-        return parent_json_repr | self_json_repr
+        return {"tpe": self.tpe.to_json()}
 
     @classmethod
     def from_json(cls, json_data: Any) -> NStepTPESampler:
@@ -130,13 +101,55 @@ class NStepTPESampler(NStepSampler):
         tpe = TacticPairEncoding.from_json(tpe_data)
         return cls(tpe)
 
-    @staticmethod
-    def get_alias() -> str:
-        return "tpe"
+    @classmethod
+    def from_conf(cls, conf: Any) -> NStepTPESampler:
+        tpe_loc = conf["tpe_loc"]
+        tpe = TacticPairEncoding.load(tpe_loc)
+        return cls(tpe)
 
 
-ALIASES: dict[str, type[NStepSampler]] = {
-    OneStepSampler.get_alias(): OneStepSampler,
-    NStepUniformSampler.get_alias(): NStepUniformSampler,
-    NStepTPESampler.get_alias(): NStepTPESampler,
-}
+NStepSampler = OneStepSampler | NStepUniformSampler | NStepTPESampler
+
+
+class NStepSamplerNotFound(Exception):
+    pass
+
+
+def n_step_to_json(sampler: NStepSampler) -> Any:
+    match sampler:
+        case OneStepSampler():
+            return {"alias": OneStepSampler.ALIAS}
+        case NStepUniformSampler():
+            return {"alias": NStepUniformSampler.ALIAS} | sampler.to_json()
+        case NStepTPESampler():
+            return {"alias": NStepTPESampler.ALIAS} | sampler.to_json()
+
+
+def n_step_from_json(json_data: Any) -> NStepSampler:
+    n_step_attempted_alias = json_data["alias"]
+    match n_step_attempted_alias:
+        case OneStepSampler.ALIAS:
+            return OneStepSampler()
+        case NStepUniformSampler.ALIAS:
+            return NStepUniformSampler.from_json(json_data)
+        case NStepTPESampler():
+            return NStepTPESampler.from_json(json_data)
+        case _:
+            raise NStepSamplerNotFound(
+                f"Could not find n step sampler with alias: {n_step_attempted_alias}"
+            )
+
+
+def n_step_from_conf(json_data: Any) -> NStepSampler:
+    n_step_attempted_alias = json_data["alias"]
+    match n_step_attempted_alias:
+        case OneStepSampler.ALIAS:
+            return OneStepSampler()
+        case NStepUniformSampler.ALIAS:
+            return NStepUniformSampler.from_conf(json_data)
+        case NStepTPESampler():
+            return NStepTPESampler.from_conf(json_data)
+        case _:
+            raise NStepSamplerNotFound(
+                f"Could not find n step sampler with alias: {n_step_attempted_alias}"
+            )

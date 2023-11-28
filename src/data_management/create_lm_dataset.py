@@ -1,163 +1,139 @@
 from __future__ import annotations
-from typing import Type, Optional, Any
+from typing import Optional, Any
 import sys, os
 import shutil
 import argparse
+import multiprocessing as mp
+from queue import Queue
 
-import jsonlines
+from typeguard import typechecked
+import json
 from tqdm import tqdm
-from yaml import load, Loader
+import yaml
 
-from tactic_gen.n_step_sampler import NStepSampler
-from tactic_gen.lm_example import LmExample, BasicLmExample, LMEXAMPLE_ALIASES
-from data_management.split_raw_data import SPLITS, split_file_path
-from data_management.jsonl_utils import shuffle
-from data_management.dataset_file import DatasetFile, data_shape_expected
-from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
-
-
-def create_lm_dataset(example_config: LmExampleConfig) -> None:
-    if os.path.exists(example_config.output_dataset_loc):
-        print(
-            f"Dataset already exists at {example_config.output_dataset_loc}",
-            file=sys.stderr,
-        )
-        exit(1)
-    os.makedirs(example_config.output_dataset_loc)
-    for split in SPLITS:
-        split_loc = os.path.join(example_config.partitioned_dataset_loc, split)
-        unshuffled_output_path = split_file_path(
-            example_config.output_dataset_loc, split, shuffled=False
-        )
-        output_writer = jsonlines.open(unshuffled_output_path, "a")
-        if not os.path.exists(split_loc):
-            print(f"{split_loc} does not exist.", file=sys.stderr)
-            exit(1)
-        assert data_shape_expected(split_loc)
-        print(f"Processing {split}...")
-        for project in tqdm(os.listdir(split_loc)):
-            project_loc = os.path.join(split_loc, project)
-            project_obj = DatasetFile.from_directory(project_loc)
-            project_examples = example_config.format_type.json_from_dataset_file(
-                project_obj,
-                example_config.premise_wrapper,
-                example_config.n_step_sampler,
-            )
-            output_writer.write_all(project_examples)
-            if example_config.premise_wrapper is not None:
-                print(
-                    "Premise hit rate:", example_config.premise_wrapper.get_hit_rate()
-                )
-                example_config.premise_wrapper.reset_hit_rate()
-        output_writer.close()
-        shuffled_output_path = split_file_path(
-            example_config.output_dataset_loc, split, shuffled=True
-        )
-        print(f"Shuffling {split}")
-        shuffle(unshuffled_output_path, shuffled_output_path)
-        os.remove(unshuffled_output_path)
+from tactic_gen.lm_example import LmExample, LmFormatter, formatter_from_conf
+from data_management.splits import (
+    FileInfo,
+    Split,
+    split_file_path,
+)
+from data_management.samples import (
+    ExampleSample,
+    load_sample,
+    SelectedSteps,
+    AllSteps,
+    CertainSteps,
+)
+from data_management.jsonl_utils import shuffle, deduplicate
 
 
+@typechecked
 class LmExampleConfig:
     def __init__(
         self,
-        partitioned_dataset_loc: str,
+        train_sample: ExampleSample,
+        val_sample: ExampleSample,
+        test_sample: ExampleSample,
         output_dataset_loc: str,
-        format_type: Type[LmExample],
-        premise_wrapper: Optional[LocalPremiseModelWrapper],
-        n_step_sampler: Optional[NStepSampler],
+        lm_formatter: LmFormatter,
     ) -> None:
-        assert type(partitioned_dataset_loc) == str
-        assert type(output_dataset_loc) == str
-        assert type(format_type) == type
-        if premise_wrapper is not None:
-            assert isinstance(premise_wrapper, LocalPremiseModelWrapper)
-        if n_step_sampler is not None:
-            assert isinstance(n_step_sampler, NStepSampler)
-        self.partitioned_dataset_loc = partitioned_dataset_loc
+        self.train_sample = train_sample
+        self.val_sample = val_sample
+        self.test_sample = test_sample
         self.output_dataset_loc = output_dataset_loc
-        self.format_type = format_type
-        self.premise_wrapper = premise_wrapper
-        self.n_step_sampler = n_step_sampler
-
-    def to_json(self) -> Any:
-        json_data: Any = {
-            "partitioned_dataset_loc": self.partitioned_dataset_loc,
-            "output_dataset_loc": self.output_dataset_loc,
-            "format_alias": self.format_type.get_alias(),
-        }
-        if self.premise_wrapper:
-            json_data[
-                "premise_wrapper_checkpoint"
-            ] = self.premise_wrapper.checkpoint_loc
-        if self.n_step_sampler:
-            json_data["n_step_sampler"] = self.n_step_sampler.to_json()
-        return json_data
+        self.lm_formatter = lm_formatter
 
     @classmethod
-    def from_json(cls, json_data: Any) -> LmExampleConfig:
-        partitioned_dataset_loc = json_data["partitioned_dataset_loc"]
-        output_dataset_loc = json_data["output_dataset_loc"]
-        format_type_alias = json_data["format_alias"]
-        format_type = LMEXAMPLE_ALIASES[format_type_alias]
-
-        if "premise_wrapper_checkpoint" in json_data:
-            premise_wrapper_checkpoint = json_data["premise_wrapper_checkpoint"]
-            premise_wrapper = LocalPremiseModelWrapper.from_checkpoint(
-                premise_wrapper_checkpoint
-            )
-        else:
-            premise_wrapper = None
-
-        if "n_step_sampler" in json_data:
-            n_step_sampler = NStepSampler.from_json(json_data["n_step_sampler"])
-        else:
-            n_step_sampler = None
+    def from_config(cls, config: Any) -> LmExampleConfig:
+        train_sample_loc = config["train_sample_loc"]
+        train_sample = load_sample(train_sample_loc)
+        val_sample_loc = config["val_sample_loc"]
+        val_sample = load_sample(val_sample_loc)
+        test_sample_loc = config["test_sample_loc"]
+        test_sample = load_sample(test_sample_loc)
+        output_dataset_loc = config["output_dataset_loc"]
+        lm_formatter = formatter_from_conf(config["lm_formatter"])
         return cls(
-            partitioned_dataset_loc,
-            output_dataset_loc,
-            format_type,
-            premise_wrapper,
-            n_step_sampler,
+            train_sample, val_sample, test_sample, output_dataset_loc, lm_formatter
         )
 
     @classmethod
     def load(cls, path: str) -> LmExampleConfig:
         with open(path, "r") as fin:
-            yaml_conf = load(fin, Loader=Loader)
-        return cls.from_json(yaml_conf)
+            yaml_conf = yaml.load(fin, Loader=yaml.Loader)
+        return cls.from_config(yaml_conf)
 
-    @classmethod
-    def void_config(cls) -> LmExampleConfig:
-        partitioned_dataset_loc = ""
-        output_dataset_loc = ""
-        format_type = LmExample
-        premise_wrapper = None
-        n_step_sampler = None
-        return cls(
-            partitioned_dataset_loc,
-            output_dataset_loc,
-            format_type,
-            premise_wrapper,
-            n_step_sampler,
-        )
 
-    @classmethod
-    def from_example_type_and_premise_wrapper(
-        cls,
-        example_type: type[LmExample],
-        premise_wrapper: Optional[LocalPremiseModelWrapper],
-    ) -> LmExampleConfig:
-        partitioned_dataset_loc = ""
-        output_dataset_loc = ""
-        n_step_sampler = None
-        return cls(
-            partitioned_dataset_loc,
-            output_dataset_loc,
-            example_type,
-            premise_wrapper,
-            n_step_sampler,
-        )
+def writer(q: Queue[Optional[LmExample]], out_file: str) -> None:
+    num_examples_written = 0
+    with open(out_file, "w") as fout:
+        while True:
+            example = q.get()
+            match example:
+                case LmExample():
+                    fout.write(json.dumps(example.to_json()) + "\n")
+                    num_examples_written += 1
+                    print(f"\rNum Examples: {num_examples_written}", end="")
+                case None:
+                    print()
+                    return
+
+
+def examples_to_queue(
+    example_sample: ExampleSample,
+    lm_formatter: LmFormatter,
+    file_info: FileInfo,
+    selected_steps: SelectedSteps,
+    q: Queue[Optional[LmExample]],
+) -> None:
+    dp_obj = file_info.get_dp(example_sample.data_loc)
+    match selected_steps:
+        case AllSteps():
+            for proof in dp_obj.proofs:
+                for i in range(len(proof.steps)):
+                    example = lm_formatter.example_from_step(i, proof, dp_obj)
+                    q.put(example)
+        case CertainSteps(steps=step_idxs):
+            for step_idx in step_idxs:
+                proof = dp_obj.proofs[step_idx.proof_idx]
+                example = lm_formatter.example_from_step(
+                    step_idx.step_idx, proof, dp_obj
+                )
+                q.put(example)
+
+
+__ArgTuple = tuple[
+    ExampleSample, LmFormatter, FileInfo, SelectedSteps, Queue[Optional[LmExample]]
+]
+
+
+def __get_split_transformation_args(
+    example_sampler: ExampleSample,
+    example_formatter: LmFormatter,
+    q: Queue[LmExample | None],
+) -> list[__ArgTuple]:
+    arg_list: list[__ArgTuple] = []
+    for file, selected_steps in example_sampler.step_generator():
+        arg_list.append((example_sampler, example_formatter, file, selected_steps, q))
+    return arg_list
+
+
+def get_split_transformation_args(
+    example_config: LmExampleConfig, split: Split, q: Queue[Optional[LmExample]]
+) -> list[__ArgTuple]:
+    match split:
+        case Split.TRAIN:
+            return __get_split_transformation_args(
+                example_config.train_sample, example_config.lm_formatter, q
+            )
+        case Split.VAL:
+            return __get_split_transformation_args(
+                example_config.val_sample, example_config.lm_formatter, q
+            )
+        case Split.TEST:
+            return __get_split_transformation_args(
+                example_config.test_sample, example_config.lm_formatter, q
+            )
 
 
 DATA_CONF_NAME = "lm-example-conf.yaml"
@@ -170,9 +146,57 @@ if __name__ == "__main__":
         "lm_data_config_loc",
         help="Location of configuration file for LmExample dataset.",
     )
+    parser.add_argument(
+        "--num_procs",
+        "-n",
+        type=int,
+        help="Number of processes to use to create the dataset.",
+    )
+
     args = parser.parse_args(sys.argv[1:])
+    num_procs = 1
+    if args.num_procs:
+        num_procs = args.num_procs
 
     example_config = LmExampleConfig.load(args.lm_data_config_loc)
-    create_lm_dataset(example_config)
+
+    if os.path.exists(example_config.output_dataset_loc):
+        raise FileExistsError(f"{example_config.output_dataset_loc}")
+    os.makedirs(example_config.output_dataset_loc)
+
+    with mp.Manager() as manager:
+        q: Queue[Optional[LmExample]] = manager.Queue()
+        with mp.Pool(num_procs) as pool:
+            for split in [Split.TEST, Split.VAL, Split.TRAIN]:
+                split_args = get_split_transformation_args(example_config, split, q)
+                raw_path = split_file_path(
+                    example_config.output_dataset_loc,
+                    split,
+                    shuffled=False,
+                    deduplicated=False,
+                )
+                deduped_path = split_file_path(
+                    example_config.output_dataset_loc,
+                    split,
+                    shuffled=False,
+                    deduplicated=True,
+                )
+                shuffled_path = split_file_path(
+                    example_config.output_dataset_loc,
+                    split,
+                    shuffled=True,
+                    deduplicated=True,
+                )
+                print(f"Processing {split.name}...")
+                train_writer = pool.apply_async(writer, (q, raw_path))
+                pool.starmap(examples_to_queue, split_args)
+                q.put(None)
+                train_writer.wait()
+                num_duplicates = deduplicate(raw_path, deduped_path)
+                print(f"Num Duplicates: {num_duplicates}")
+                os.remove(raw_path)
+                shuffle(deduped_path, shuffled_path)
+                os.remove(deduped_path)
+
     conf_out_loc = os.path.join(example_config.output_dataset_loc, DATA_CONF_NAME)
     shutil.copy(args.lm_data_config_loc, conf_out_loc)
