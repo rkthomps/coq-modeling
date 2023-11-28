@@ -1,12 +1,14 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Optional
 
 import sys, os
 import enum
 import argparse
 import json
 import re
-from multiprocessing import Pool
+import time
+from multiprocessing import Pool, Manager
+from queue import Queue
 
 from typeguard import typechecked
 from tqdm import tqdm
@@ -30,7 +32,8 @@ def remove_comments(step_text: str) -> str:
 class Origin(enum.Enum):
     COQ_STD_LIB = 1
     COQ_USER_CONTRIB = 2
-    LOCAL = 3
+    LOCAL_IN_FILE = 3
+    LOCAL_OUT_OF_FILE = 3
 
 
 @typechecked
@@ -68,10 +71,6 @@ class PremTypeKey:
 @typechecked
 class PremTypeTable:
     def __init__(self, type_freqs: dict[PremTypeKey, int]) -> None:
-        assert type(type_freqs) == dict
-        for k, v in type_freqs.items():
-            assert type(k) == PremTypeKey
-            assert type(v) == int
         self.type_freqs = type_freqs
 
     def to_json(self) -> dict[str, dict[str, int]]:
@@ -92,25 +91,29 @@ class PremTypeTable:
         return cls(type_freqs)
 
     @staticmethod
-    def get_origin(premise: Sentence) -> Origin:
+    def get_origin(premise: Sentence, dset_file: DatasetFile) -> Origin:
         coq_lib_str = os.path.join("lib", "coq", "theories") + "/"
         if coq_lib_str in premise.file_path:
             return Origin.COQ_STD_LIB
         coq_contrib_str = os.path.join("lib", "user-contrib") + "/"
         if coq_contrib_str in premise.file_path:
             return Origin.COQ_USER_CONTRIB
-        return Origin.LOCAL
+        if premise.file_path == dset_file.file_context.file:
+            return Origin.LOCAL_IN_FILE
+        return Origin.LOCAL_OUT_OF_FILE
 
     @classmethod
-    def from_premises(cls, premises: list[Sentence]) -> PremTypeTable:
+    def from_premises(
+        cls, premises: list[Sentence], dset_file: DatasetFile, weight: int = 1
+    ) -> PremTypeTable:
         type_counts: dict[PremTypeKey, int] = {}
         for premise in premises:
-            origin = cls.get_origin(premise)
+            origin = cls.get_origin(premise, dset_file)
             term_type = premise.sentence_type
             premise_key = PremTypeKey(term_type, origin)
             if premise_key not in type_counts:
                 type_counts[premise_key] = 0
-            type_counts[premise_key] += 1
+            type_counts[premise_key] += weight
         return cls(type_counts)
 
 
@@ -188,8 +191,8 @@ class PosPremiseAggregator(PremTableAggregator):
         self.num_nonempty_premises = num_nonempty_premises
         self.num_has_period = num_has_period
 
-    def add_premise_step(self, step_text: str, pos_premises: list[Sentence]) -> None:
-        self.add_table(PremTypeTable.from_premises(pos_premises))
+    def add_premise_step(self, step_text: str, pos_premises: list[Sentence], dset_file: DatasetFile) -> None:
+        self.add_table(PremTypeTable.from_premises(pos_premises, dset_file))
         if len(pos_premises) > 0:
             self.num_nonempty_premises += 1
         step_without_comments = remove_comments(step_text)
@@ -320,19 +323,24 @@ class FileResult:
         avail_aggregator = PremTableAggregator.get_empty()
         pos_aggregator = PosPremiseAggregator.get_empty()
         num_steps = 0
+        oof_premises = premise_filter.get_oof_filtered_premises(dset_file)
+        oof_set = set(oof_premises)
         for proof in dset_file.proofs:
             for step in proof.steps:
-                filter_result = premise_filter.get_pos_and_avail_premises(
+                in_file_premises = premise_filter.get_in_file_filtered_premises(
                     step, proof, dset_file
                 )
-                avail_table = PremTypeTable.from_premises(filter_result.avail_premises)
-                avail_aggregator.add_table(avail_table)
-                pos_aggregator.add_premise_step(
-                    step.step.text, filter_result.pos_premises
+                pos_premises = premise_filter.get_pos_filtered_premises(
+                    step, proof, dset_file, oof_set, set(in_file_premises)
                 )
+                pos_aggregator.add_premise_step(step.step.text, pos_premises, dset_file)
+                in_file_avail_table = PremTypeTable.from_premises(in_file_premises, dset_file)
+                avail_aggregator.add_table(in_file_avail_table)
             num_steps += len(proof.steps)
         num_proofs = len(dset_file.proofs)
         num_files = 1
+        oof_avail_table = PremTypeTable.from_premises(oof_premises, dset_file, weight=num_steps)
+        avail_aggregator.add_table(oof_avail_table)
         return cls(num_proofs, num_steps, num_files, avail_aggregator, pos_aggregator)
 
     @classmethod
@@ -345,17 +353,30 @@ class FileResult:
         return cls(num_proofs, num_steps, num_files, avail_aggregator, pos_aggregator)
 
 
-def get_file_aggregator(file_dirname: str) -> FileResult:
+def counter(total: int, q: Queue[Optional[int]]) -> None:
+    tally = 0
+    while True:
+        i = q.get()
+        if i is None:
+            return
+        tally += i
+        print(f"\r{tally} of {total} files analized.", end="")
+
+
+def get_file_aggregator(file_dirname: str, q: Queue[Optional[int]]) -> FileResult:
     dset_file = DatasetFile.from_directory(file_dirname)
+    q.put(1)
     return FileResult.from_file(dset_file)
 
 
-def get_arguments(raw_dataset_loc: str) -> list[tuple[str]]:
-    args: list[tuple[str]] = []
+def get_arguments(
+    raw_dataset_loc: str, q: Queue[Optional[int]]
+) -> list[tuple[str, Queue[Optional[int]]]]:
+    args: list[tuple[str, Queue[Optional[int]]]] = []
     assert data_shape_expected(raw_dataset_loc)
     for coq_file_dir in os.listdir(raw_dataset_loc):
         coq_file_dir_loc = os.path.join(raw_dataset_loc, coq_file_dir)
-        args.append((coq_file_dir_loc,))
+        args.append((coq_file_dir_loc, q))
     return args
 
 
@@ -378,11 +399,16 @@ if __name__ == "__main__":
     if args.num_procs is not None:
         n_procs = args.num_procs
     data_points_loc = os.path.join(args.dataset_loc, DATA_POINTS_NAME)
-    arguments = get_arguments(data_points_loc)
 
     print("Processing")
-    with Pool(n_procs) as pool:
-        results = pool.starmap(get_file_aggregator, arguments)
+    with Manager() as manager:
+        q = manager.Queue()
+        with Pool(n_procs) as pool:
+            arguments = get_arguments(data_points_loc, q)
+            async_counter = pool.apply_async(counter, (len(arguments), q))
+            results = pool.starmap(get_file_aggregator, arguments)
+            q.put(None)
+            async_counter.wait()
 
     print("Aggregating...")
     cur_file_aggregator = FileResult.get_empty()

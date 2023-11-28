@@ -31,44 +31,6 @@ from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME
 
 
 @typechecked
-class PremiseModelWrapper:
-    def __init__(
-        self,
-        context_format: type[ContextFormat],
-        premise_format: type[PremiseFormat],
-        premise_filter: PremiseFilter,
-    ) -> None:
-        self.context_format = context_format
-        self.premise_format = premise_format
-        self.premise_filter = premise_filter
-
-    def get_premise_scores(
-        self, step: FocusedStep, proof: Proof, premises: list[Sentence]
-    ) -> list[float]:
-        formatted_context = self.context_format.format(step, proof)
-        formatted_premises = [self.premise_format.format(p) for p in premises]
-        return self.get_premise_scores_from_strings(
-            formatted_context, formatted_premises
-        )
-
-    def get_premise_scores_from_strings(
-        self, context_str: str, premise_strs: list[str]
-    ) -> list[float]:
-        raise NotImplementedError
-
-    def get_ranked_premise_generator(
-        self, step: FocusedStep, proof: Proof, premises: list[Sentence]
-    ) -> Iterable[Sentence]:
-        premise_scores = self.get_premise_scores(step, proof, premises)
-        num_premises = len(premise_scores)
-        arg_sorted_premise_scores = sorted(
-            range(num_premises), key=lambda idx: -1 * premise_scores[idx]
-        )
-        for idx in arg_sorted_premise_scores:
-            yield premises[idx]
-
-
-@typechecked
 class RoundRobinCache:
     def __init__(self, max_size: int = 50000) -> None:
         self.cache: dict[str, torch.Tensor] = {}
@@ -94,7 +56,8 @@ class RoundRobinCache:
 
 
 @typechecked
-class LocalPremiseModelWrapper(PremiseModelWrapper):
+class LocalPremiseModelWrapper:
+    ALIAS = "local"
     MAX_CACHE_SIZE = 50000
 
     def __init__(
@@ -105,9 +68,9 @@ class LocalPremiseModelWrapper(PremiseModelWrapper):
         premise_filter: PremiseFilter,
         checkpoint_loc: str,
     ) -> None:
-        super(LocalPremiseModelWrapper, self).__init__(
-            context_format, premise_format, premise_filter
-        )
+        self.context_format = context_format
+        self.premise_format = premise_format
+        self.premise_filter = premise_filter
         self.retriever = retriever
         self.checkpoint_loc = checkpoint_loc
         self.encoding_cache = RoundRobinCache(self.MAX_CACHE_SIZE)
@@ -169,9 +132,15 @@ class LocalPremiseModelWrapper(PremiseModelWrapper):
             retriever, context_format, premise_format, premise_filter, checkpoint_loc
         )
 
+    @classmethod
+    def from_conf(cls, conf: Any) -> LocalPremiseModelWrapper:
+        return cls.from_checkpoint(conf["checkpoint_loc"])
+
 
 @typechecked
-class PremiseServerModelWrapper(PremiseModelWrapper):
+class PremiseServerModelWrapper:
+    ALIAS = "server"
+
     def __init__(
         self,
         url: str,
@@ -179,9 +148,9 @@ class PremiseServerModelWrapper(PremiseModelWrapper):
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
     ) -> None:
-        super(PremiseServerModelWrapper, self).__init__(
-            context_format, premise_format, premise_filter
-        )
+        self.context_format = context_format
+        self.premise_format = premise_format
+        self.premise_filter = premise_filter
         self.url = url
 
     def get_premise_scores_from_strings(
@@ -206,3 +175,52 @@ class PremiseServerModelWrapper(PremiseModelWrapper):
             format_response_obj.premise_filter_data
         )
         return cls(url, context_format, premise_format, premise_filter)
+
+    @classmethod
+    def from_conf(cls, conf: Any) -> PremiseServerModelWrapper:
+        return cls.from_url(conf["url"])
+
+
+PremiseModelWrapper = LocalPremiseModelWrapper | PremiseServerModelWrapper
+
+
+def get_premise_scores(
+    premise_model: PremiseModelWrapper,
+    step: FocusedStep,
+    proof: Proof,
+    premises: list[Sentence],
+) -> list[float]:
+    formatted_context = premise_model.context_format.format(step, proof)
+    formatted_premises = [premise_model.premise_format.format(p) for p in premises]
+    return premise_model.get_premise_scores_from_strings(
+        formatted_context, formatted_premises
+    )
+
+
+def get_ranked_premise_generator(
+    premise_model: PremiseModelWrapper,
+    step: FocusedStep,
+    proof: Proof,
+    premises: list[Sentence],
+) -> Iterable[Sentence]:
+    premise_scores = get_premise_scores(premise_model, step, proof, premises)
+    num_premises = len(premise_scores)
+    arg_sorted_premise_scores = sorted(
+        range(num_premises), key=lambda idx: -1 * premise_scores[idx]
+    )
+    for idx in arg_sorted_premise_scores:
+        yield premises[idx]
+
+
+class PremiseModelNotFound(Exception):
+    pass
+
+def premise_wrapper_from_conf(conf: Any) -> PremiseModelWrapper:
+    attempted_alias = conf["alias"]
+    match attempted_alias:
+        case LocalPremiseModelWrapper.ALIAS:
+            return LocalPremiseModelWrapper.from_conf(conf)
+        case PremiseServerModelWrapper.ALIAS:
+            return PremiseServerModelWrapper.from_conf(conf)
+        case _:
+            raise PremiseModelNotFound(f"Could not find premise model wrapper: {attempted_alias}")

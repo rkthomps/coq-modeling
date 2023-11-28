@@ -66,7 +66,7 @@ def make_output_dir(conf: dict[str, Any]) -> None:
 
 TRAINING_CONF_NAME = "training_conf.yaml"
 REQS_NAME = "requirements.txt"
-GIT_NAME = "git.json"
+GIT_NAME = "git.txt"
 
 
 def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
@@ -113,7 +113,7 @@ def get_training_args(
         logging_steps=__get_required_arg("logging_steps", conf),
         num_train_epochs=__get_required_arg("num_train_epochs", conf),
         max_steps=__get_optional_arg("max_steps", conf, -1),
-        save_steps=__get_required_arg("save_steps", conf),
+        save_strategy="epoch",
         save_total_limit=__get_required_arg("save_total_limit", conf),
         evaluation_strategy="steps",
         eval_steps=__get_required_arg("eval_steps", conf),

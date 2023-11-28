@@ -2,5 +2,5 @@ alias: "RandomSample"
 data_split_loc: /home/kthompson/coq-modeling/splits/random-split.json
 split: train
 data_loc: /data/benchmarks/coq-dataset
-sample_prop: 0.15
+sample_prop: 0.08
 seed: 1

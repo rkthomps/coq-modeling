@@ -4,9 +4,13 @@ from dataclasses import dataclass
 
 from typeguard import typechecked
 
-from tactic_gen.n_step_sampler import NStepSampler, OneStepSampler
+from tactic_gen.n_step_sampler import NStepSampler, OneStepSampler, n_step_from_conf
 from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence, Goal
-from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
+from model_deployment.premise_model_wrapper import (
+    PremiseModelWrapper,
+    get_ranked_premise_generator,
+    premise_wrapper_from_conf,
+)
 
 GOAL_SEP = "<G>"
 PREM_SEP = "<P>"
@@ -58,6 +62,12 @@ class BasicFormatter:
         output = "".join([fs.step.text for fs in n_step_sample.steps])
         return LmExample(input, output)
 
+    @classmethod
+    def from_conf(cls, conf: Any) -> BasicFormatter:
+        n_step_sampler = n_step_from_conf(conf["n_step_sampler"])
+        direct_num_steps = conf["direct_num_steps"]
+        return cls(n_step_sampler, direct_num_steps)
+
 
 class PremiseFormatter:
     ALIAS = "premise"
@@ -65,7 +75,7 @@ class PremiseFormatter:
 
     def __init__(
         self,
-        premise_model_wrapper: LocalPremiseModelWrapper,
+        premise_model_wrapper: PremiseModelWrapper,
         n_step_sampler: NStepSampler,
         direct_num_steps: bool,
     ) -> None:
@@ -87,8 +97,8 @@ class PremiseFormatter:
                 step, proof, dp_obj
             )
         )
-        ranked_premises = self.premise_model_wrapper.get_ranked_premise_generator(
-            step, proof, filtered_result.avail_premises
+        ranked_premises = get_ranked_premise_generator(
+            self.premise_model_wrapper, step, proof, filtered_result.avail_premises
         )
         top_premises: list[Sentence] = []
         for premise in ranked_premises:
@@ -114,6 +124,16 @@ class PremiseFormatter:
         input = f"{premise_str}{PREM_SEP}{basic_lm_example.input}"
         return LmExample(input, basic_lm_example.output)
 
+    @classmethod
+    def from_conf(cls, conf: Any) -> PremiseFormatter:
+        premise_model_wrapper = premise_wrapper_from_conf(conf["premise_model_wrapper"])
+        tmp_basic_formatter = BasicFormatter.from_conf(conf)
+        return cls(
+            premise_model_wrapper,
+            tmp_basic_formatter.n_step_sampler,
+            tmp_basic_formatter.direct_num_steps,
+        )
+
 
 class GoalFormatter:
     ALIAS = "goal-cotrain"
@@ -137,12 +157,19 @@ class GoalFormatter:
         )
         return LmExample(basic_example.input, output)
 
+    @classmethod
+    def from_conf(cls, conf: Any) -> GoalFormatter:
+        tmp_basic_formatter = BasicFormatter.from_conf(conf)
+        return cls(
+            tmp_basic_formatter.n_step_sampler, tmp_basic_formatter.direct_num_steps
+        )
+
 
 class BaseCodeLLamaLmFormatter:
     ALIAS = "codellama-base"
 
     def example_from_step(
-        self, step_idx: int, proof: Proof, partial_proof_suffix: Optional[str]
+        self, step_idx: int, proof: Proof, dp_obj: DatasetFile
     ) -> LmExample:
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
@@ -158,7 +185,7 @@ class BaseCodeLLamaLmFormatter:
 class BaseCodeLLamaPremiseLmFormatter:
     ALIAS = "codellama-base-premise"
 
-    def __init__(self, premise_model_wrapper: LocalPremiseModelWrapper) -> None:
+    def __init__(self, premise_model_wrapper: PremiseModelWrapper) -> None:
         self.premise_model_wrapper = premise_model_wrapper
         self.__premise_formatter = PremiseFormatter(
             self.premise_model_wrapper, OneStepSampler(), False
@@ -169,8 +196,6 @@ class BaseCodeLLamaPremiseLmFormatter:
         step_idx: int,
         proof: Proof,
         dset_obj: DatasetFile,
-        partial_proof_suffix: Optional[str],
-        premise_model_wrapper: LocalPremiseModelWrapper,
     ) -> LmExample:
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
@@ -182,6 +207,11 @@ class BaseCodeLLamaPremiseLmFormatter:
         input = f"{premise_string}\n\n{final_goal_string}\n\n{partial_proof_string}"
         output = step.step.text
         return LmExample(input, output)
+
+    @classmethod
+    def from_conf(cls, conf: Any) -> BaseCodeLLamaPremiseLmFormatter:
+        premise_model_wrapper = premise_wrapper_from_conf(conf["premise_model_wrapper"])
+        return cls(premise_model_wrapper)
 
 
 class GPT4Formatter:
@@ -213,15 +243,6 @@ class GPT4Formatter:
         return LmExample(input, output)
 
 
-LmExample = (
-    BasicLmExample
-    | GoalLmExample
-    | AutoNTacticLmExample
-    | BaseCodeLLamaLmExample
-    | BaseCodeLLamaPremiseLmExample
-    | GPT4BasicLmExample
-)
-
 LmFormatter = (
     BasicFormatter
     | PremiseFormatter
@@ -232,12 +253,26 @@ LmFormatter = (
 )
 
 
-LMEXAMPLE_ALIASES: dict[str, Type[LmExample]] = {
-    BasicLmExample.get_alias(): BasicLmExample,
-    GoalLmExample.get_alias(): GoalLmExample,
-    GPT4BasicLmExample.get_alias(): GPT4BasicLmExample,
-    PremiseLmExample.get_alias(): PremiseLmExample,
-    AutoNTacticLmExample.get_alias(): AutoNTacticLmExample,
-    BaseCodeLLamaLmExample.get_alias(): BaseCodeLLamaLmExample,
-    BaseCodeLLamaPremiseLmExample.get_alias(): BaseCodeLLamaPremiseLmExample,
-}
+class LmFormatterNotFoundError(Exception):
+    pass
+
+
+def formatter_from_conf(conf: Any) -> LmFormatter:
+    attempted_alias = conf["alias"]
+    match attempted_alias:
+        case BasicFormatter.ALIAS:
+            return BasicFormatter.from_conf(conf)
+        case PremiseFormatter.ALIAS:
+            return PremiseFormatter.from_conf(conf)
+        case GoalFormatter.ALIAS:
+            return GoalFormatter.from_conf(conf)
+        case BaseCodeLLamaLmFormatter.ALIAS:
+            return BaseCodeLLamaLmFormatter()
+        case BaseCodeLLamaPremiseLmFormatter.ALIAS:
+            return BaseCodeLLamaPremiseLmFormatter.from_conf(conf)
+        case GPT4Formatter.ALIAS:
+            return GPT4Formatter()
+        case _:
+            raise LmFormatterNotFoundError(
+                f"Could not find Lm Formatter: {attempted_alias}"
+            )

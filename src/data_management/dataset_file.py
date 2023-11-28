@@ -289,19 +289,34 @@ class DatasetFile:
         # TODO: Turn into list of proofs.
         self.file_context = file_context
         self.proofs = proofs
+        self.out_of_file_avail_premises = self.__get_oof_avail_premises()
+        self.in_file_avail_premises = self.__get_in_file_avail_premises()
 
     def proofs_to_string(self) -> str:
         proof_strings = [p.proof_text_to_string() for p in self.proofs]
         return "\n\n".join(proof_strings)
 
-    def get_premises_before(self, proof: Proof) -> list[Sentence]:
-        premises_before: set[Sentence] = set()
+    def __get_oof_avail_premises(self) -> list[Sentence]:
+        oof_premises: set[Sentence] = set()
         for premise in self.file_context.avail_premises:
-            if premise.file_path == proof.theorem.term.file_path:
-                if premise.line >= proof.theorem.term.line:
-                    continue
-            premises_before.add(premise)
-        return list(premises_before)
+            if premise.file_path != self.file_context.file:
+                oof_premises.add(premise)
+        return list(oof_premises)
+
+    def __get_in_file_avail_premises(self) -> list[Sentence]:
+        in_file_premises: set[Sentence] = set()
+        for premise in self.file_context.avail_premises:
+            if premise.file_path == self.file_context.file:
+                in_file_premises.add(premise)
+        return list(in_file_premises)
+
+    def get_in_file_premises_before(self, proof: Proof) -> list[Sentence]:
+        return [
+            p for p in self.in_file_avail_premises if p.line < proof.theorem.term.line
+        ]
+
+    def get_premises_before(self, proof: Proof) -> list[Sentence]:
+        return self.out_of_file_avail_premises + self.get_in_file_premises_before(proof)
 
     @classmethod
     def get_proofs(cls, dset_loc: str) -> list[Proof]:

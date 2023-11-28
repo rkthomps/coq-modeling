@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Optional
 
 from dataclasses import dataclass
 from typeguard import typechecked
@@ -16,6 +16,13 @@ class FilteredResult:
     avail_premises: list[Sentence]
 
 
+@dataclass
+class OOFCache:
+    dset_file: DatasetFile
+    filtered_list: list[Sentence]
+    filtered_set: set[Sentence]
+
+
 @typechecked
 class PremiseFilter:
     def __init__(
@@ -28,6 +35,7 @@ class PremiseFilter:
         self.non_coq_excludes = non_coq_excludes
         self.general_excludes = general_excludes
         self.__print_warnings()
+        self.__oof_cache: Optional[OOFCache] = None
 
     def __print_warnings(self) -> None:
         if len(self.coq_excludes) > 0:
@@ -57,16 +65,37 @@ class PremiseFilter:
             return False
         return True
 
-    def get_pos_and_avail_premises(
+    def get_in_file_filtered_premises(
         self, step: FocusedStep, proof: Proof, dset_obj: DatasetFile
-    ) -> FilteredResult:
-        """TODO: Change proof.line to step.line"""
-        all_premise_candidates = dset_obj.get_premises_before(proof)
-        filtered_premise_candidates: list[Sentence] = []
-        for premise in all_premise_candidates:
-            if self.filter_premise(premise):
-                filtered_premise_candidates.append(premise)
+    ) -> list[Sentence]:
+        in_file_before_proof = dset_obj.get_in_file_premises_before(proof)
+        return [p for p in in_file_before_proof if self.filter_premise(p)]
 
+    def __check_dset_cache(self, dset_obj: DatasetFile) -> OOFCache:
+        match self.__oof_cache:
+            case OOFCache(dset_file=cache_dset_file) if cache_dset_file is dset_obj:
+                return self.__oof_cache
+            case _:
+                filtered_list = [
+                    p
+                    for p in dset_obj.out_of_file_avail_premises
+                    if self.filter_premise(p)
+                ]
+                self.__oof_cache = OOFCache(dset_obj, filtered_list, set(filtered_list))
+                return self.__oof_cache
+
+    def get_oof_filtered_premises(self, dset_obj: DatasetFile) -> list[Sentence]:
+        cache_result = self.__check_dset_cache(dset_obj)
+        return cache_result.filtered_list
+
+    def get_pos_filtered_premises(
+        self,
+        step: FocusedStep,
+        proof: Proof,
+        dset_obj: DatasetFile,
+        oof_premises: set[Sentence],
+        in_file_premises: set[Sentence],
+    ) -> list[Sentence]:
         all_positive_candidates = step.step.context
         filtered_positive_candidates: list[Sentence] = []
         for pos_premise in all_positive_candidates:
@@ -76,7 +105,9 @@ class PremiseFilter:
                 pos_premise.line < proof.theorem.term.line
             )
             premise_available = (not same_file) or prev_line_in_file
-            premise_in_context = pos_premise in all_premise_candidates
+            premise_in_context = (pos_premise in in_file_premises) or (
+                pos_premise in oof_premises
+            )
             if passes_filter and premise_available and premise_in_context:
                 filtered_positive_candidates.append(pos_premise)
             if not premise_available:
@@ -89,7 +120,19 @@ class PremiseFilter:
                     f"Positive premise not in context at {pos_premise.file_path}:{pos_premise.line}",
                     file=sys.stderr,
                 )
-        return FilteredResult(filtered_positive_candidates, filtered_premise_candidates)
+        return filtered_positive_candidates
+
+    def get_pos_and_avail_premises(
+        self, step: FocusedStep, proof: Proof, dset_obj: DatasetFile
+    ) -> FilteredResult:
+        """TODO: Change proof.line to step.line"""
+        in_file_premises = self.get_in_file_filtered_premises(step, proof, dset_obj)
+        cache_result = self.__check_dset_cache(dset_obj)
+        filtered_avail_candidates = cache_result.filtered_list + in_file_premises
+        filtered_pos_candidates = self.get_pos_filtered_premises(
+            step, proof, dset_obj, cache_result.filtered_set, set(in_file_premises)
+        )
+        return FilteredResult(filtered_pos_candidates, filtered_avail_candidates)
 
     def to_json(self) -> Any:
         return {

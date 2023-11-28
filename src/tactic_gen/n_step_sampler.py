@@ -56,7 +56,7 @@ class NStepUniformSampler:
     def from_json(cls, json_data: Any) -> NStepUniformSampler:
         samples_per_step = json_data["samples_per_step"]
         return cls(samples_per_step)
-    
+
     @classmethod
     def from_conf(cls, conf: Any) -> NStepUniformSampler:
         return cls.from_json(conf)
@@ -100,7 +100,7 @@ class NStepTPESampler:
         tpe_data = json_data["tpe"]
         tpe = TacticPairEncoding.from_json(tpe_data)
         return cls(tpe)
-    
+
     @classmethod
     def from_conf(cls, conf: Any) -> NStepTPESampler:
         tpe_loc = conf["tpe_loc"]
@@ -134,6 +134,21 @@ def n_step_from_json(json_data: Any) -> NStepSampler:
             return NStepUniformSampler.from_json(json_data)
         case NStepTPESampler():
             return NStepTPESampler.from_json(json_data)
+        case _:
+            raise NStepSamplerNotFound(
+                f"Could not find n step sampler with alias: {n_step_attempted_alias}"
+            )
+
+
+def n_step_from_conf(json_data: Any) -> NStepSampler:
+    n_step_attempted_alias = json_data["alias"]
+    match n_step_attempted_alias:
+        case OneStepSampler.ALIAS:
+            return OneStepSampler()
+        case NStepUniformSampler.ALIAS:
+            return NStepUniformSampler.from_conf(json_data)
+        case NStepTPESampler():
+            return NStepTPESampler.from_conf(json_data)
         case _:
             raise NStepSamplerNotFound(
                 f"Could not find n step sampler with alias: {n_step_attempted_alias}"

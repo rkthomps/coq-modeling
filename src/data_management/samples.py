@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Any, Generator
+from dataclasses import dataclass
 
 import os
 import sys
@@ -12,8 +13,6 @@ import yaml
 from tqdm import tqdm
 
 from data_management.splits import FileInfo, DataSplit, Split, split2str, str2split
-from dataset_file import DatasetFile, Proof, FocusedStep
-
 
 @typechecked
 class StepIndex:
@@ -34,6 +33,16 @@ class StepIndex:
         return cls(proof_idx, step_idx)
 
 
+class AllSteps:
+    pass
+
+@dataclass
+class CertainSteps:
+    steps: list[StepIndex]
+
+SelectedSteps = AllSteps | CertainSteps
+
+
 @typechecked
 class CompleteSample:
     ALIAS = "CompleteSample"
@@ -49,6 +58,12 @@ class CompleteSample:
             "split": split2str(self.split),
             "data_loc": self.data_loc,
         }
+
+    def step_generator(
+        self,
+    ) -> Generator[tuple[FileInfo, SelectedSteps], None, None]:
+        for file in self.data_split.get_file_list(self.data_loc, self.split):
+            yield (file, AllSteps())
 
     @classmethod
     def from_json(cls, json_data: Any) -> CompleteSample:
@@ -121,13 +136,9 @@ class RandomSample:
 
     def step_generator(
         self,
-    ) -> Generator[tuple[DatasetFile, Proof, FocusedStep], None, None]:
+    ) -> Generator[tuple[FileInfo, SelectedSteps], None, None]:
         for file, step_idxs in self.steps_by_file:
-            dp_obj = file.get_dp(self.data_loc)
-            for step_idx in step_idxs:
-                proof = dp_obj.proofs[step_idx.proof_idx]
-                step = proof.steps[step_idx.step_idx]
-                yield dp_obj, proof, step
+            yield (file, CertainSteps(step_idxs))
 
     @classmethod
     def from_json(cls, json_data: Any) -> RandomSample:
