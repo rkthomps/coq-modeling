@@ -198,7 +198,7 @@ def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
     return tokenizer
 
 
-def get_trainer(conf: dict[str, Any], local_rank: Optional[int]) -> Trainer:
+def get_trainer(conf: dict[str, Any], local_rank: Optional[int], checkpoint_name: Optional[str]) -> Trainer:
     max_seq_len = __get_required_arg("max_seq_len", conf)
     max_input_len = __get_required_arg("max_input_len", conf)
 
@@ -206,11 +206,22 @@ def get_trainer(conf: dict[str, Any], local_rank: Optional[int]) -> Trainer:
     training_args = get_training_args(conf, local_rank)
     print("\n\nRetrieving Tokenizer...")
     tokenizer = get_tokenizer(conf)
-    print("\n\nRetrieving Model...")
-    model = get_model(conf)
 
-    lora_config = get_lora_conf(conf)
-    lora_model = get_peft_model(model, lora_config)
+    print("\n\nRetrieving Model...")
+    match checkpoint_name:
+        case _:
+            raw_model = get_model(conf)
+            lora_config = get_lora_conf(conf)
+            model = get_peft_model(raw_model, lora_config)
+        # case None:
+        #     raw_model = get_model(conf)
+        #     lora_config = get_lora_conf(conf)
+        #     model = get_peft_model(raw_model, lora_config)
+        # case _:
+        #     quant_conf = BitsAndBytesConfig(
+        #         load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
+        #     )
+        #     model = LlamaForCausalLM.from_pretrained(checkpoint_name, quantization_config=quant_conf)
 
     print("\n\nConstructing Dataset...")
     train_dataset, val_dataset = get_datasets(
@@ -219,7 +230,7 @@ def get_trainer(conf: dict[str, Any], local_rank: Optional[int]) -> Trainer:
 
     print("\n\nBuilding Trainer...")
     return Trainer(
-        model=lora_model,
+        model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
@@ -242,8 +253,8 @@ if __name__ == "__main__":
     parser.add_argument("yaml_config", help="yaml config file to use for training.")
     args = parser.parse_args(sys.argv[1:])
     conf = load_config(args.yaml_config)
-    trainer = get_trainer(conf, args.local_rank)
-    train_from_checkpoint = "checkpoint_name" in conf
+    train_from_checkpoint = conf["checkpoint_name"] if "checkpoint_name" in conf else None
+    trainer = get_trainer(conf, args.local_rank, train_from_checkpoint)
     if train_from_checkpoint:
         checkpoint_name = conf["checkpoint_name"]
         print(f"Training from checkpoint {checkpoint_name}")

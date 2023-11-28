@@ -20,6 +20,8 @@ N_TAC_TOK = "<N>"
 
 
 class LmExample:
+    TACTIC_STOP_STRINGS: list[str] = []
+
     def __init__(self, input: str, output: str) -> None:
         self.input = input
         self.output = output

@@ -96,7 +96,8 @@ def should_stop_now(
     stop_strings: list[str],
 ) -> bool:
     """input ids is a one dimensional tensor"""
-    cur_candidate = tokenizer.decode(input_ids[-1:])
+    consider_len = 1
+    cur_candidate = tokenizer.decode(input_ids[(-1 * consider_len) :])
     any_matched = True
     while any_matched:
         any_matched = False
@@ -104,6 +105,8 @@ def should_stop_now(
             if stop_string in cur_candidate:
                 return True
             any_matched |= fuzzy_starts_with(cur_candidate, stop_string)
+        consider_len += 1
+        cur_candidate = tokenizer.decode(input_ids[(-1 * consider_len) :])
     return False
 
 

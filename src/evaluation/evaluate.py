@@ -64,7 +64,7 @@ class EvalSearchResult:
     def get_save_name(self) -> str:
         save_name = f"{self.file.dp_name}:{self.thm_name}:{self.thm_idx}.json"
         return save_name
-    
+
     def get_ground_truth_str(self) -> str:
         return "".join(self.ground_truth_steps)
 
@@ -82,7 +82,7 @@ class EvalSearchResult:
         thm_idx = json_data["thm_idx"]
         ground_truth_steps = json_data["ground_truth_steps"]
         return cls(search_result, orig_file_path, thm_name, thm_idx, ground_truth_steps)
-    
+
     @classmethod
     def load(cls, path: str) -> EvalSearchResult:
         with open(path, "r") as fin:
@@ -231,6 +231,12 @@ class Evaluator:
                 cur_step += 1
         return thm_indices
 
+    def __was_success(self, search_loc: str) -> bool:
+        with open(search_loc, "r") as fin:
+            result_data = json.load(fin)
+            e_obj = EvalSearchResult.eval_from_json(result_data)
+            return e_obj.search_result.found_proof()
+
     def evaluate(self) -> None:
         eval_files = self.data_split.get_file_list(self.data_loc, self.split)
         num_proof_attempts = 0
@@ -272,6 +278,16 @@ class Evaluator:
             print(f"Num Errors: {num_errors}")
 
 
+def __check_continue() -> bool:
+    while True:
+        s = input("Continue Anyway? :")
+        if s.startswith("y"):
+            return True
+        if s.startswith("n"):
+            return False
+        print("Respond with yes or no.")
+
+
 def evaluate(evaluate_conf_loc: str) -> None:
     with open(evaluate_conf_loc, "r") as fin:
         evaluate_conf = load(fin, Loader=Loader)
@@ -293,10 +309,12 @@ def evaluate(evaluate_conf_loc: str) -> None:
     node_score_type: type[NodeScore] = NODE_SCORE_ALIASES[evaluate_conf["node_score"]]
 
     if os.path.exists(results_loc):
-        print(f"{results_loc} exists.", file=sys.stderr)
-        exit(1)
-    os.makedirs(results_loc)
-    shutil.copy(evaluate_conf_loc, results_loc)
+        print(f"WARNING: {results_loc} exists. Continue anyway?", file=sys.stderr)
+        if not __check_continue():
+            raise ValueError("Result directory already exists!")
+    else:
+        os.makedirs(results_loc)
+        shutil.copy(evaluate_conf_loc, results_loc)
 
     # model_wrapper.get_recs(LmExample("hi", "there"), 2)
 

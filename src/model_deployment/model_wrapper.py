@@ -98,15 +98,15 @@ class CodeLLamaLocalWrapper(ModelWrapper):
         self.collate_fn = collate_fn
         self.batch_size = batch_size
 
-    @staticmethod
-    def __clean_tactic(tactic: str) -> str:
-        while "\n\n" in tactic:
-            tactic = tactic.replace("\n\n", "\n")
-        return tactic
+    def __remove_stop_strings(self, s: str) -> str:
+        for stop_str in self.stop_strings:
+            stop_idx = s.find(stop_str)
+            if stop_idx > -1:
+                return s[:stop_idx]
+        return s
 
-    @classmethod
     def __filter_recs(
-        cls,
+        self,
         next_tactics: list[str],
         next_scores: list[float],
         next_num_tokens: list[int],
@@ -122,7 +122,7 @@ class CodeLLamaLocalWrapper(ModelWrapper):
             if stripped_tactic in seen_tactics:
                 continue
             seen_tactics.add(stripped_tactic)
-            final_tactics.append(cls.__clean_tactic(tactic))
+            final_tactics.append(self.__remove_stop_strings(tactic))
             final_scores.append(score)
             final_num_tokens.append(num_tokens)
         return ModelResult(final_tactics, final_scores, final_num_tokens)
@@ -158,7 +158,10 @@ class CodeLLamaLocalWrapper(ModelWrapper):
 
     @classmethod
     def from_name(
-        cls, model_name: str, premise_wrapper: Optional[LocalPremiseModelWrapper] = None
+        cls,
+        model_name: str,
+        premise_wrapper: Optional[LocalPremiseModelWrapper],
+        stop_strings: Optional[list[str]],
     ) -> CodeLLamaLocalWrapper:
         quant_conf = BitsAndBytesConfig(
             load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
@@ -191,7 +194,8 @@ class CodeLLamaLocalWrapper(ModelWrapper):
             )
             return collated_in
 
-        stop_strings = ["."]
+        if not stop_strings:
+            stop_strings = ["."]
         return cls(model, tokenizer, lm_example_conf, stop_strings, collate_fn)
 
     @classmethod
@@ -222,7 +226,7 @@ class CodeLLamaLocalWrapper(ModelWrapper):
             )
             return collated_in
 
-        stop_strings: list[str] = []
+        stop_strings: list[str] = lm_example_conf.format_type.TACTIC_STOP_STRINGS
         return cls(model, tokenizer, lm_example_conf, stop_strings, collate_fn)
 
     @classmethod
@@ -230,11 +234,12 @@ class CodeLLamaLocalWrapper(ModelWrapper):
         cls,
         name_or_checkpoint: str,
         premise_wrapper: Optional[LocalPremiseModelWrapper] = None,
+        stop_strings: Optional[list[str]] = None,
     ) -> CodeLLamaLocalWrapper:
         if os.path.exists(name_or_checkpoint):
             return cls.from_checkpoint(name_or_checkpoint)
         else:
-            return cls.from_name(name_or_checkpoint, premise_wrapper)
+            return cls.from_name(name_or_checkpoint, premise_wrapper, stop_strings)
 
     @classmethod
     def from_json(cls, json_data: Any) -> ModelWrapper:
