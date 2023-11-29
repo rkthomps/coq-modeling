@@ -1,8 +1,3 @@
-[submodule "coq-lsp-pyclient"]
-	path = coq-lsp-pyclient
-	url = https://github.com/sr-lab/coq-lsp-pyclient
-	branch = master 
-
 [submodule "CPDT"]
 	path = test/test_files/coq-mini-dataset/repos/yalhessi-CPDT
 	url = https://github.com/yalhessi/CPDT

@@ -6,41 +6,29 @@ import argparse
 
 from flask import Flask, request
 
-from tactic_gen.lm_example import LmExample
+from tactic_gen.lm_example import LmExample, fmt_get_conf
 from model_deployment.model_wrapper import (
     CodeLLamaLocalWrapper,
     FORMAT_NAME,
     INFERENCE_NAME,
+    wrapper_from_conf,
 )
-from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
 
 app = Flask(__name__)
 
-PREMISE_WRAPPER: Optional[LocalPremiseModelWrapper] = None
 
+PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic-rnd-split-rnd-samp/checkpoint-7459"
+local_conf = {
+    "alias": CodeLLamaLocalWrapper.ALIAS,
+    "pretrained-name": PRETRAINED_NAME,
+}
 
-PRETRAINED_NAME = (
-    "/home/ubuntu/coq-modeling/models/codellama-7b-goal-cotrain/checkpoint-5100"
-)
-
-# PRETRAINED_NAME = (
-#     "/home/ubuntu/coq-modeling/models/codellama-7b-premise/checkpoint-20500"
-# )
-
-# PRETRAINED_NAME = "codellama/CodeLlama-7b-hf"
-# PREMISE_WRAPPER = LocalPremiseModelWrapper.from_checkpoint(
-#     "/home/ubuntu/coq-modeling/models/premise_selection_no_coq_notation_tac/lightning_logs/version_0/checkpoints/epoch=2-step=44628.ckpt"
-# )
-
-model_wrapper = CodeLLamaLocalWrapper.from_pretrained(PRETRAINED_NAME, PREMISE_WRAPPER)
-print(model_wrapper.lm_example_config.n_step_sampler)
-print("Batch size: ", model_wrapper.batch_size)
+model_wrapper = wrapper_from_conf(local_conf)
 
 
 @app.route(FORMAT_NAME, methods=["POST"])
 def format() -> str:
-    example_config = model_wrapper.lm_example_config
-    json_str = json.dumps(example_config.to_json(), indent=2)
+    json_str = json.dumps(fmt_get_conf(model_wrapper.formatter), indent=2)
     return json_str
 
 

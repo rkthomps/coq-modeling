@@ -20,8 +20,6 @@ N_TAC_TOK = "<N>"
 
 
 class LmExample:
-    TACTIC_STOP_STRINGS: list[str] = []
-
     def __init__(self, input: str, output: str) -> None:
         self.input = input
         self.output = output
@@ -45,9 +43,12 @@ def fmt_goals(goals: list[Goal]) -> str:
 class BasicFormatter:
     ALIAS = "basic"
 
-    def __init__(self, n_step_sampler: NStepSampler, direct_num_steps: bool) -> None:
+    def __init__(
+        self, n_step_sampler: NStepSampler, direct_num_steps: bool, conf: Any
+    ) -> None:
         self.n_step_sampler = n_step_sampler
         self.direct_num_steps = direct_num_steps
+        self.conf = conf
 
     def example_from_step(
         self, step_idx: int, proof: Proof, dp_obj: DatasetFile
@@ -68,7 +69,7 @@ class BasicFormatter:
     def from_conf(cls, conf: Any) -> BasicFormatter:
         n_step_sampler = n_step_from_conf(conf["n_step_sampler"])
         direct_num_steps = conf["direct_num_steps"]
-        return cls(n_step_sampler, direct_num_steps)
+        return cls(n_step_sampler, direct_num_steps, conf)
 
 
 class PremiseFormatter:
@@ -80,13 +81,15 @@ class PremiseFormatter:
         premise_model_wrapper: PremiseModelWrapper,
         n_step_sampler: NStepSampler,
         direct_num_steps: bool,
+        conf: Any,
     ) -> None:
         self.premise_model_wrapper = premise_model_wrapper
         self.n_step_sampler = n_step_sampler
         self.direct_num_steps = direct_num_steps
         self.__basic_formatter = BasicFormatter(
-            self.n_step_sampler, self.direct_num_steps
+            self.n_step_sampler, self.direct_num_steps, conf
         )
+        self.conf = conf
 
     def get_premise_str(
         self,
@@ -134,18 +137,23 @@ class PremiseFormatter:
             premise_model_wrapper,
             tmp_basic_formatter.n_step_sampler,
             tmp_basic_formatter.direct_num_steps,
+            conf,
         )
 
 
 class GoalFormatter:
     ALIAS = "goal-cotrain"
+    STOP_STRINGS = [END_TOK]
 
-    def __init__(self, n_step_sampler: NStepSampler, direct_num_steps: bool) -> None:
+    def __init__(
+        self, n_step_sampler: NStepSampler, direct_num_steps: bool, conf: Any
+    ) -> None:
         self.n_step_sampler = n_step_sampler
         self.direct_num_steps = direct_num_steps
         self.__basic_formatter = BasicFormatter(
-            self.n_step_sampler, self.direct_num_steps
+            self.n_step_sampler, self.direct_num_steps, conf
         )
+        self.conf = conf
 
     def example_from_step(
         self, step_idx: int, proof: Proof, dp_obj: DatasetFile
@@ -163,7 +171,9 @@ class GoalFormatter:
     def from_conf(cls, conf: Any) -> GoalFormatter:
         tmp_basic_formatter = BasicFormatter.from_conf(conf)
         return cls(
-            tmp_basic_formatter.n_step_sampler, tmp_basic_formatter.direct_num_steps
+            tmp_basic_formatter.n_step_sampler,
+            tmp_basic_formatter.direct_num_steps,
+            conf,
         )
 
 
@@ -187,11 +197,12 @@ class BaseCodeLLamaLmFormatter:
 class BaseCodeLLamaPremiseLmFormatter:
     ALIAS = "codellama-base-premise"
 
-    def __init__(self, premise_model_wrapper: PremiseModelWrapper) -> None:
+    def __init__(self, premise_model_wrapper: PremiseModelWrapper, conf: Any) -> None:
         self.premise_model_wrapper = premise_model_wrapper
         self.__premise_formatter = PremiseFormatter(
-            self.premise_model_wrapper, OneStepSampler(), False
+            self.premise_model_wrapper, OneStepSampler(), False, conf
         )
+        self.conf = conf
 
     def example_from_step(
         self,
@@ -213,7 +224,7 @@ class BaseCodeLLamaPremiseLmFormatter:
     @classmethod
     def from_conf(cls, conf: Any) -> BaseCodeLLamaPremiseLmFormatter:
         premise_model_wrapper = premise_wrapper_from_conf(conf["premise_model_wrapper"])
-        return cls(premise_model_wrapper)
+        return cls(premise_model_wrapper, conf)
 
 
 class GPT4Formatter:
@@ -259,7 +270,7 @@ class LmFormatterNotFoundError(Exception):
     pass
 
 
-def formatter_from_conf(conf: Any) -> LmFormatter:
+def fmt_from_conf(conf: Any) -> LmFormatter:
     attempted_alias = conf["alias"]
     match attempted_alias:
         case BasicFormatter.ALIAS:
@@ -278,3 +289,19 @@ def formatter_from_conf(conf: Any) -> LmFormatter:
             raise LmFormatterNotFoundError(
                 f"Could not find Lm Formatter: {attempted_alias}"
             )
+
+
+def fmt_get_conf(formatter: LmFormatter) -> Any:
+    match formatter:
+        case BasicFormatter() | PremiseFormatter() | GoalFormatter() | BaseCodeLLamaPremiseLmFormatter():
+            return formatter.conf
+        case BaseCodeLLamaLmFormatter() | GPT4Formatter():
+            return None
+
+
+def fmt_get_stop_strings(formatter: LmFormatter) -> list[str]:
+    match formatter:
+        case GoalFormatter():
+            return GoalFormatter.STOP_STRINGS
+        case _:
+            return []

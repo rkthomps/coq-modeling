@@ -15,8 +15,9 @@ from typeguard import typechecked
 
 from data_management.dataset_file import DatasetFile, STEPS_NAME, FILE_CONTEXT_NAME
 from data_management.create_lm_dataset import LmExampleConfig
+
 from data_management.get_counts import remove_comments
-from tactic_gen.lm_example import LmExample
+from tactic_gen.lm_example import LmExample, LmFormatter
 from model_deployment.goal_comparer import (
     ParsedObligations,
     ParsedObligation,
@@ -177,14 +178,12 @@ class ProofManager:
         file_path: str,
         proof_file: ProofFile,
         proof_point: int,
-        lm_example_config: LmExampleConfig,
+        lm_formatter: LmFormatter,
     ) -> None:
         file_dir = os.path.dirname(file_path)
         file_basename = os.path.basename(file_path)
         self.file_path = file_path
-        self.example_type = lm_example_config.format_type
-        self.premise_wrapper = lm_example_config.premise_wrapper
-        self.n_step_sampler = lm_example_config.n_step_sampler
+        self.lm_formatter = lm_formatter
         self.__search_dir_path = get_fresh_path(file_dir, ".proof-search")
         self.aux_file_path = get_fresh_path(file_dir, f"aux_{file_basename}")
 
@@ -399,10 +398,9 @@ class ProofManager:
         dataset_obj = self.get_dataset_file(
             valid_steps, target_combined_steps, partial_proof_suffix
         )
-        examples = self.example_type.from_dataset_file(
-            dataset_obj, self.premise_wrapper, self.n_step_sampler, partial_proof_suffix
-        )
-        example = examples[-1]
+        proof = dataset_obj.proofs[-1]
+        last_step_idx = len(proof.steps) - 1
+        example = self.lm_formatter.example_from_step(last_step_idx, proof, dataset_obj)
         return example
 
     def get_dataset_file(

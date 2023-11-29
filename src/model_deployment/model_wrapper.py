@@ -6,6 +6,7 @@ import functools
 import sys, os
 import requests
 import json
+import yaml
 import math
 
 from typeguard import typechecked
@@ -18,12 +19,13 @@ import torch
 import openai
 
 from data_management.create_lm_dataset import LmExampleConfig, DATA_CONF_NAME
-from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
+
 from tactic_gen.lm_example import (
     LmExample,
-    GPT4BasicLmExample,
-    BaseCodeLLamaLmExample,
-    BaseCodeLLamaPremiseLmExample,
+    LmFormatter,
+    GPT4Formatter,
+    fmt_from_conf,
+    fmt_get_stop_strings,
 )
 from tactic_gen.train_codellama import (
     TRAINING_CONF_NAME,
@@ -64,36 +66,21 @@ class ModelResult:
 
 
 @typechecked
-class ModelWrapper:
-    def __init__(self, lm_example_config: LmExampleConfig) -> None:
-        self.lm_example_config = lm_example_config
+class CodeLLamaLocalWrapper:
+    ALIAS = "local"
 
-    def get_recs(self, example: LmExample, n: int) -> ModelResult:
-        raise NotImplementedError
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> ModelWrapper:
-        raise NotImplementedError
-
-    @staticmethod
-    def get_alias() -> str:
-        raise NotImplementedError
-
-
-@typechecked
-class CodeLLamaLocalWrapper(ModelWrapper):
     def __init__(
         self,
         model: LlamaForCausalLM,
         tokenizer: CodeLlamaTokenizer,
-        lm_example_conf: LmExampleConfig,
+        formatter: LmFormatter,
         stop_strings: list[str],
         collate_fn: Callable[[str], str],
         batch_size: int = 2,
     ) -> None:
-        super(CodeLLamaLocalWrapper, self).__init__(lm_example_conf)
         self.model = model
         self.tokenizer = tokenizer
+        self.formatter = formatter
         self.stop_strings = stop_strings
         self.collate_fn = collate_fn
         self.batch_size = batch_size
@@ -160,7 +147,7 @@ class CodeLLamaLocalWrapper(ModelWrapper):
     def from_name(
         cls,
         model_name: str,
-        premise_wrapper: Optional[LocalPremiseModelWrapper],
+        formatter: LmFormatter,
         stop_strings: Optional[list[str]],
     ) -> CodeLLamaLocalWrapper:
         quant_conf = BitsAndBytesConfig(
@@ -171,14 +158,8 @@ class CodeLLamaLocalWrapper(ModelWrapper):
             quantization_config=quant_conf,
         )
         tokenizer = CodeLlamaTokenizer.from_pretrained(model_name)
-        if premise_wrapper:
-            lm_example_conf = LmExampleConfig.from_example_type_and_premise_wrapper(
-                BaseCodeLLamaPremiseLmExample, premise_wrapper
-            )
-        else:
-            lm_example_conf = LmExampleConfig.from_example_type_and_premise_wrapper(
-                BaseCodeLLamaLmExample, None
-            )
+        formatter = fmt_from_conf(formatter_conf)
+
         max_input_len = 448
         max_seq_len = 512
 
@@ -196,16 +177,23 @@ class CodeLLamaLocalWrapper(ModelWrapper):
 
         if not stop_strings:
             stop_strings = ["."]
-        return cls(model, tokenizer, lm_example_conf, stop_strings, collate_fn)
+        return cls(model, tokenizer, formatter, stop_strings, collate_fn)
 
     @classmethod
-    def from_checkpoint(cls, checkpoint_loc: str) -> CodeLLamaLocalWrapper:
+    def from_checkpoint(
+        cls, checkpoint_loc: str, formatter: Optional[LmFormatter]
+    ) -> CodeLLamaLocalWrapper:
         model_loc = cls.get_model_loc(checkpoint_loc)
         model_conf = load_config(os.path.join(model_loc, TRAINING_CONF_NAME))
         quant_conf = BitsAndBytesConfig(
             load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
         )
-        lm_example_conf = LmExampleConfig.load(os.path.join(model_loc, DATA_CONF_NAME))
+        if formatter is None:
+            conf_loc = os.path.join(model_loc, DATA_CONF_NAME)
+            with open(conf_loc, "r") as fin:
+                conf = yaml.load(fin, Loader=yaml.Loader)
+            formatter = fmt_from_conf(conf[LmExampleConfig.FORMATTER_KEY])
+
         model = LlamaForCausalLM.from_pretrained(
             checkpoint_loc,
             quantization_config=quant_conf,
@@ -226,36 +214,32 @@ class CodeLLamaLocalWrapper(ModelWrapper):
             )
             return collated_in
 
-        stop_strings: list[str] = lm_example_conf.format_type.TACTIC_STOP_STRINGS
-        return cls(model, tokenizer, lm_example_conf, stop_strings, collate_fn)
+        stop_strings: list[str] = fmt_get_stop_strings(formatter)
+        return cls(model, tokenizer, formatter, stop_strings, collate_fn)
 
     @classmethod
     def from_pretrained(
         cls,
         name_or_checkpoint: str,
-        premise_wrapper: Optional[LocalPremiseModelWrapper] = None,
+        formatter: Optional[LmFormatter],
         stop_strings: Optional[list[str]] = None,
     ) -> CodeLLamaLocalWrapper:
         if os.path.exists(name_or_checkpoint):
-            return cls.from_checkpoint(name_or_checkpoint)
+            return cls.from_checkpoint(name_or_checkpoint, formatter)
         else:
-            return cls.from_name(name_or_checkpoint, premise_wrapper, stop_strings)
+            if formatter is None:
+                raise ValueError(
+                    "Must pass a formatter configuration when loading a base model."
+                )
+            return cls.from_name(name_or_checkpoint, formatter, stop_strings)
 
     @classmethod
-    def from_json(cls, json_data: Any) -> ModelWrapper:
+    def from_conf(cls, json_data: Any) -> ModelWrapper:
         name = json_data["pretrained-name"]
-        if "premise-model" in json_data:
-            premise_checkpoint_loc = json_data["premise-model"]
-            premise_wrapper = LocalPremiseModelWrapper.from_checkpoint(
-                premise_checkpoint_loc
-            )
-        else:
-            premise_wrapper = None
-        return cls.from_pretrained(name, premise_wrapper)
-
-    @staticmethod
-    def get_alias() -> str:
-        return "codellama-local"
+        formatter = (
+            fmt_from_conf(json_data["formatter"]) if "formatter" in json_data else None
+        )
+        return cls.from_pretrained(name, formatter)
 
 
 FORMAT_NAME = "/format"
@@ -263,12 +247,14 @@ INFERENCE_NAME = "/codellama"
 
 
 @typechecked
-class CodeLLamaServer(ModelWrapper):
+class CodeLLamaServer:
     """Finetuned version of codellama"""
 
-    def __init__(self, server_url: str, lm_example_conf: LmExampleConfig) -> None:
-        super(CodeLLamaServer, self).__init__(lm_example_conf)
+    ALIAS = "server"
+
+    def __init__(self, server_url: str, formatter: LmFormatter) -> None:
         self.server_url = server_url.rstrip("/") + INFERENCE_NAME
+        self.formatter = formatter
 
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
         request_data = example.to_json()
@@ -279,43 +265,25 @@ class CodeLLamaServer(ModelWrapper):
         return response_obj
 
     @classmethod
-    def from_json(cls, json_data: Any) -> ModelWrapper:
-        server_url = json_data["server_url"]
+    def from_conf(cls, conf: Any) -> CodeLLamaServer:
+        server_url = conf["server_url"]
         assert type(server_url) == str
         stripped_url = server_url.rstrip("/")
         format_endpoint = stripped_url + FORMAT_NAME
         format_response = requests.post(format_endpoint, {})
         format_data = json.loads(format_response.content)
-        format_config = LmExampleConfig.from_json(format_data)
-        print(format_config.n_step_sampler)
-        return cls(server_url, format_config)
-
-    @classmethod
-    def from_url(cls, url: str) -> ModelWrapper:
-        return cls.from_json({"server_url": url})
-
-    @staticmethod
-    def get_alias() -> str:
-        return "codellama_server"
+        formatter = fmt_from_conf(format_data)
+        return cls(server_url, formatter)
 
 
-class GPT4Wrapper(ModelWrapper):
+class GPT4Wrapper:
     ENV_API_KEY_NAME = "OPENAI_API_KEY"
     ENV_ORG_KEY_NAME = "OPENAI_ORG_KEY"
     MODEL = "gpt-4"
+    ALIAS = "gpt4"
 
     def __init__(self) -> None:
-        gpt_lm_conf = LmExampleConfig.from_example_type_and_premise_wrapper(
-            GPT4BasicLmExample, None
-        )
-        super(GPT4Wrapper, self).__init__(gpt_lm_conf)
-        if os.environ[self.ENV_API_KEY_NAME] is None:
-            raise ValueError(
-                (
-                    "Must set environment variable"
-                    f"'{self.ENV_API_KEY_NAME}' to your api key"
-                )
-            )
+        self.formatter = GPT4Formatter()
         self.api_key = os.environ.get(self.ENV_API_KEY_NAME)
         self.org_key = os.environ.get(self.ENV_ORG_KEY_NAME)
 
@@ -344,10 +312,8 @@ class GPT4Wrapper(ModelWrapper):
         return ModelResult(tactics, scores, num_tokens)
 
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
-        assert type(example) == GPT4BasicLmExample
-
         messages = [
-            {"role": "system", "content": GPT4BasicLmExample.SYS_MSG},
+            {"role": "system", "content": self.formatter.SYS_MSG},
             {"role": "user", "content": example.input},
         ]
 
@@ -363,13 +329,24 @@ class GPT4Wrapper(ModelWrapper):
         )
         return self.__filter_recs_no_logprobs(completion, n)
 
-    @staticmethod
-    def get_alias() -> str:
-        return "gpt4"
+
+ModelWrapper = CodeLLamaLocalWrapper | CodeLLamaServer | GPT4Wrapper
 
 
-MODEL_WRAPPER_ALIASES: dict[str, type[ModelWrapper]] = {
-    CodeLLamaServer.get_alias(): CodeLLamaServer,
-    CodeLLamaLocalWrapper.get_alias(): CodeLLamaLocalWrapper,
-    GPT4Wrapper.get_alias(): GPT4Wrapper,
-}
+class WrapperNotFoundError(Exception):
+    pass
+
+
+def wrapper_from_conf(conf: Any) -> ModelWrapper:
+    attempted_alias = conf["alias"]
+    match attempted_alias:
+        case CodeLLamaLocalWrapper.ALIAS:
+            return CodeLLamaLocalWrapper.from_conf(conf)
+        case CodeLLamaServer.ALIAS:
+            return CodeLLamaServer.from_conf(conf)
+        case GPT4Wrapper.ALIAS:
+            return GPT4Wrapper()
+        case _:
+            raise WrapperNotFoundError(
+                f"Could not find model wrapper: {attempted_alias}"
+            )

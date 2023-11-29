@@ -11,7 +11,7 @@ import json
 from tqdm import tqdm
 import yaml
 
-from tactic_gen.lm_example import LmExample, LmFormatter, formatter_from_conf
+from tactic_gen.lm_example import LmExample, LmFormatter, fmt_from_conf
 from data_management.splits import (
     FileInfo,
     Split,
@@ -29,6 +29,8 @@ from data_management.jsonl_utils import shuffle, deduplicate
 
 @typechecked
 class LmExampleConfig:
+    FORMATTER_KEY = "lm_formatter"
+
     def __init__(
         self,
         train_sample: ExampleSample,
@@ -52,7 +54,7 @@ class LmExampleConfig:
         test_sample_loc = config["test_sample_loc"]
         test_sample = load_sample(test_sample_loc)
         output_dataset_loc = config["output_dataset_loc"]
-        lm_formatter = formatter_from_conf(config["lm_formatter"])
+        lm_formatter = fmt_from_conf(config["lm_formatter"])
         return cls(
             train_sample, val_sample, test_sample, output_dataset_loc, lm_formatter
         )

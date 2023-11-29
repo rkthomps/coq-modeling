@@ -5,7 +5,12 @@ import json
 import pdb
 
 
-from model_deployment.searcher import SearchTreeManager
+from model_deployment.searcher import (
+    SearchTreeManager,
+    SearchResult,
+    SuccessfulSearch,
+    FailedSearch,
+)
 from model_deployment.proof_manager import ProofManager, initialize_hidden_files
 from model_deployment.model_wrapper import CodeLLamaServer, ModelWrapper, GPT4Wrapper
 from model_deployment.node_score import (
@@ -15,7 +20,6 @@ from model_deployment.node_score import (
     DepthFirstScore,
     BreadthFirstScore,
 )
-from data_management.create_lm_dataset import LmExampleConfig
 
 from coqpyt.coq.proof_file import ProofFile
 
@@ -23,7 +27,7 @@ from coqpyt.coq.proof_file import ProofFile
 # EXAMPLE_TYPE = GPT4BasicLmExample
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-WRAPPER = CodeLLamaServer.from_url("http://127.0.0.1:5000")
+WRAPPER = CodeLLamaServer.from_conf({"server_url": "http://127.0.0.1:5000"})
 NODE_SCORE_TYPE = TokenLengthNormalizedScore
 
 # WRAPPER = CodeLLamaServer("http://127.0.0.1:5000/codellama")
@@ -44,7 +48,7 @@ EXPANSIONS = 500
 with ProofFile(TEST_FILE, timeout=60) as proof_file:
     proof_point = len(proof_file.steps) - 3
     with ProofManager(
-        TEST_FILE, proof_file, proof_point, WRAPPER.lm_example_config
+        TEST_FILE, proof_file, proof_point, WRAPPER.formatter
     ) as proof_manager:
         tree_manager = SearchTreeManager(
             WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, TIMEOUT
@@ -55,13 +59,15 @@ with ProofFile(TEST_FILE, timeout=60) as proof_file:
             json_proof_tree = result.search_tree.to_json()
             fout.write(json.dumps(json_proof_tree, indent=2))
 
-        if result.found_proof():
-            assert result.qed_node is not None
-            print(result.get_proof())
-            qed_path = result.search_tree.get_path_to_qed()
-            print(
-                (
-                    f"Found proof after: {result.qed_node.creation_time / 1e9} seconds "
-                    f"and {qed_path[-2].expanded} node expansions."
+        match result:
+            case SuccessfulSearch():
+                print(result.get_proof())
+                qed_path = result.search_tree.get_path_to_qed()
+                print(
+                    (
+                        f"Found proof after: {result.qed_node.creation_time / 1e9} seconds "
+                        f"and {qed_path[-2].expanded} node expansions."
+                    )
                 )
-            )
+            case FailedSearch():
+                print("Failed Search")

@@ -12,7 +12,6 @@ from threading import Thread
 from typeguard import typechecked
 from yaml import load, Loader
 
-
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.proof_file import ProofFile
 
@@ -230,12 +229,6 @@ class Evaluator:
                         thm_indices.append((thm_name, cur_step))
                 cur_step += 1
         return thm_indices
-
-    def __was_success(self, search_loc: str) -> bool:
-        with open(search_loc, "r") as fin:
-            result_data = json.load(fin)
-            e_obj = EvalSearchResult.eval_from_json(result_data)
-            return e_obj.search_result.found_proof()
 
     def evaluate(self) -> None:
         eval_files = self.data_split.get_file_list(self.data_loc, self.split)
