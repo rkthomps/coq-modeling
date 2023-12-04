@@ -33,6 +33,7 @@ src/tactic_gen/confs/**
 !src/tactic_gen/confs/codellama_basic.yaml
 
 # - Eval
+build-coq
 src/evaluation/confs/**
 !src/evaluation/confs/codellama.yaml
 safe_val.txt

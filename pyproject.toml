@@ -37,4 +37,4 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src", "coq-lsp-pyclient"]
+where = ["src"]

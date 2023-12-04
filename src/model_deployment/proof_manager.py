@@ -188,6 +188,7 @@ class ProofManager:
         self.aux_file_path = get_fresh_path(file_dir, f"aux_{file_basename}")
 
         self.proof_file = proof_file
+        self.proof_file.run()
         self.proof_point = proof_point
         self.__proof_stored_steps = self.__replace_proof_with_admitted_stub(
             self.proof_point
@@ -368,8 +369,8 @@ class ProofManager:
             assert self.__is_proof_prefix(prev_valid_steps, valid_steps)
             new_valid_steps = valid_steps[len(prev_valid_steps) :]
             # might not have to compute this here
-            current_goals = coq_file.current_goals()
-            if not coq_file.in_proof:
+            current_goals = coq_file.current_goals
+            if coq_file.can_close_proof:
                 parsed_obligations = None
                 return ProofCheckResult(
                     TacticResult.COMPLETE,
@@ -438,6 +439,8 @@ class ProofManager:
                 [
                     {
                         "file": proc_file_path(last_proof.file_path),
+                        "workspace": proc_file_path(last_proof.file_path),
+                        "repository": "junkrepo",
                         "context": context_data,
                     }
                 ]
@@ -448,7 +451,7 @@ class ProofManager:
 
     def __exit__(
         self,
-        exc_type: type[BaseException],
+        exc_type: type[BaseException] | None,
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:

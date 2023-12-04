@@ -27,6 +27,7 @@ class TestCoqPytExample:
 
     def test_change_steps(self) -> None:
         with ProofFile(self.proof_file_path) as proof_file:
+            proof_file.run()
             proof_file.change_steps(
                 [CoqDeleteStep(2), CoqDeleteStep(1), CoqAddStep(" Admitted.", 0)]
             )

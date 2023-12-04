@@ -13,3 +13,6 @@
 [submodule "coq-crawler"]
 	path = coq-crawler
 	url = git@github.com:Nfsaavedra/coq-crawler.git
+[submodule "coqpyt"]
+	path = coqpyt
+	url = git@github.com:sr-lab/coqpyt.git
