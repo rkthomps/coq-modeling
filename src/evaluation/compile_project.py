@@ -3,7 +3,6 @@ import sys, os
 import argparse
 import logging
 import json
-import re
 
 from data_management.splits import REPOS_NAME
 
@@ -59,7 +58,7 @@ def compile_project(raw_data_loc: str, project_name: str, build_save_loc: str) -
         return
     random_file = project_files[0]
     # Have to pass in a file of the project -- not the project itself.
-    project = Project(os.path.join(project_loc, random_file))
+    project = Project(os.path.join(project_loc, random_file), debug=True)
 
     for valid_file in project.valid_files:
         valid_file_json = valid_file_to_json(valid_file, raw_data_loc)
@@ -72,6 +71,7 @@ def compile_project(raw_data_loc: str, project_name: str, build_save_loc: str) -
 
 
 if __name__ == "__main__":
+    sys.setrecursionlimit(1500)
     parser = argparse.ArgumentParser(
         description="Compile a single project and save its metadata."
     )
