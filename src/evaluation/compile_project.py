@@ -7,7 +7,7 @@ import json
 from data_management.splits import REPOS_NAME
 from util import util
 
-_logger = util.get_basic_logger(__name__, logging.DEBUG)
+_logger = util.get_basic_logger(__name__, logging.WARN)
 
 COQ_CRAWLER_LOC = "coq-crawler"
 if not COQ_CRAWLER_LOC in sys.path:
@@ -21,8 +21,9 @@ from project import Project, ValidFile
 
 
 def valid_file_to_json(valid_file: ValidFile, raw_data_loc: str) -> Any:
-    assert valid_file.workspace.startswith(raw_data_loc)
-    workspace_rel_loc = os.path.relpath(valid_file.workspace, raw_data_loc)
+    abs_raw_data_loc = os.path.abspath(raw_data_loc)
+    assert valid_file.workspace.startswith(abs_raw_data_loc)
+    workspace_rel_loc = os.path.relpath(valid_file.workspace, abs_raw_data_loc)
     return {"workspace": workspace_rel_loc}
 
 
@@ -49,7 +50,8 @@ def compile_project(raw_data_loc: str, project_name: str, build_save_loc: str) -
         return
     random_file = project_files[0]
     # Have to pass in a file of the project -- not the project itself.
-    project = Project(os.path.join(project_loc, random_file), debug=True)
+    project_path = os.path.abspath(os.path.join(project_loc, random_file))
+    project = Project(project_path, debug=True)
 
     for valid_file in project.valid_files:
         valid_file_json = valid_file_to_json(valid_file, raw_data_loc)
@@ -71,3 +73,5 @@ if __name__ == "__main__":
     parser.add_argument("build_save_loc", help="Directory to save building metadata.")
     args = parser.parse_args(sys.argv[1:])
     compile_project(args.raw_data_loc, args.project_name, args.build_save_loc)
+    _logger.debug("Done.")
+    os._exit(os.EX_OK)
