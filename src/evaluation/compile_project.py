@@ -5,18 +5,9 @@ import logging
 import json
 
 from data_management.splits import REPOS_NAME
+from util import util
 
-log_level = logging.WARN
-
-logger = logging.getLogger("compile_file")
-logger.setLevel(log_level)
-ch = logging.StreamHandler()
-ch.setLevel(log_level)
-formatter = logging.Formatter("%(asctime)s; %(name)s; %(levelname)s; %(message)s")
-ch.setFormatter(formatter)
-logger.addHandler(ch)
-logger.propagate = False
-
+_logger = util.get_basic_logger(__name__, logging.DEBUG)
 
 COQ_CRAWLER_LOC = "coq-crawler"
 if not COQ_CRAWLER_LOC in sys.path:
@@ -49,12 +40,12 @@ def dot_v_to_json(filename: str) -> str:
 
 def compile_project(raw_data_loc: str, project_name: str, build_save_loc: str) -> None:
     project_loc = os.path.join(raw_data_loc, REPOS_NAME, project_name)
-    logger.debug(f"Compiling: {project_loc}")
+    _logger.debug(f"Compiling: {project_loc}")
     project_save_loc = os.path.join(build_save_loc, REPOS_NAME, project_name)
     os.makedirs(project_save_loc, exist_ok=True)
     project_files = os.listdir(project_loc)
     if len(project_files) == 0:
-        logger.warning(f"Project {project_loc} has no files.")
+        _logger.warning(f"Project {project_loc} has no files.")
         return
     random_file = project_files[0]
     # Have to pass in a file of the project -- not the project itself.
@@ -65,7 +56,7 @@ def compile_project(raw_data_loc: str, project_name: str, build_save_loc: str) -
         relpath_as_json = dot_v_to_json(valid_file.relpath)
         file_save_loc = os.path.join(project_save_loc, relpath_as_json)
         os.makedirs(os.path.dirname(file_save_loc), exist_ok=True)
-        logger.debug(f"File save loc: {file_save_loc}")
+        _logger.debug(f"File save loc: {file_save_loc}")
         with open(file_save_loc, "w") as fout:
             fout.write(json.dumps(valid_file_json, indent=2))
 

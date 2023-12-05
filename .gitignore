@@ -49,6 +49,7 @@ venv
 build
 __pycache__
 .DS_STORE
+.hypothesis
 
 # Coq Files
 .lia.cache

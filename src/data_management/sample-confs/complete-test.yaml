@@ -1,0 +1,5 @@
+
+alias: CompleteSample
+data_split_loc: splits/random-split.json
+split: test
+data_loc: /data/benchmarks/coq-dataset
