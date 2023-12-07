@@ -1,7 +1,12 @@
+from typing import Generator
+
 import sys, os
 import argparse
 import random
 import dataclasses
+
+from tqdm import tqdm
+
 from tactic_gen.proof_distance import norm_levenshtein_dist
 from data_management.dataset_file import DatasetFile, Proof
 
@@ -88,6 +93,25 @@ def __get_dp_obj(dp_path: str, dp_cache: dict[str, DatasetFile]) -> DatasetFile:
     return dp_file
 
 
+def proof_pair_gen(data_points_loc: str) -> Generator[tuple[Proof, Proof], None, None]:
+    data_points_names = random.sample(os.listdir(data_points_loc), 50)
+    data_points_files = [os.path.join(data_points_loc, n) for n in data_points_names]
+    print("Loading datapoints objs...")
+    dp_objs = [DatasetFile.from_directory(dp_loc) for dp_loc in tqdm(data_points_files)]
+    proof_pairs: list[tuple[Proof, Proof]] = []
+    print("Gathering Proof Pairs...")
+    for i in tqdm(range(len(dp_objs))):
+        for j in range(i + 1, len(dp_objs)):
+            dp1 = dp_objs[i]
+            dp2 = dp_objs[j]
+            for proof1 in dp1.proofs:
+                for proof2 in dp2.proofs:
+                    proof_pairs.append((proof1, proof2))
+    random.shuffle(proof_pairs)
+    for pp in proof_pairs:
+        yield pp
+
+
 def get_examples(
     data_points_loc: str,
     length_ranges: list[IntRange],
@@ -95,23 +119,13 @@ def get_examples(
     n_per_space: int,
 ) -> None:
     random.seed(1)
-    data_points_files = random.sample(os.listdir(data_points_loc), 100)
     spaces = __init_spaces(length_ranges, score_ranges)
-    __dp_objs: dict[str, DatasetFile] = {}
-    for i in range(len(data_points_files)):
-        for j in range(i + 1, len(data_points_files)):
-            file1_loc = os.path.join(data_points_loc, data_points_files[i])
-            file2_loc = os.path.join(data_points_loc, data_points_files[j])
-            dp1 = __get_dp_obj(file1_loc, __dp_objs)
-            dp2 = __get_dp_obj(file2_loc, __dp_objs)
-            for proof1 in dp1.proofs:
-                for proof2 in dp2.proofs:
-                    __spaces_insert(spaces, proof1, proof2)
-                    if __spaces_complete(spaces, n_per_space):
-                        __show_spaces(spaces, n_per_space)
-                        return
+    for p1, p2 in proof_pair_gen(data_points_loc):
+        __spaces_insert(spaces, p1, p2)
+        if __spaces_complete(spaces, n_per_space):
+            __show_spaces(spaces, n_per_space)
+            return
     __show_spaces(spaces, n_per_space)
-    return
 
 
 if __name__ == "__main__":

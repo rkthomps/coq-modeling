@@ -108,7 +108,7 @@ def get_training_args(
         gradient_accumulation_steps=__get_optional_arg(
             "gradient_accumulation_steps", conf, 2
         ),
-        optim="paged_adamw_8bit",
+        # optim="paged_adamw_8bit", # causes problems retraining ?
         learning_rate=__get_required_arg("learning_rate", conf),
         logging_steps=__get_required_arg("logging_steps", conf),
         num_train_epochs=__get_required_arg("num_train_epochs", conf),
@@ -198,7 +198,9 @@ def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
     return tokenizer
 
 
-def get_trainer(conf: dict[str, Any], local_rank: Optional[int], checkpoint_name: Optional[str]) -> Trainer:
+def get_trainer(
+    conf: dict[str, Any], local_rank: Optional[int], checkpoint_name: Optional[str]
+) -> Trainer:
     max_seq_len = __get_required_arg("max_seq_len", conf)
     max_input_len = __get_required_arg("max_input_len", conf)
 
@@ -253,7 +255,9 @@ if __name__ == "__main__":
     parser.add_argument("yaml_config", help="yaml config file to use for training.")
     args = parser.parse_args(sys.argv[1:])
     conf = load_config(args.yaml_config)
-    train_from_checkpoint = conf["checkpoint_name"] if "checkpoint_name" in conf else None
+    train_from_checkpoint = (
+        conf["checkpoint_name"] if "checkpoint_name" in conf else None
+    )
     trainer = get_trainer(conf, args.local_rank, train_from_checkpoint)
     if train_from_checkpoint:
         checkpoint_name = conf["checkpoint_name"]
