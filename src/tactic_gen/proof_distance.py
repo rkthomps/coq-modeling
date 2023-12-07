@@ -1,11 +1,26 @@
-from typing import Optional
+from __future__ import annotations
+from typing import Optional, Any
+import datetime
 import logging
+import heapq
+import argparse
+import os
+import sys
+import json
 
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__, logging.WARNING)
+
+from data_management.splits import (
+    DataSplit,
+    FileInfo,
+    Split,
+    split2str,
+)
 from data_management.dataset_file import Proof
-from util import util
 
-_logger = util.get_basic_logger(__name__, logging.WARN)
-
+from util.util import get_simple_steps
 from tactic_gen.tactic_pair_encoding import TacticPairEncoding
 
 
@@ -81,3 +96,271 @@ def norm_levenshtein_dist(proof1: Proof, proof2: Proof) -> float:
             f"Could not parse proofs. Proof 1 of str length {len(proof1.proof_text_to_string())}, Proof 2 of str length {len(proof2.proof_text_to_string())}"
         )
         return 1
+
+
+class StrippedProof:
+    def __init__(
+        self,
+        creation_time: datetime.datetime,
+        file: FileInfo,
+        line: int,
+        thm: str,
+        steps: list[str],
+        norm_steps: Optional[list[str]],
+        split: Split,
+    ) -> None:
+        self.creation_time = creation_time
+        self.file = file
+        self.line = line
+        self.thm = thm
+        self.steps = steps
+        self.norm_steps = norm_steps
+        self.split = split
+
+    def to_json(self) -> Any:
+        return {
+            "creation_time": self.creation_time.isoformat(),
+            "file": self.file.to_json(),
+            "line": self.line,
+            "thm": self.thm,
+            "steps": self.steps,
+            "self.norm_steps": self.norm_steps,
+            "split": split2str(self.split),
+        }
+
+    @classmethod
+    def from_proof(
+        cls,
+        proof: Proof,
+        file_info: FileInfo,
+        creation_time: datetime.datetime,
+        split: Split,
+    ) -> StrippedProof:
+        line = proof.theorem.term.line
+        thm = proof.theorem.term.text
+        steps = [s.step.text for s in proof.steps]
+        try:
+            norm_steps = [TacticPairEncoding.normalize_step(s) for s in steps]
+        except:
+            _logger.warning(
+                f"Could not parse step in proof of length: {len(proof.proof_text_to_string())}"
+            )
+            norm_steps = None
+        return StrippedProof(
+            creation_time, file_info, line, thm, steps, norm_steps, split
+        )
+
+    @classmethod
+    def from_text(cls, text: str) -> StrippedProof:
+        thm = "Lemma psuedo: False."
+        file = FileInfo("notafile", "notafile", "notaworkspace", "notarepo")
+        line = -1
+        steps = get_simple_steps(text)
+        try:
+            norm_steps = [TacticPairEncoding.normalize_step(s) for s in steps]
+        except:
+            _logger.warning(f"Could not normalize steps from text: {text}")
+            norm_steps = None
+        split = Split.TRAIN
+        return StrippedProof(
+            datetime.datetime.now(), file, line, thm, steps, norm_steps, split
+        )
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> StrippedProof:
+        creation_time = datetime.datetime.fromisoformat(json_data["creation_time"])
+        file = json_data["file"]
+        line = json_data["line"]
+        thm = json_data["thm"]
+        steps = json_data["steps"]
+        norm_steps = json_data["norm_steps"]
+        split = json_data["split"]
+        return cls(creation_time, file, line, thm, steps, norm_steps, split)
+
+
+class SimilarProofCandidate:
+    def __init__(self, score: float, proof: StrippedProof) -> None:
+        self.score = score
+        self.proof = proof
+
+    # since lower is better, want to store the highest at the top of heap
+    def __lt__(self, other: SimilarProofCandidate) -> bool:
+        return other.score < self.score
+
+    def __le__(self, other: SimilarProofCandidate) -> bool:
+        return other.score <= self.score
+
+
+class SortedProofs:
+    def __init__(self, ordered_proofs: list[StrippedProof]) -> None:
+        self.ordered_proofs = ordered_proofs
+        assert len(ordered_proofs) > 0
+        assert self.is_ordered()
+
+    def is_ordered(self) -> bool:
+        for i in range(len(self.ordered_proofs) - 1):
+            cur_key = self.__ordering_key(self.ordered_proofs[i])
+            next_key = self.__ordering_key(self.ordered_proofs[i + 1])
+            if cur_key > next_key:
+                return False
+        return True
+
+    def __find_first_match(self, proposed_idx: int, target_key: int) -> Optional[int]:
+        assert 0 <= proposed_idx < len(self.ordered_proofs)
+        first_match: Optional[int] = None
+        cur_idx = proposed_idx
+        while (
+            0 <= cur_idx
+            and self.__ordering_key(self.ordered_proofs[cur_idx]) == target_key
+        ):
+            first_match = cur_idx
+            cur_idx -= 1
+        return first_match
+
+    def __find_size_start_idx(
+        self,
+        target_key: int,
+        start: int,
+        end: int,
+    ) -> int:
+        if end <= start:
+            return end
+        mid = (start + end) // 2
+        maybe_match = self.__find_first_match(mid, target_key)
+        if maybe_match:
+            return maybe_match
+        if target_key < self.__ordering_key(self.ordered_proofs[mid]):
+            return self.__find_size_start_idx(target_key, start, mid)
+        else:
+            return self.__find_size_start_idx(target_key, mid + 1, end)
+
+    @staticmethod
+    def __get_dist(
+        stripped1: StrippedProof, stripped2: StrippedProof
+    ) -> Optional[float]:
+        if (
+            stripped1.file.file == stripped2.file.file
+            and stripped1.line == stripped2.line
+        ):
+            return None  # same proof
+        if stripped1.norm_steps and stripped2.norm_steps:
+            raw_lev_dist = levenshtein_dist_fast(
+                stripped1.norm_steps, stripped2.norm_steps
+            )
+            larger_len = max(len(stripped1.norm_steps), len(stripped2.norm_steps))
+            return raw_lev_dist / larger_len
+        return 1
+
+    def __inspect_idx(
+        self,
+        q: list[SimilarProofCandidate],
+        inspect_idx: int,
+        target_proof: StrippedProof,
+        n: int,
+    ) -> Optional[list[SimilarProofCandidate]]:
+        if inspect_idx < 0 or len(self.ordered_proofs) <= inspect_idx:
+            return None
+        inspect_proof = self.ordered_proofs[inspect_idx]
+        inspect_key = self.__ordering_key(inspect_proof)
+        target_key = self.__ordering_key(target_proof)
+        lb = abs(inspect_key - target_key) / max(inspect_key, target_key)
+        if n <= len(q) and q[0].score < lb:
+            return None
+        dist = self.__get_dist(target_proof, inspect_proof)
+        if dist is None:
+            return q
+        heapq.heappush(q, SimilarProofCandidate(dist, inspect_proof))
+        if len(q) > n:
+            heapq.heappop(q)
+        return q
+
+    def nearest_n(
+        self, new_stripped: StrippedProof, n: int
+    ) -> list[SimilarProofCandidate]:
+        target_key = self.__ordering_key(new_stripped)
+        start_idx = self.__find_size_start_idx(
+            target_key, 0, len(self.ordered_proofs) - 1
+        )
+        top_n: list[SimilarProofCandidate] = []
+        self.__inspect_idx(top_n, start_idx, new_stripped, n)
+        step_forward = True
+        step_back = True
+        for i in range(1, len(self.ordered_proofs)):
+            if step_forward:
+                f_idx = start_idx + i
+                new_q = self.__inspect_idx(top_n, f_idx, new_stripped, n)
+                if new_q is None:
+                    step_forward = False
+            if step_back:
+                b_idx = start_idx - i
+                new_q = self.__inspect_idx(top_n, b_idx, new_stripped, n)
+                if new_q is None:
+                    step_back = False
+            if (not step_forward) and (not step_back):
+                break
+        return heapq.nlargest(n, top_n)
+
+    def to_json(self) -> Any:
+        return {"ordered_proofs": [p.to_json() for p in self.ordered_proofs]}
+
+    def save(self, path: str) -> None:
+        if os.path.exists(path):
+            raise FileExistsError(path)
+        dirname = os.path.dirname(path)
+        os.makedirs(dirname, exist_ok=True)
+        with open(path, "w") as fout:
+            fout.write(json.dumps(self.to_json(), indent=2))
+
+    @classmethod
+    def load(cls, path: str) -> SortedProofs:
+        with open(path, "r") as fin:
+            return cls.from_json(json.load(fin))
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> SortedProofs:
+        ordered_proofs = [
+            StrippedProof.from_json(p) for p in json_data["ordered_proofs"]
+        ]
+        return SortedProofs(ordered_proofs)
+
+    @staticmethod
+    def __ordering_key(s: StrippedProof) -> int:
+        return len(s.steps)
+
+    @staticmethod
+    def get_stripped_proofs(
+        data_split: DataSplit, split: Split, data_loc: str
+    ) -> list[StrippedProof]:
+        stripped_proofs: list[StrippedProof] = []
+        for project in data_split.get_project_list(split)[:10]:
+            creation_time = project.get_creation_time(data_loc)
+            for file_info in project.files:
+                proofs = file_info.get_proofs(data_loc)
+                for proof in proofs:
+                    stripped_proofs.append(
+                        StrippedProof.from_proof(proof, file_info, creation_time, split)
+                    )
+        return stripped_proofs
+
+    @classmethod
+    def create(cls, data_split: DataSplit, data_loc: str) -> SortedProofs:
+        stripped_proofs = (
+            cls.get_stripped_proofs(data_split, Split.TRAIN, data_loc)
+            + cls.get_stripped_proofs(data_split, Split.VAL, data_loc)
+            + cls.get_stripped_proofs(data_split, Split.TEST, data_loc)
+        )
+        return cls(sorted(stripped_proofs, key=cls.__ordering_key))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser("Create a proof distance search structure")
+    parser.add_argument("data_split_loc", help="Location of a data split object.")
+    parser.add_argument(
+        "data_loc", help="Location of raw data with repos and datapoints."
+    )
+    parser.add_argument(
+        "save_loc", help="Location to save the resulting data structure."
+    )
+    args = parser.parse_args(sys.argv[1:])
+    sorted_proofs = SortedProofs.create(args.data_split_loc, args.data_loc)
+    sorted_proofs.save(args.save_loc)

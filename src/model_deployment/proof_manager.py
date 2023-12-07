@@ -13,6 +13,7 @@ import jsonlines
 
 from typeguard import typechecked
 
+from util.util import get_fresh_path
 from data_management.dataset_file import DatasetFile, STEPS_NAME, FILE_CONTEXT_NAME
 from data_management.create_lm_dataset import LmExampleConfig
 
@@ -91,13 +92,6 @@ def get_file_prefix(filename: str, search_token: str) -> Optional[str]:
     with open(filename, "r") as fin:
         file_contents = fin.read()
     return get_prefix_from_str(file_contents, search_token)
-
-
-def get_fresh_path(dirname: str, fresh_base: str) -> str:
-    name = fresh_base
-    while os.path.exists(os.path.join(dirname, name)):
-        name = "_" + name
-    return os.path.join(dirname, name)
 
 
 def get_last_proof_data_points(proof: ProofTerm) -> Any:

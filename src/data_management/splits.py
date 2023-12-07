@@ -241,6 +241,9 @@ class DataSplit:
                 return self.val_projects
             case Split.TEST:
                 return self.test_projects
+    
+    def get_all_projects(self) -> list[Project]:
+        return self.train_projects + self.val_projects + self.test_projects
 
     def to_json(self) -> Any:
         return {

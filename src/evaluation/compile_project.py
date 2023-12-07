@@ -65,6 +65,9 @@ def compile_project(raw_data_loc: str, project_name: str, build_save_loc: str) -
 
 if __name__ == "__main__":
     sys.setrecursionlimit(1500)
+    _logger.warning(
+        "You should change the cwd so that compiling doesn't throw up in your repo."
+    )
     parser = argparse.ArgumentParser(
         description="Compile a single project and save its metadata."
     )
