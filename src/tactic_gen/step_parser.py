@@ -4,6 +4,14 @@ from dataclasses import dataclass
 import re
 from enum import Enum
 
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
+
+
+class CoqParseError(Exception):
+    pass
+
 
 class SpecialToken(Enum):
     OPEN_COMMENT = 1
@@ -284,7 +292,12 @@ def normalize(tokens: list[Token]) -> list[Token]:
 
 
 def lex(s: str) -> list[Token]:
-    return __post_process(__lex([ch for ch in s]))
+    try:
+        return __post_process(__lex([ch for ch in s]))
+    except:
+        msg = f"Could not parse step: {s}"
+        _logger.info(f"Could not parse step: {s}")
+        raise CoqParseError(msg)
 
 
 def __post_process(toks: list[Token]) -> list[Token]:

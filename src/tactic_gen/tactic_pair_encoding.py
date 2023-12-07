@@ -6,11 +6,18 @@ import heapq
 import json
 import csv
 
+
 from tqdm import tqdm
 from typeguard import typechecked
 
 from data_management.dataset_file import DatasetFile, FocusedStep, data_shape_expected
-from tactic_gen.step_parser import tokens2str, normalize, lex, get_id_strs
+from tactic_gen.step_parser import (
+    tokens2str,
+    normalize,
+    lex,
+    get_id_strs,
+    CoqParseError,
+)
 
 STEP_DELIM = " <++> "
 
@@ -151,7 +158,7 @@ class TacticPairEncoding:
             try:
                 str_step_list = [cls.normalize_step(s.step.text) for s in step_list]
                 step_lists.append(str_step_list)
-            except:
+            except CoqParseError:
                 continue
 
         step_vocab: dict[str, int] = {}

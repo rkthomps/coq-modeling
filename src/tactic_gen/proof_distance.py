@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Optional, Any
+import traceback
 import datetime
 import logging
 import heapq
@@ -10,7 +11,7 @@ import json
 
 from util.util import get_basic_logger
 
-_logger = get_basic_logger(__name__, logging.WARNING)
+_logger = get_basic_logger(__name__)
 
 from data_management.splits import (
     DataSplit,
@@ -22,6 +23,7 @@ from data_management.dataset_file import Proof
 
 from util.util import get_simple_steps
 from tactic_gen.tactic_pair_encoding import TacticPairEncoding
+from tactic_gen.step_parser import CoqParseError
 
 
 def levenshtein_dist_fast(strs1: list[str], strs2: list[str]) -> int:
@@ -92,9 +94,6 @@ def norm_levenshtein_dist(proof1: Proof, proof2: Proof) -> float:
         raw_lev_dist = levenshtein_dist_fast(proof1_norm_steps, proof2_norm_steps)
         return raw_lev_dist / max_distance
     except:
-        _logger.warn(
-            f"Could not parse proofs. Proof 1 of str length {len(proof1.proof_text_to_string())}, Proof 2 of str length {len(proof2.proof_text_to_string())}"
-        )
         return 1
 
 
@@ -141,10 +140,7 @@ class StrippedProof:
         steps = [s.step.text for s in proof.steps]
         try:
             norm_steps = [TacticPairEncoding.normalize_step(s) for s in steps]
-        except:
-            _logger.warning(
-                f"Could not parse step in proof of length: {len(proof.proof_text_to_string())}"
-            )
+        except CoqParseError:
             norm_steps = None
         return StrippedProof(
             creation_time, file_info, line, thm, steps, norm_steps, split
@@ -158,8 +154,7 @@ class StrippedProof:
         steps = get_simple_steps(text)
         try:
             norm_steps = [TacticPairEncoding.normalize_step(s) for s in steps]
-        except:
-            _logger.warning(f"Could not normalize steps from text: {text}")
+        except CoqParseError:
             norm_steps = None
         split = Split.TRAIN
         return StrippedProof(
@@ -332,7 +327,9 @@ class SortedProofs:
         data_split: DataSplit, split: Split, data_loc: str
     ) -> list[StrippedProof]:
         stripped_proofs: list[StrippedProof] = []
-        for project in data_split.get_project_list(split)[:10]:
+        for i, project in enumerate(data_split.get_project_list(split)):
+            if i >= 10:
+                break
             creation_time = project.get_creation_time(data_loc)
             for file_info in project.files:
                 proofs = file_info.get_proofs(data_loc)
@@ -362,5 +359,6 @@ if __name__ == "__main__":
         "save_loc", help="Location to save the resulting data structure."
     )
     args = parser.parse_args(sys.argv[1:])
-    sorted_proofs = SortedProofs.create(args.data_split_loc, args.data_loc)
+    data_split = DataSplit.load(args.data_split_loc)
+    sorted_proofs = SortedProofs.create(data_split, args.data_loc)
     sorted_proofs.save(args.save_loc)
