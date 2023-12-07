@@ -34,3 +34,4 @@ def get_simple_steps(proof_text: str) -> list[str]:
             return [s.text for s in coq_file.steps]
     finally:
         os.remove(tmp_path)
+
