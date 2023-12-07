@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typeguard import typechecked
 from typing import Optional, Any
 import traceback
 import datetime
@@ -18,6 +19,7 @@ from data_management.splits import (
     FileInfo,
     Split,
     split2str,
+    str2split,
 )
 from data_management.dataset_file import Proof
 
@@ -97,6 +99,7 @@ def norm_levenshtein_dist(proof1: Proof, proof2: Proof) -> float:
         return 1
 
 
+@typechecked
 class StrippedProof:
     def __init__(
         self,
@@ -116,6 +119,9 @@ class StrippedProof:
         self.norm_steps = norm_steps
         self.split = split
 
+    def to_string(self) -> str:
+        return self.thm + "".join(self.steps)
+
     def to_json(self) -> Any:
         return {
             "creation_time": self.creation_time.isoformat(),
@@ -123,7 +129,7 @@ class StrippedProof:
             "line": self.line,
             "thm": self.thm,
             "steps": self.steps,
-            "self.norm_steps": self.norm_steps,
+            "norm_steps": self.norm_steps,
             "split": split2str(self.split),
         }
 
@@ -164,12 +170,12 @@ class StrippedProof:
     @classmethod
     def from_json(cls, json_data: Any) -> StrippedProof:
         creation_time = datetime.datetime.fromisoformat(json_data["creation_time"])
-        file = json_data["file"]
+        file = FileInfo.from_json(json_data["file"])
         line = json_data["line"]
         thm = json_data["thm"]
         steps = json_data["steps"]
         norm_steps = json_data["norm_steps"]
-        split = json_data["split"]
+        split = str2split(json_data["split"])
         return cls(creation_time, file, line, thm, steps, norm_steps, split)
 
 
@@ -186,6 +192,7 @@ class SimilarProofCandidate:
         return other.score <= self.score
 
 
+@typechecked
 class SortedProofs:
     def __init__(self, ordered_proofs: list[StrippedProof]) -> None:
         self.ordered_proofs = ordered_proofs
