@@ -34,8 +34,8 @@ NODE_SCORE_TYPE = TokenLengthNormalizedScore
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
+# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/examples/rev.v"

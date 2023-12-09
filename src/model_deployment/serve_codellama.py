@@ -17,7 +17,7 @@ from model_deployment.model_wrapper import (
 app = Flask(__name__)
 
 
-PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-basic-rnd-split-rnd-samp/checkpoint-7459"
+PRETRAINED_NAME = "models/codellama-7b-basic-rnd-split/checkpoint-41174"
 local_conf = {
     "alias": CodeLLamaLocalWrapper.ALIAS,
     "pretrained-name": PRETRAINED_NAME,

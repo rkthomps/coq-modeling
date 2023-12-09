@@ -10,6 +10,7 @@ import shutil
 from enum import Enum
 import pdb
 import jsonlines
+import ipdb
 
 from typeguard import typechecked
 
@@ -182,48 +183,41 @@ class ProofManager:
         self.aux_file_path = get_fresh_path(file_dir, f"aux_{file_basename}")
 
         self.proof_file = proof_file
-        self.proof_file.run()
+        self.__go_to_base()
+
         self.proof_point = proof_point
-        self.__proof_stored_steps = self.__replace_proof_with_admitted_stub(
-            self.proof_point
-        )
+        self.__proof_stored_steps = self.__replace_proof_with_admitted_stub()
         self.__num_proof_steps = 0
 
-    def __num_steps_to_delete(self, delete_after: int) -> int:
-        step = self.proof_file.steps[delete_after + 1]
-        for proof in self.proof_file.proofs:
-            for i, proof_step in enumerate(proof.steps):
-                if proof_step.ast.range == step.ast.range:
-                    num_steps_to_delete = len(proof.steps) - i
-                    return num_steps_to_delete
-        step_text = self.proof_file.steps[delete_after + 1].text
-        raise ValueError(f"Step {step_text} is not in any proof.")
+    def __go_to_base(self) -> None:
+        while self.proof_file.steps_taken < self.proof_point + 1:
+            self.proof_file.exec(1)
+        while self.proof_point + 1 < self.proof_file.steps_taken:
+            self.proof_file.exec(-1)
 
-    def __get_whole_proof_delete_steps(
-        self, delete_after: int
-    ) -> tuple[list[CoqChange], list[str]]:
-        delete_num = self.__num_steps_to_delete(delete_after)
-        last_delete_step_idx = delete_after + delete_num
-        delete_steps: list[CoqChange] = [
-            CoqDeleteStep(i) for i in range(last_delete_step_idx, delete_after, -1)
-        ]
-        delete_step_texts = [
-            s.text
-            for s in self.proof_file.steps[delete_after + 1 : last_delete_step_idx + 1]
-        ]
-        return delete_steps, delete_step_texts
+    def __get_whole_proof_delete_steps(self) -> tuple[list[int], list[str]]:
+        delete_indices: list[int] = []
+        delete_strs: list[str] = []
+        self.__go_to_base()
+        assert self.proof_file.in_proof
+        while self.proof_file.in_proof:
+            delete_idx = self.proof_file.steps_taken
+            delete_strs.append(self.proof_file.steps[delete_idx].text)
+            delete_indices.append(delete_idx)
+            self.proof_file.exec(1)
+        return delete_indices, delete_strs
 
-    def __replace_proof_with_admitted_stub(self, delete_after: int) -> list[str]:
-        delete_steps, delete_step_texts = self.__get_whole_proof_delete_steps(
-            delete_after
-        )
-        add_steps: list[CoqChange] = [CoqAddStep("\nAdmitted.", delete_after)]
-        self.proof_file.change_steps(delete_steps + add_steps)
-        return delete_step_texts
+    def __replace_proof_with_admitted_stub(self) -> list[str]:
+        delete_indices, delete_strs = self.__get_whole_proof_delete_steps()
+        delete_commands = [CoqDeleteStep(i) for i in reversed(delete_indices)]
+        add_commands = [CoqAddStep("\nAdmitted. ", self.proof_file.steps_taken - 1)]
+        self.proof_file.change_steps(delete_commands + add_commands)
+        return delete_strs
 
     def __restore_proof_file(self) -> None:
-        delete_steps, _ = self.__get_whole_proof_delete_steps(self.proof_point)
-        add_steps: list[CoqChange] = [
+        delete_indices, _ = self.__get_whole_proof_delete_steps()
+        delete_steps = [CoqDeleteStep(i) for i in reversed(delete_indices)]
+        add_steps = [
             CoqAddStep(s, self.proof_point + i)
             for i, s in enumerate(self.__proof_stored_steps)
         ]
@@ -238,35 +232,32 @@ class ProofManager:
         return True
 
     def __get_current_partial_proof(self) -> list[str]:
-        assert self.proof_point is not None
         start_idx = self.proof_point + 1
-        stop_idx = start_idx + self.__num_proof_steps  # Include last tactic
+        stop_idx = self.proof_file.steps_taken 
         return [s.text for s in self.proof_file.steps[start_idx:stop_idx]]
 
     def __add_step_to_proof_file(self, step: str) -> None:
-        assert self.proof_point is not None
-        insert_idx = self.proof_point + self.__num_proof_steps
-        self.proof_file.add_step(insert_idx, step)
-        self.__num_proof_steps += 1
+        assert self.proof_file.in_proof
+        self.proof_file.add_step(self.proof_file.steps_taken - 1, step)
+        self.proof_file.exec(1)
+        assert self.proof_file.in_proof
 
     def __delete_step_from_proof_file(self) -> None:
-        assert self.proof_point is not None
-        delete_idx = self.proof_point + self.__num_proof_steps
-        self.proof_file.delete_step(delete_idx)
-        self.__num_proof_steps -= 1
+        assert self.proof_file.in_proof
+        self.proof_file.exec(-1)
+        self.proof_file.delete_step(self.proof_file.steps_taken)
+        assert self.proof_file.in_proof
 
     def set_proof_file(
         self,
-        valid_steps: list[str],
-        target_combined_proof: str,
-        partial_proof_suffix: str,
+        steps: list[str],
     ) -> None:
         current_partial_proof = self.__get_current_partial_proof()
-        while not self.__is_proof_prefix(current_partial_proof, valid_steps):
+        while not self.__is_proof_prefix(current_partial_proof, steps):
             self.__delete_step_from_proof_file()
             current_partial_proof = self.__get_current_partial_proof()
         prefix_len = len(current_partial_proof)
-        remaining_current_proof = valid_steps[prefix_len:]
+        remaining_current_proof = steps[prefix_len:]
         for step in remaining_current_proof:
             self.__add_step_to_proof_file(step)
         final_partial_proof = self.__get_current_partial_proof()
@@ -363,7 +354,6 @@ class ProofManager:
             assert self.__is_proof_prefix(prev_valid_steps, valid_steps)
             new_valid_steps = valid_steps[len(prev_valid_steps) :]
             # might not have to compute this here
-            current_goals = coq_file.current_goals
             if coq_file.can_close_proof:
                 parsed_obligations = None
                 return ProofCheckResult(
