@@ -15,7 +15,13 @@ import ipdb
 from typeguard import typechecked
 
 from util.util import get_fresh_path
-from data_management.dataset_file import DatasetFile, STEPS_NAME, FILE_CONTEXT_NAME
+from data_management.dataset_file import (
+    DatasetFile,
+    FileContext,
+    Proof,
+    STEPS_NAME,
+    FILE_CONTEXT_NAME,
+)
 from data_management.create_lm_dataset import LmExampleConfig
 
 from data_management.get_counts import remove_comments
@@ -26,12 +32,14 @@ from model_deployment.goal_comparer import (
     ParsedHyp,
     extract_body_from_step,
 )
+from model_deployment.step_separator import separate_steps
 
 from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep, CoqChange
 from coqpyt.coq.structs import ProofTerm, Term
 from coqpyt.coq.lsp.structs import Goal, GoalAnswer
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
+from coqpyt.coq.exceptions import InvalidChangeException
 
 
 class TacticResult(Enum):
@@ -48,17 +56,26 @@ class ProofCheckResult:
         valid_steps: list[str],
         current_goals: Optional[GoalAnswer],
         parsed_current_goals: Optional[ParsedObligations],
+        new_dataset_file: Optional[DatasetFile],
     ) -> None:
         self.tactic_result = tactic_result
         self.valid_steps = valid_steps
         self.current_goals = current_goals
         self.parsed_current_goals = parsed_current_goals
+        self.dataset_file = new_dataset_file
 
     @classmethod
     def get_invalid(cls) -> ProofCheckResult:
         current_goals = None
         parsed_current_goals = None
-        return cls(TacticResult.INVALID, [], current_goals, parsed_current_goals)
+        new_dataset_file = None
+        return cls(
+            TacticResult.INVALID,
+            [],
+            current_goals,
+            parsed_current_goals,
+            new_dataset_file,
+        )
 
 
 def proc_file_path(file_path: str) -> str:
@@ -233,7 +250,7 @@ class ProofManager:
 
     def __get_current_partial_proof(self) -> list[str]:
         start_idx = self.proof_point + 1
-        stop_idx = self.proof_file.steps_taken 
+        stop_idx = self.proof_file.steps_taken
         return [s.text for s in self.proof_file.steps[start_idx:stop_idx]]
 
     def __add_step_to_proof_file(self, step: str) -> None:
@@ -260,10 +277,6 @@ class ProofManager:
         remaining_current_proof = steps[prefix_len:]
         for step in remaining_current_proof:
             self.__add_step_to_proof_file(step)
-        final_partial_proof = self.__get_current_partial_proof()
-        assert (
-            target_combined_proof == "".join(final_partial_proof) + partial_proof_suffix
-        )
 
     def __update_aux_file(self, partial_proof: str) -> None:
         assert self.proof_point is not None
@@ -271,17 +284,6 @@ class ProofManager:
         file_prefix = "".join([s.text for s in steps_to_proof])
         with open(self.aux_file_path, "w") as fout:
             fout.write(f"{file_prefix}{partial_proof}")
-
-    def __get_valid_steps(self, valid_coq_file: CoqFile) -> list[str]:
-        assert valid_coq_file.is_valid
-        assert self.proof_point is not None
-        first_tactic_idx = self.proof_point + 1
-        suffix_steps = valid_coq_file.steps[first_tactic_idx:-1]
-        nonempty_steps: list[str] = []
-        for s in suffix_steps:
-            if len(s.text.strip()) > 0:
-                nonempty_steps.append(s.text)
-        return nonempty_steps
 
     def __get_all_goals(self, current_goals: GoalAnswer) -> list[Goal]:
         assert current_goals.goals is not None
@@ -336,99 +338,63 @@ class ProofManager:
                 parsed_goals.append(parsed_goal)
         return ParsedObligations(parsed_goals)
 
-    def check_proof(
-        self, partial_proof: str, prev_valid_steps: list[str]
-    ) -> ProofCheckResult:
+    def check_proof(self, partial_proof: str) -> ProofCheckResult:
+        partial_steps = separate_steps(partial_proof)
         if (
             ("Admitted." in partial_proof)
             or ("admit." in partial_proof)
             or ("Abort." in partial_proof)
         ):
             return ProofCheckResult.get_invalid()
-        self.__update_aux_file(partial_proof)
-        with CoqFile(self.aux_file_path) as coq_file:
-            if not coq_file.is_valid:
-                return ProofCheckResult.get_invalid()
-            coq_file.run()
-            valid_steps = self.__get_valid_steps(coq_file)
-            assert self.__is_proof_prefix(prev_valid_steps, valid_steps)
-            new_valid_steps = valid_steps[len(prev_valid_steps) :]
-            # might not have to compute this here
-            if coq_file.can_close_proof:
-                parsed_obligations = None
-                return ProofCheckResult(
-                    TacticResult.COMPLETE,
-                    new_valid_steps,
-                    current_goals,
-                    parsed_obligations,
-                )
-
-        assert current_goals is not None
-        parsed_obligations = self.get_parsed_goals(partial_proof, current_goals)
-        return ProofCheckResult(
-            TacticResult.VALID, new_valid_steps, current_goals, parsed_obligations
-        )
-
-    def get_example(
-        self, valid_steps: list[str], target_combined_steps: str
-    ) -> LmExample:
-        combined_valid_step_str = "".join(valid_steps)
         try:
-            assert len(target_combined_steps) >= len(combined_valid_step_str)
-            assert target_combined_steps.startswith(combined_valid_step_str)
-        except AssertionError:
-            pdb.set_trace()
-
-        partial_proof_suffix = target_combined_steps[len(combined_valid_step_str) :]
-        dataset_obj = self.get_dataset_file(
-            valid_steps, target_combined_steps, partial_proof_suffix
+            self.set_proof_file(partial_steps)
+        except InvalidChangeException:
+            return ProofCheckResult.get_invalid()
+        if self.proof_file.can_close_proof:
+            parsed_obligations = None
+            dset_file = None
+            return ProofCheckResult(
+                TacticResult.COMPLETE,
+                partial_steps,
+                self.proof_file.current_goals,
+                parsed_obligations,
+                dset_file,
+            )
+        dset_file = self.get_dataset_file()
+        assert self.proof_file.current_goals is not None
+        parsed_obligations = self.get_parsed_goals(
+            partial_proof, self.proof_file.current_goals
         )
-        proof = dataset_obj.proofs[-1]
+        return ProofCheckResult(
+            TacticResult.VALID,
+            partial_steps,
+            self.proof_file.current_goals,
+            parsed_obligations,
+            dset_file,
+        )
+
+    def get_example(self, dset_file: DatasetFile) -> LmExample:
+        proof = dset_file.proofs[-1]
         last_step_idx = len(proof.steps) - 1
-        example = self.lm_formatter.example_from_step(last_step_idx, proof, dataset_obj)
+        example = self.lm_formatter.example_from_step(last_step_idx, proof, dset_file)
         return example
 
     def get_dataset_file(
         self,
-        valid_steps: list[str],
-        target_combined_steps: str,
-        partial_proof_suffix: str,
     ) -> DatasetFile:
-        start = time.time_ns()
-        self.set_proof_file(valid_steps, target_combined_steps, partial_proof_suffix)
-        end = time.time_ns()
-        print("ProofFile Update Time:", (end - start) / 1e9)
-        self.__update_search_dir(self.proof_file)
-        dataset_obj = DatasetFile.from_directory(self.__search_dir_path)
-        return dataset_obj
-
-    def __update_search_dir(self, proof_file: ProofFile) -> None:
-        last_proof = proof_file.proofs[-1]
+        last_proof = self.proof_file.proofs[-1]
         last_proof_data = get_last_proof_data_points(last_proof)
-        context_list = list(proof_file.context.terms.values())
+        context_list = list(self.proof_file.context.terms.values())
         context_data = get_context(context_list)
-        steps_loc = os.path.join(self.__search_dir_path, STEPS_NAME)
-        context_loc = os.path.join(self.__search_dir_path, FILE_CONTEXT_NAME)
-        if not os.path.exists(self.__search_dir_path):
-            os.makedirs(self.__search_dir_path)
-        if os.path.exists(steps_loc):
-            os.remove(steps_loc)
-        if os.path.exists(context_loc):
-            os.remove(context_loc)
-
-        with jsonlines.open(steps_loc, "w") as fout:
-            fout.write_all(last_proof_data)
-        with jsonlines.open(context_loc, "w") as fout:
-            fout.write_all(
-                [
-                    {
-                        "file": proc_file_path(last_proof.file_path),
-                        "workspace": proc_file_path(last_proof.file_path),
-                        "repository": "junkrepo",
-                        "context": context_data,
-                    }
-                ]
-            )
+        proofs = DatasetFile.proofs_from_jsonl(last_proof_data)
+        file_context_data = {
+            "file": proc_file_path(last_proof.file_path),
+            "workspace": proc_file_path(last_proof.file_path),
+            "repository": "junkrepo",
+            "context": context_data,
+        }
+        file_context = FileContext.from_json(file_context_data)
+        return DatasetFile(file_context, proofs)
 
     def __enter__(self) -> ProofManager:
         return self

@@ -318,18 +318,8 @@ class DatasetFile:
     def get_premises_before(self, proof: Proof) -> list[Sentence]:
         return self.out_of_file_avail_premises + self.get_in_file_premises_before(proof)
 
-    @classmethod
-    def get_proofs(cls, dset_loc: str) -> list[Proof]:
-        steps_loc = os.path.join(dset_loc, STEPS_NAME)
-        steps: list[FocusedStep] = []
-        with open(steps_loc, "r") as fin:
-            for line in fin:
-                json_data = json.loads(line)
-                steps.append(FocusedStep.from_json(json_data))
-
-        if len(steps) == 0:
-            return []
-
+    @staticmethod
+    def proofs_from_steps(steps: list[FocusedStep]) -> list[Proof]:
         proofs: list[Proof] = []
         cur_proof_steps: list[FocusedStep] = []
         seen_terms: set[Term] = set()
@@ -349,6 +339,25 @@ class DatasetFile:
             cur_proof_steps = [step]
         proofs.append(Proof(cur_term, cur_proof_steps))
         return proofs
+
+    @classmethod
+    def proofs_from_jsonl(cls, jsonl_data: Any) -> list[Proof]:
+        steps = [FocusedStep.from_json(s) for s in jsonl_data]
+        return cls.proofs_from_steps(steps)
+
+    @classmethod
+    def get_proofs(cls, dset_loc: str) -> list[Proof]:
+        steps_loc = os.path.join(dset_loc, STEPS_NAME)
+        steps: list[FocusedStep] = []
+        with open(steps_loc, "r") as fin:
+            for line in fin:
+                json_data = json.loads(line)
+                steps.append(FocusedStep.from_json(json_data))
+
+        if len(steps) == 0:
+            return []
+
+        return cls.proofs_from_steps(steps)
 
     @classmethod
     def from_directory(cls, dir_path: str) -> DatasetFile:
