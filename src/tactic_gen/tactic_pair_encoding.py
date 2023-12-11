@@ -11,6 +11,7 @@ from tqdm import tqdm
 from typeguard import typechecked
 
 from data_management.dataset_file import DatasetFile, FocusedStep, data_shape_expected
+from data_management.splits import DataSplit, Split
 from tactic_gen.step_parser import (
     tokens2str,
     normalize,
@@ -151,15 +152,21 @@ class TacticPairEncoding:
         return tokens2str(normalize(lex(raw_step)))
 
     @classmethod
-    def create(cls, train_dataset_loc: str, n_merges: int) -> TacticPairEncoding:
-        assert data_shape_expected(train_dataset_loc)
+    def create(
+        cls, data_split: DataSplit, data_loc: str, n_merges: int
+    ) -> TacticPairEncoding:
         step_lists: list[list[str]] = []
-        for step_list in step_list_iterator(train_dataset_loc):
-            try:
-                str_step_list = [cls.normalize_step(s.step.text) for s in step_list]
-                step_lists.append(str_step_list)
-            except CoqParseError:
-                continue
+        print("Gathering Steps...")
+        for project in tqdm(data_split.get_project_list(Split.TRAIN)):
+            for file_info in project.files:
+                for proof in file_info.get_proofs(data_loc):
+                    try:
+                        str_step_list = [
+                            cls.normalize_step(s.step.text) for s in proof.steps
+                        ]
+                        step_lists.append(str_step_list)
+                    except CoqParseError:
+                        continue
 
         step_vocab: dict[str, int] = {}
         for str_step_list in step_lists:
@@ -169,6 +176,7 @@ class TacticPairEncoding:
                 step_vocab[str_step] += 1
         print("Base Vocab Size:", len(step_vocab))
 
+        print("Merging...")
         for _ in tqdm(range(n_merges)):
             match cls.__find_frequent_pair(step_lists):
                 case None:
@@ -213,12 +221,13 @@ def get_id_freq(train_dataset_loc: str) -> dict[str, int]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "train_raw_data", help="Location of raw training data (the train partition)."
-    )
+    parser.add_argument("data_split_loc", help="Location of data split. ")
+    parser.add_argument("data_loc", help="Location of raw data.")
     parser.add_argument("n_merges", type=int, help="Number of merges to use.")
     parser.add_argument("save_loc", help="Where to save the tactic pair encoding.")
     args = parser.parse_args(sys.argv[1:])
-    tpe = TacticPairEncoding.create(args.train_raw_data, args.n_merges)
+
+    data_split = DataSplit.load(args.data_split_loc)
+    tpe = TacticPairEncoding.create(data_split, args.data_loc, args.n_merges)
     tpe.print_report()
     tpe.save(args.save_loc)

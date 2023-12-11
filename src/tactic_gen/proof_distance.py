@@ -9,6 +9,7 @@ import argparse
 import os
 import sys
 import json
+from tqdm import tqdm
 
 from util.util import get_basic_logger
 
@@ -334,9 +335,8 @@ class SortedProofs:
         data_split: DataSplit, split: Split, data_loc: str
     ) -> list[StrippedProof]:
         stripped_proofs: list[StrippedProof] = []
-        for i, project in enumerate(data_split.get_project_list(split)):
-            if i >= 10:
-                break
+        print(f"Getting Proofs from {split2str(split)}...")
+        for project in tqdm(data_split.get_project_list(split)):
             creation_time = project.get_creation_time(data_loc)
             for file_info in project.files:
                 proofs = file_info.get_proofs(data_loc)
@@ -353,6 +353,7 @@ class SortedProofs:
             + cls.get_stripped_proofs(data_split, Split.VAL, data_loc)
             + cls.get_stripped_proofs(data_split, Split.TEST, data_loc)
         )
+        print("Sorting Proofs...")
         return cls(sorted(stripped_proofs, key=cls.__ordering_key))
 
 
