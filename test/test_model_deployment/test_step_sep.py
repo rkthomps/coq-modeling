@@ -3,31 +3,36 @@ import random
 from data_management.dataset_file import Proof, DatasetFile
 from data_management.splits import DATA_POINTS_NAME
 from model_deployment.step_separator import separate_steps
+from util.util import get_basic_logger
+
+
+_logger = get_basic_logger(__name__)
 
 
 class TestStepSep:
-    N_PROOFS = 1000
-    RAW_DATA_LOC = "/data/benchmarks/coq-dataset"
+    RAW_DATA_LOC = "test/test_files/coq-mini-dataset"
 
     def test_proof_splitting(self) -> None:
         for proof in self.proofs:
             expected = [s.step.text for s in proof.steps]
             actual = separate_steps("".join(expected))
             assert expected == actual
+        _logger.error(f"Tested {len(self.proofs)} proofs.")
 
     @classmethod
     def setup_class(cls) -> None:
         cls.proofs: list[Proof] = []
+        if not os.path.exists(cls.RAW_DATA_LOC):
+            raise FileNotFoundError(
+                f"Could not find {cls.RAW_DATA_LOC}. Perhaps you're not in the root project folder."
+            )
         dp_loc = os.path.join(cls.RAW_DATA_LOC, DATA_POINTS_NAME)
         names = os.listdir(dp_loc)
-        random.shuffle(names)
         for dp_name in names:
             dp_obj_loc = os.path.join(dp_loc, dp_name)
             dp_obj = DatasetFile.from_directory(dp_obj_loc)
             for proof in dp_obj.proofs:
                 cls.proofs.append(proof)
-                if len(cls.proofs) == cls.N_PROOFS:
-                    return
 
     @classmethod
     def teardown_class(cls) -> None:

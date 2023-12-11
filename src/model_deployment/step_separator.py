@@ -29,4 +29,4 @@ _proofp = _stepp.many() << _whitespacep.many()
 
 
 def separate_steps(step_str: str) -> list[str]:
-    _proofp.parse(proof)
+    return _proofp.parse(step_str)
