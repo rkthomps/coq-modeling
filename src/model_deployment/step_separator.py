@@ -10,9 +10,9 @@ _quotep = string('"')
 _stringp = _quotep + any_char.until(_quotep, consume_other=True).concat()
 
 _period_end = regex(r"\.(?=\s|$)")
-_focus_tok = regex(r"\s[-+*]+(?=\s)")
+_focus_tok = regex(r"\s[-+*]+(?=\s|$)")
 _bracket_open = regex(r"\s+{(?=\s)")
-_bracket_close = regex(r"\s}(?=\s)")
+_bracket_close = regex(r"\s}(?=\s|$)")
 _focus_end = _focus_tok | _bracket_open | _bracket_close
 
 _end_stepp = _period_end | _focus_end

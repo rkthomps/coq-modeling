@@ -5,7 +5,7 @@ from functools import reduce
 
 import sys, os
 import json
-from model_deployment.searcher import ProofSearchTree
+from model_deployment.searcher import SearchNode
 from evaluation.evaluate import EvalSearchResult, SuccessfulSearch, FailedSearch
 
 

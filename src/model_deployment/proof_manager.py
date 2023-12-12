@@ -33,6 +33,7 @@ from model_deployment.goal_comparer import (
     extract_body_from_step,
 )
 from model_deployment.step_separator import separate_steps
+from util.util import get_basic_logger
 
 from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep, CoqChange
 from coqpyt.coq.structs import ProofTerm, Term
@@ -40,6 +41,8 @@ from coqpyt.coq.lsp.structs import Goal, GoalAnswer
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.exceptions import InvalidChangeException
+
+_logger = get_basic_logger(__name__)
 
 
 class TacticResult(Enum):
@@ -53,13 +56,13 @@ class ProofCheckResult:
     def __init__(
         self,
         tactic_result: TacticResult,
-        valid_steps: list[str],
+        attempted_steps: list[str],
         current_goals: Optional[GoalAnswer],
         parsed_current_goals: Optional[ParsedObligations],
         new_dataset_file: Optional[DatasetFile],
     ) -> None:
         self.tactic_result = tactic_result
-        self.valid_steps = valid_steps
+        self.attempted_steps = attempted_steps
         self.current_goals = current_goals
         self.parsed_current_goals = parsed_current_goals
         self.dataset_file = new_dataset_file
@@ -200,11 +203,9 @@ class ProofManager:
         self.aux_file_path = get_fresh_path(file_dir, f"aux_{file_basename}")
 
         self.proof_file = proof_file
-        self.__go_to_base()
-
         self.proof_point = proof_point
+
         self.__proof_stored_steps = self.__replace_proof_with_admitted_stub()
-        self.__num_proof_steps = 0
 
     def __go_to_base(self) -> None:
         while self.proof_file.steps_taken < self.proof_point + 1:
@@ -227,7 +228,8 @@ class ProofManager:
     def __replace_proof_with_admitted_stub(self) -> list[str]:
         delete_indices, delete_strs = self.__get_whole_proof_delete_steps()
         delete_commands = [CoqDeleteStep(i) for i in reversed(delete_indices)]
-        add_commands = [CoqAddStep("\nAdmitted. ", self.proof_file.steps_taken - 1)]
+        self.__go_to_base()
+        add_commands = [CoqAddStep("\nAdmitted.", self.proof_file.steps_taken - 1)]
         self.proof_file.change_steps(delete_commands + add_commands)
         return delete_strs
 
@@ -306,7 +308,7 @@ class ProofManager:
         self, coq_file: CoqFile, num_definitions: int, num_read: int
     ) -> tuple[Any, int]:
         num_steps = len(coq_file.steps)
-        read_idx = num_steps - num_definitions - 1 + num_read
+        read_idx = num_steps - num_definitions + num_read
         ast_def_body = extract_body_from_step(coq_file.steps[read_idx])
         return ast_def_body, num_read + 1
 
@@ -382,6 +384,7 @@ class ProofManager:
     def get_dataset_file(
         self,
     ) -> DatasetFile:
+        self.proof_file.exec(1)  # Step past admitted
         last_proof = self.proof_file.proofs[-1]
         last_proof_data = get_last_proof_data_points(last_proof)
         context_list = list(self.proof_file.context.terms.values())
@@ -394,6 +397,7 @@ class ProofManager:
             "context": context_data,
         }
         file_context = FileContext.from_json(file_context_data)
+        self.proof_file.exec(-1)  # Return to before admitted (Point to last step)
         return DatasetFile(file_context, proofs)
 
     def __enter__(self) -> ProofManager:

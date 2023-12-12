@@ -34,9 +34,9 @@ NODE_SCORE_TYPE = TokenLengthNormalizedScore
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
+# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/examples/rev.v"
 
@@ -46,7 +46,7 @@ BRANCH = 4
 EXPANSIONS = 500
 
 with ProofFile(TEST_FILE, timeout=60) as proof_file:
-    proof_point = len(proof_file.steps) - 3
+    proof_point = len(proof_file.steps) - 2
     with ProofManager(
         TEST_FILE, proof_file, proof_point, WRAPPER.formatter
     ) as proof_manager:
@@ -62,7 +62,7 @@ with ProofFile(TEST_FILE, timeout=60) as proof_file:
         match result:
             case SuccessfulSearch():
                 print(result.get_proof())
-                qed_path = result.search_tree.get_path_to_qed()
+                qed_path = result.search_tree.root.get_path_to_qed()
                 print(
                     (
                         f"Found proof after: {result.qed_node.creation_time / 1e9} seconds "

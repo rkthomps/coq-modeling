@@ -2,11 +2,11 @@ from __future__ import annotations
 from coqpyt.coq.structs import Step, RangedSpan
 from coqpyt.coq.lsp.structs import Goal
 from typing import Any, Optional
-import pdb
+import ipdb
 
 from typeguard import typechecked
 
-from model_deployment.search_tree import ProofSearchTree
+from model_deployment.search_tree import SearchNode
 
 
 def extract_body_from_step(step: Step) -> Any:
@@ -15,7 +15,7 @@ def extract_body_from_step(step: Step) -> Any:
     try:
         assert def_expr[0] == "VernacDefinition"
     except AssertionError:
-        pdb.set_trace()
+        ipdb.set_trace()
     return def_expr[3]
 
 
@@ -160,8 +160,8 @@ class ParsedObligations:
     def redundant_to(
         self,
         other_obligations: list[ParsedObligations],
-        other_nodes: list[ProofSearchTree],
-    ) -> Optional[ProofSearchTree]:
+        other_nodes: list[SearchNode],
+    ) -> Optional[SearchNode]:
         for i, other in enumerate(other_obligations):
             if self.as_hard_as(other):
                 return other_nodes[i]

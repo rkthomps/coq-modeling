@@ -4,10 +4,10 @@ import argparse
 
 import json
 
-from model_deployment.searcher import ProofSearchTree
+from model_deployment.searcher import SearchNode
 
 
-def build_html_document(search_tree: ProofSearchTree) -> str:
+def build_html_document(search_tree: SearchNode) -> str:
 
     # node_template = (
     #     f"<div class=\"node\" style=\"position: absolute; left: {left_pos}; right: {right_pos};\">" 
@@ -19,7 +19,7 @@ def build_html_document(search_tree: ProofSearchTree) -> str:
 def show_search_tree(search_tree_loc: str) -> None:
     with open(search_tree_loc, "r") as fin:
         search_tree_data = json.load(fin) 
-    search_tree = ProofSearchTree.from_json(search_tree_data)
+    search_tree = SearchNode.from_json(search_tree_data)
     html_doc = build_html_document(search_tree)
 
 

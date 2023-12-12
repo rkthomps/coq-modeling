@@ -8,6 +8,13 @@ from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
 
+unit1 = """
+Proof.
+Proof.
+  induction n.
+  -\
+"""
+
 
 class TestStepSep:
     RAW_DATA_LOC = "test/test_files/coq-mini-dataset"
@@ -18,6 +25,11 @@ class TestStepSep:
             actual = separate_steps("".join(expected))
             assert expected == actual
         _logger.error(f"Tested {len(self.proofs)} proofs.")
+
+    def test_proof_split_unit1(self) -> None:
+        expected = ["\nProof.", "\nProof.", "\n  induction n.", "\n  -"]
+        actual = separate_steps(unit1)
+        assert expected == actual
 
     @classmethod
     def setup_class(cls) -> None:

@@ -1,18 +1,18 @@
+from typing import Optional
 import sys, os
 import shutil
 
-import unittest
-import pdb
+import ipdb
 
 from model_deployment.goal_comparer import (
     ParsedHyp,
     ParsedObligation,
-    ParsedObligations,
     extract_body_from_step,
     compare_expressions_under_substitution,
 )
 
-from data_management.create_lm_dataset import LmExampleConfig
+from tactic_gen.lm_example import BasicFormatter
+from tactic_gen.n_step_sampler import OneStepSampler
 from model_deployment.proof_manager import get_fresh_path, ProofManager
 
 from coqpyt.coq.base_file import CoqFile
@@ -63,35 +63,101 @@ Definition def3 := (x3 = x2 + 1).
 """
 
 
-class GoalComparerTestCase(unittest.TestCase):
+class TestGoalComparer:
     def test_equiv_goals(self) -> None:
-        self.assertTrue(self.file1_ob.as_hard_as(self.file2_ob))
-        self.assertTrue(self.file2_ob.as_hard_as(self.file1_ob))
+        assert self.file1_ob.as_hard_as(self.file2_ob)
+        assert self.file2_ob.as_hard_as(self.file1_ob)
+
+    def test_equiv_exprs(self) -> None:
+        avail_vars1: dict[str, Optional[str]] = {
+            v: None for v in self.file1_ob.get_all_vars()
+        }
+        avail_vars3 = set(self.file3_ob.get_all_vars())
+        assert compare_expressions_under_substitution(
+            self.file1_ob.hyps[0].ast,
+            self.file3_ob.hyps[0].ast,
+            avail_vars1,
+            avail_vars3,
+            {},
+        )
+        assert compare_expressions_under_substitution(
+            self.file1_ob.hyps[1].ast,
+            self.file3_ob.hyps[1].ast,
+            avail_vars1,
+            avail_vars3,
+            {},
+        )
+        assert compare_expressions_under_substitution(
+            self.file1_ob.hyps[1].ast,
+            self.file3_ob.hyps[1].ast,
+            avail_vars1,
+            avail_vars3,
+            {},
+        )
+        assert compare_expressions_under_substitution(
+            self.file1_ob.hyps[2].ast,
+            self.file3_ob.hyps[2].ast,
+            avail_vars1,
+            avail_vars3,
+            {},
+        )
+        avail_vars1: dict[str, Optional[str]] = {
+            v: None for v in self.file1_ob.get_all_vars()
+        }
+        avail_vars3 = set(self.file3_ob.get_all_vars())
+        assert not compare_expressions_under_substitution(
+            self.file1_ob.hyps[0].ast,
+            self.file3_ob.hyps[3].ast,
+            avail_vars1,
+            avail_vars3,
+            {},
+        )
+        avail_vars1: dict[str, Optional[str]] = {
+            v: None for v in self.file1_ob.get_all_vars()
+        }
+        avail_vars3 = set(self.file3_ob.get_all_vars())
+        assert not compare_expressions_under_substitution(
+            self.file1_ob.hyps[1].ast,
+            self.file3_ob.hyps[3].ast,
+            avail_vars1,
+            avail_vars3,
+            {},
+        )
+        avail_vars1: dict[str, Optional[str]] = {
+            v: None for v in self.file1_ob.get_all_vars()
+        }
+        avail_vars3 = set(self.file3_ob.get_all_vars())
+        assert not compare_expressions_under_substitution(
+            self.file1_ob.hyps[2].ast,
+            self.file3_ob.hyps[3].ast,
+            avail_vars1,
+            avail_vars3,
+            {},
+        )
 
     def test_harder_goals(self) -> None:
-        self.assertFalse(self.file3_ob.as_hard_as(self.file1_ob))
-        self.assertFalse(self.file3_ob.as_hard_as(self.file2_ob))
-        self.assertTrue(self.file1_ob.as_hard_as(self.file3_ob))
-        self.assertTrue(self.file2_ob.as_hard_as(self.file3_ob))
+        assert not self.file3_ob.as_hard_as(self.file1_ob)
+        assert not self.file3_ob.as_hard_as(self.file2_ob)
+        assert self.file1_ob.as_hard_as(self.file3_ob)
+        assert self.file2_ob.as_hard_as(self.file3_ob)
 
     def test_non_comparable_goals(self) -> None:
-        self.assertFalse(self.file4_ob.as_hard_as(self.file3_ob))
-        self.assertFalse(self.file3_ob.as_hard_as(self.file4_ob))
-        self.assertFalse(self.file4_ob.as_hard_as(self.file1_ob))
-        self.assertFalse(self.file1_ob.as_hard_as(self.file4_ob))
-        self.assertFalse(self.file4_ob.as_hard_as(self.file2_ob))
-        self.assertFalse(self.file2_ob.as_hard_as(self.file4_ob))
+        assert not self.file4_ob.as_hard_as(self.file3_ob)
+        assert not self.file3_ob.as_hard_as(self.file4_ob)
+        assert not self.file4_ob.as_hard_as(self.file1_ob)
+        assert not self.file1_ob.as_hard_as(self.file4_ob)
+        assert not self.file4_ob.as_hard_as(self.file2_ob)
+        assert not self.file2_ob.as_hard_as(self.file4_ob)
 
-    @unittest.skip("Inversion test takes a long time.")
-    def test_inversion(self) -> None:
-        lm_example_config = LmExampleConfig.void_config()
+    def skip_test_inversion(self) -> None:
+        basic_formatter = BasicFormatter(OneStepSampler(), False, None)
         with ProofFile(self.test_inversion1_loc) as proof_file1:
             proof_file1.run()
             pm1 = ProofManager(
                 self.test_inversion1_loc,
                 proof_file1,
                 len(proof_file1.steps) - 2,
-                lm_example_config,
+                basic_formatter,
             )
             current_goals = proof_file1.current_goals
             assert current_goals is not None
@@ -103,7 +169,7 @@ class GoalComparerTestCase(unittest.TestCase):
                 self.test_inversion2_loc,
                 proof_file2,
                 len(proof_file2.steps) - 2,
-                lm_example_config,
+                basic_formatter,
             )
             current_goals = proof_file2.current_goals
             assert current_goals is not None
@@ -111,8 +177,8 @@ class GoalComparerTestCase(unittest.TestCase):
 
         assert len(pg1.obligations) == 1
         assert len(pg2.obligations) == 1
-        self.assertTrue(pg1.obligations[0].as_hard_as(pg2.obligations[0]))
-        self.assertTrue(pg2.obligations[0].as_hard_as(pg1.obligations[0]))
+        assert pg1.obligations[0].as_hard_as(pg2.obligations[0])
+        assert pg2.obligations[0].as_hard_as(pg1.obligations[0])
 
     def test_compare_expressions(self) -> None:
         # fmt: off
@@ -122,54 +188,54 @@ class GoalComparerTestCase(unittest.TestCase):
         two_avail_vars = {'H1', 't0', 'T12', 'H4', 'H3', 't1', 'G0', 'R', 'H2', 'H', 'G', 't2', 't3', 'H0', 'T11'}
         fresh_var_mapping: dict[str, str] = {}
         # fmt: on
-
-        self.assertTrue(
-            compare_expressions_under_substitution(
-                expr1, expr2, one_to_two_mapping, two_avail_vars, fresh_var_mapping
-            )
+        assert compare_expressions_under_substitution(
+            expr1, expr2, one_to_two_mapping, two_avail_vars, fresh_var_mapping
         )
 
-    def __get_basic_goal(self, file_loc: str, hyp_prefix: str) -> ParsedObligation:
+    @classmethod
+    def __get_basic_goal(cls, file_loc: str, hyp_prefix: str) -> ParsedObligation:
         hyps: list[ParsedHyp] = []
         with CoqFile(file_loc) as coq_file:
-            for i, step in enumerate(coq_file.steps[:-2]):
+            for i, step in enumerate(coq_file.steps[:-1]):
                 hyp_name = f"{hyp_prefix}{str(i)}"
                 parsed_hyp = ParsedHyp([hyp_name], extract_body_from_step(step))
                 hyps.append(parsed_hyp)
-            goal = ParsedObligation(hyps, extract_body_from_step(coq_file.steps[-2]))
+            goal = ParsedObligation(hyps, extract_body_from_step(coq_file.steps[-1]))
         return goal
 
-    def setUp(self) -> None:
-        self.file1_loc = get_fresh_path(".", "file1.v")
-        with open(self.file1_loc, "w") as fout:
+    @classmethod
+    def setup_class(cls) -> None:
+        cls.file1_loc = get_fresh_path(".", "file1.v")
+        with open(cls.file1_loc, "w") as fout:
             fout.write(test_file_1)
-        self.file1_ob = self.__get_basic_goal(self.file1_loc, "H1")
+        cls.file1_ob = cls.__get_basic_goal(cls.file1_loc, "H1")
 
-        self.file2_loc = get_fresh_path(".", "file2.v")
-        with open(self.file2_loc, "w") as fout:
+        cls.file2_loc = get_fresh_path(".", "file2.v")
+        with open(cls.file2_loc, "w") as fout:
             fout.write(test_file_2)
-        self.file2_ob = self.__get_basic_goal(self.file2_loc, "H2")
+        cls.file2_ob = cls.__get_basic_goal(cls.file2_loc, "H2")
 
-        self.file3_loc = get_fresh_path(".", "file3.v")
-        with open(self.file3_loc, "w") as fout:
+        cls.file3_loc = get_fresh_path(".", "file3.v")
+        with open(cls.file3_loc, "w") as fout:
             fout.write(test_file_3)
-        self.file3_ob = self.__get_basic_goal(self.file3_loc, "H3")
+        cls.file3_ob = cls.__get_basic_goal(cls.file3_loc, "H3")
 
-        self.file4_loc = get_fresh_path(".", "file4.v")
-        with open(self.file4_loc, "w") as fout:
+        cls.file4_loc = get_fresh_path(".", "file4.v")
+        with open(cls.file4_loc, "w") as fout:
             fout.write(test_file_4)
-        self.file4_ob = self.__get_basic_goal(self.file4_loc, "H4")
+        cls.file4_ob = cls.__get_basic_goal(cls.file4_loc, "H4")
 
-        self.test_files_loc = os.path.join("test", "test_files")
-        if not os.path.exists(self.test_files_loc):
+        cls.test_files_loc = os.path.join("test", "test_files")
+        if not os.path.exists(cls.test_files_loc):
             raise ValueError(
-                f"{self.test_files_loc} does not exsist. You should be in the root dir of the project."
+                f"{cls.test_files_loc} does not exsist. You should be in the root dir of the project."
             )
-        self.test_inversion1_loc = os.path.join(self.test_files_loc, "inversion_1.v")
-        self.test_inversion2_loc = os.path.join(self.test_files_loc, "inversion_2.v")
+        cls.test_inversion1_loc = os.path.join(cls.test_files_loc, "inversion_1.v")
+        cls.test_inversion2_loc = os.path.join(cls.test_files_loc, "inversion_2.v")
 
-    def tearDown(self) -> None:
-        os.remove(self.file1_loc)
-        os.remove(self.file2_loc)
-        os.remove(self.file3_loc)
-        os.remove(self.file4_loc)
+    @classmethod
+    def teardown_class(cls) -> None:
+        os.remove(cls.file1_loc)
+        os.remove(cls.file2_loc)
+        os.remove(cls.file3_loc)
+        os.remove(cls.file4_loc)
