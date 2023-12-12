@@ -294,7 +294,7 @@ def normalize(tokens: list[Token]) -> list[Token]:
 def lex(s: str) -> list[Token]:
     try:
         return __post_process(__lex([ch for ch in s]))
-    except:
+    except RecursionError:
         msg = f"Could not parse step: {s}"
         _logger.info(f"Could not parse step: {s}")
         raise CoqParseError(msg)

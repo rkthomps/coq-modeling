@@ -6,8 +6,11 @@ from typeguard import typechecked
 
 from data_management.dataset_file import FocusedStep, Goal
 from tactic_gen.tactic_pair_encoding import TacticPairEncoding
-from tactic_gen.step_parser import normalize, lex, tokens2str
+from tactic_gen.step_parser import normalize, lex, tokens2str, CoqParseError
+from util.util import get_basic_logger
 import random
+
+_logger = get_basic_logger(__name__)
 
 
 @dataclass
@@ -75,8 +78,7 @@ class NStepTPESampler:
             try:
                 norm_step_str = tokens2str(normalize(lex(step.step.text)))
                 out_texts.append(norm_step_str)
-            except (ValueError, RecursionError):
-                print(f"Could not parse: {step.step.text}")
+            except CoqParseError:
                 out_texts.append("<UNPARSABLE>.")
         return out_texts
 
@@ -132,7 +134,7 @@ def n_step_from_json(json_data: Any) -> NStepSampler:
             return OneStepSampler()
         case NStepUniformSampler.ALIAS:
             return NStepUniformSampler.from_json(json_data)
-        case NStepTPESampler():
+        case NStepTPESampler.ALIAS:
             return NStepTPESampler.from_json(json_data)
         case _:
             raise NStepSamplerNotFound(
@@ -147,7 +149,7 @@ def n_step_from_conf(json_data: Any) -> NStepSampler:
             return OneStepSampler()
         case NStepUniformSampler.ALIAS:
             return NStepUniformSampler.from_conf(json_data)
-        case NStepTPESampler():
+        case NStepTPESampler.ALIAS:
             return NStepTPESampler.from_conf(json_data)
         case _:
             raise NStepSamplerNotFound(
