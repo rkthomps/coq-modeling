@@ -7,7 +7,6 @@ models-small
 preprocessing
 evals
 reports
-samples
 distances
 analysis
 
@@ -23,7 +22,7 @@ failed-examples
 src/data_management/premise-confs/**
 !src/data_management/premise-confs/premise_basic.yaml
 src/data_management/tactic-confs/**
-!src/data_management/tactic-confs/premise_tactic.yaml
+!src/data_management/tactic-confs/random-sample-basic.yaml
 
 # - Training premise dataset
 src/premise_selection/confs/**
