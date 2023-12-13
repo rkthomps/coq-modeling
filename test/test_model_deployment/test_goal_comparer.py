@@ -1,8 +1,8 @@
+from typing import Optional
 import sys, os
 import shutil
 
-import unittest
-import pdb
+import ipdb
 
 from model_deployment.goal_comparer import (
     ParsedHyp,
@@ -12,107 +12,167 @@ from model_deployment.goal_comparer import (
     compare_expressions_under_substitution,
 )
 
-from data_management.create_lm_dataset import LmExampleConfig
+from tactic_gen.lm_example import BasicFormatter
+from tactic_gen.n_step_sampler import OneStepSampler
 from model_deployment.proof_manager import get_fresh_path, ProofManager
 
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.proof_file import ProofFile
 
 
-test_file_1 = """\
-Definition def0 := (x1 = x3).
-
-Definition def1 := (x1 = x2).
-
-Definition def2 := (x1 = x2).
-
-Definition def3 := (x3 = x2).
-"""
-
-# Same as 1
-test_file_2 = """\
-Definition def0 := (x1 = x3).
-
-Definition def1 := (x1 = x2).
-
-Definition def2 := (x3 = x2).
-"""
-
-# Easier than 1, 2
-test_file_3 = """\
-Definition def0 := (x1 = x3).
-
-Definition def1 := (x1 = x2).
-
-Definition def2 := (x1 = x2).
-
-Definition def3 := (foo x1 x2).
-
-Definition def3 := (x3 = x2).
-"""
-
-# Not comparable to prior 1, 2, 3
-test_file_4 = """\
-Definition def0 := (x1 = x3).
-
-Definition def1 := (x1 = x2).
-
-Definition def2 := (x1 = x2).
-
-Definition def3 := (x3 = x2 + 1).
-"""
+class StrawHyp:
+    def __init__(self, names: list[str], body: str) -> None:
+        self.names = names
+        self.body = body
 
 
-class GoalComparerTestCase(unittest.TestCase):
+class StrawOb:
+    def __init__(self, imports: list[str], hyps: list[StrawHyp], goal: str) -> None:
+        self.imports = imports
+        self.hyps = hyps
+        self.goal = goal
+
+    @staticmethod
+    def def_wrap(s: str, name: str) -> str:
+        return f"Definition {name} := ({s})."
+
+    def coq_str(self) -> str:
+        import_str = "\n\n".join(self.imports)
+        hyp_str = "\n\n".join(
+            [self.def_wrap(h.body, "H" + str(i)) for i, h in enumerate(self.hyps)]
+        )
+        goal_str = self.def_wrap(self.goal, "G")
+        return f"{import_str}\n\n{hyp_str}\n\n{goal_str}"
+
+    def get_parsed(self) -> ParsedObligation:
+        tmp_file = get_fresh_path(".", "tmp.v")
+        try:
+            return self.__get_parsed(tmp_file)
+        finally:
+            if os.path.exists(tmp_file):
+                os.remove(tmp_file)
+
+    def __get_parsed(self, file: str) -> ParsedObligation:
+        with open(file, "w") as fout:
+            fout.write(self.coq_str())
+        parsed_hyps: list[ParsedHyp] = []
+        with CoqFile(file) as coq_file:
+            for i, hyp in enumerate(self.hyps):
+                step = coq_file.steps[len(self.imports) + i]
+                hyp_ast = extract_body_from_step(step)
+                parsed_hyps.append(ParsedHyp(hyp.names, hyp_ast, step.text))
+            goal_def = coq_file.steps[len(self.imports) + len(self.hyps)]
+            goal_ast = extract_body_from_step(goal_def)
+        return ParsedObligation(parsed_hyps, goal_ast, goal_def.text)
+
+
+test1_ob = StrawOb(
+    imports=[],
+    hyps=[
+        StrawHyp(["H1"], "x1 = x3"),
+        StrawHyp(["H2"], "x1 = x2"),
+        StrawHyp(["H3"], "x1 = x2"),
+    ],
+    goal="x3 = x2",
+)
+
+test2_ob = StrawOb(
+    imports=[],
+    hyps=[
+        StrawHyp(["H1"], "x1 = x3"),
+        StrawHyp(["H2"], "x1 = x2"),
+    ],
+    goal="x3 = x2",
+)
+
+test3_ob = StrawOb(
+    imports=[],
+    hyps=[
+        StrawHyp(["H1"], "x1 = x3"),
+        StrawHyp(["H2"], "x1 = x2"),
+        StrawHyp(["H3"], "x1 = x2"),
+        StrawHyp(["H4"], "foo x1 x2"),
+    ],
+    goal="x3 = x2",
+)
+
+test4_ob = StrawOb(
+    imports=[],
+    hyps=[
+        StrawHyp(["H1"], "x1 = x3"),
+        StrawHyp(["H2"], "x1 = x2"),
+        StrawHyp(["H3"], "x1 = x2"),
+    ],
+    goal="x3 = x2 + 1",
+)
+
+test_min1_ob = StrawOb(imports=["Require Import List."], hyps=[], goal="nil = 0 :: nil")
+
+test_min2_ob = StrawOb(
+    imports=["Require Import List."],
+    hyps=[StrawHyp(["a"], "nat")],
+    goal="nil = S a :: nil",
+)
+
+test_min3_ob = StrawOb(
+    imports=["Require Import List."],
+    hyps=[
+        StrawHyp(["a"], "nat"),
+        StrawHyp(["H"], "a :: nil <> nil"),
+        StrawHyp(["x"], "nat"),
+        StrawHyp(["H0"], "min nil = Some x"),
+    ],
+    goal="exists h : nat, min (a :: nil) = Some h",
+)
+
+test_min4_ob = StrawOb(
+    imports=["Require Import List."],
+    hyps=[
+        StrawHyp(["a", "n"], "nat"),
+        StrawHyp(["l"], "list nat"),
+        StrawHyp(["H"], "a :: n :: l <> nil"),
+        StrawHyp(["IHl"], "n :: l <> nil -> exists h : nat, min (n :: l) = Some h"),
+    ],
+    goal="exists h : nat, min (a :: n :: l) = Some h",
+)
+
+
+class TestGoalComparer:
+    @classmethod
+    def setup_class(cls) -> None:
+        cls.o1 = test1_ob.get_parsed()
+        cls.o2 = test2_ob.get_parsed()
+        cls.o3 = test3_ob.get_parsed()
+        cls.o4 = test4_ob.get_parsed()
+
+        cls.min1 = test_min1_ob.get_parsed()
+        cls.min2 = test_min2_ob.get_parsed()
+        cls.min3 = test_min3_ob.get_parsed()
+        cls.min4 = test_min4_ob.get_parsed()
+
     def test_equiv_goals(self) -> None:
-        self.assertTrue(self.file1_ob.as_hard_as(self.file2_ob))
-        self.assertTrue(self.file2_ob.as_hard_as(self.file1_ob))
+        assert self.o1.as_hard_as(self.o2)
+        assert self.o2.as_hard_as(self.o1)
 
     def test_harder_goals(self) -> None:
-        self.assertFalse(self.file3_ob.as_hard_as(self.file1_ob))
-        self.assertFalse(self.file3_ob.as_hard_as(self.file2_ob))
-        self.assertTrue(self.file1_ob.as_hard_as(self.file3_ob))
-        self.assertTrue(self.file2_ob.as_hard_as(self.file3_ob))
+        assert not self.o3.as_hard_as(self.o1)
+        assert not self.o3.as_hard_as(self.o2)
+        assert self.o1.as_hard_as(self.o3)
+        assert self.o2.as_hard_as(self.o3)
 
     def test_non_comparable_goals(self) -> None:
-        self.assertFalse(self.file4_ob.as_hard_as(self.file3_ob))
-        self.assertFalse(self.file3_ob.as_hard_as(self.file4_ob))
-        self.assertFalse(self.file4_ob.as_hard_as(self.file1_ob))
-        self.assertFalse(self.file1_ob.as_hard_as(self.file4_ob))
-        self.assertFalse(self.file4_ob.as_hard_as(self.file2_ob))
-        self.assertFalse(self.file2_ob.as_hard_as(self.file4_ob))
+        assert not self.o4.as_hard_as(self.o3)
+        assert not self.o3.as_hard_as(self.o4)
+        assert not self.o4.as_hard_as(self.o1)
+        assert not self.o1.as_hard_as(self.o4)
+        assert not self.o4.as_hard_as(self.o2)
+        assert not self.o2.as_hard_as(self.o4)
 
-    @unittest.skip("Inversion test takes a long time.")
-    def test_inversion(self) -> None:
-        lm_example_config = LmExampleConfig.void_config()
-        with ProofFile(self.test_inversion1_loc) as proof_file1:
-            proof_file1.run()
-            pm1 = ProofManager(
-                self.test_inversion1_loc,
-                proof_file1,
-                len(proof_file1.steps) - 2,
-                lm_example_config,
-            )
-            current_goals = proof_file1.current_goals
-            assert current_goals is not None
-            pg1 = pm1.get_parsed_goals("", current_goals)
-
-        with ProofFile(self.test_inversion2_loc) as proof_file2:
-            proof_file2.run()
-            pm2 = ProofManager(
-                self.test_inversion2_loc,
-                proof_file2,
-                len(proof_file2.steps) - 2,
-                lm_example_config,
-            )
-            current_goals = proof_file2.current_goals
-            assert current_goals is not None
-            pg2 = pm2.get_parsed_goals("", current_goals)
-
-        assert len(pg1.obligations) == 1
-        assert len(pg2.obligations) == 1
-        self.assertTrue(pg1.obligations[0].as_hard_as(pg2.obligations[0]))
-        self.assertTrue(pg2.obligations[0].as_hard_as(pg1.obligations[0]))
+    def test_min_goals(self) -> None:
+        obs1 = ParsedObligations([self.min1, self.min2, self.min3, self.min4])
+        obs2 = ParsedObligations([self.min1, self.min2, self.min3, self.min4])
+        assert obs1.as_hard_as(obs2)
+        assert obs2.as_hard_as(obs1)
 
     def test_compare_expressions(self) -> None:
         # fmt: off
@@ -122,54 +182,10 @@ class GoalComparerTestCase(unittest.TestCase):
         two_avail_vars = {'H1', 't0', 'T12', 'H4', 'H3', 't1', 'G0', 'R', 'H2', 'H', 'G', 't2', 't3', 'H0', 'T11'}
         fresh_var_mapping: dict[str, str] = {}
         # fmt: on
-
-        self.assertTrue(
-            compare_expressions_under_substitution(
-                expr1, expr2, one_to_two_mapping, two_avail_vars, fresh_var_mapping
-            )
+        assert compare_expressions_under_substitution(
+            expr1, expr2, one_to_two_mapping, two_avail_vars, fresh_var_mapping
         )
 
-    def __get_basic_goal(self, file_loc: str, hyp_prefix: str) -> ParsedObligation:
-        hyps: list[ParsedHyp] = []
-        with CoqFile(file_loc) as coq_file:
-            for i, step in enumerate(coq_file.steps[:-2]):
-                hyp_name = f"{hyp_prefix}{str(i)}"
-                parsed_hyp = ParsedHyp([hyp_name], extract_body_from_step(step))
-                hyps.append(parsed_hyp)
-            goal = ParsedObligation(hyps, extract_body_from_step(coq_file.steps[-2]))
-        return goal
-
-    def setUp(self) -> None:
-        self.file1_loc = get_fresh_path(".", "file1.v")
-        with open(self.file1_loc, "w") as fout:
-            fout.write(test_file_1)
-        self.file1_ob = self.__get_basic_goal(self.file1_loc, "H1")
-
-        self.file2_loc = get_fresh_path(".", "file2.v")
-        with open(self.file2_loc, "w") as fout:
-            fout.write(test_file_2)
-        self.file2_ob = self.__get_basic_goal(self.file2_loc, "H2")
-
-        self.file3_loc = get_fresh_path(".", "file3.v")
-        with open(self.file3_loc, "w") as fout:
-            fout.write(test_file_3)
-        self.file3_ob = self.__get_basic_goal(self.file3_loc, "H3")
-
-        self.file4_loc = get_fresh_path(".", "file4.v")
-        with open(self.file4_loc, "w") as fout:
-            fout.write(test_file_4)
-        self.file4_ob = self.__get_basic_goal(self.file4_loc, "H4")
-
-        self.test_files_loc = os.path.join("test", "test_files")
-        if not os.path.exists(self.test_files_loc):
-            raise ValueError(
-                f"{self.test_files_loc} does not exsist. You should be in the root dir of the project."
-            )
-        self.test_inversion1_loc = os.path.join(self.test_files_loc, "inversion_1.v")
-        self.test_inversion2_loc = os.path.join(self.test_files_loc, "inversion_2.v")
-
-    def tearDown(self) -> None:
-        os.remove(self.file1_loc)
-        os.remove(self.file2_loc)
-        os.remove(self.file3_loc)
-        os.remove(self.file4_loc)
+    @classmethod
+    def teardown_class(cls) -> None:
+        pass

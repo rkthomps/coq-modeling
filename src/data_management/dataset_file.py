@@ -63,6 +63,15 @@ class Sentence:
         if not isinstance(other, Sentence):
             return False
         return hash(self) == hash(other)
+    
+    def to_json(self) -> Any:
+        return {
+            "text": self.text,
+            "file_path": self.file_path,
+            "module": self.module,
+            "type": str(self.sentence_type),
+            "line": self.line,
+        }
 
     @classmethod
     def from_json(cls, json_data: Any) -> Sentence:
@@ -99,12 +108,18 @@ class Term:
         if type(other) != Term:
             return False
         return hash(self) == hash(other)
+    
+    def to_json(self) -> Any:
+        term_json = self.term.to_json()
+        context_json = {"context": [s.to_json() for s in self.term_context]}
+        return term_json | context_json 
+
 
     @classmethod
     def from_json(cls, json_data: Any) -> Term:
         term = Sentence.from_json(json_data)
         term_context: list[Sentence] = []
-        for sentence in term_context:
+        for sentence in json_data["context"]:
             term_context.append(Sentence.from_json(sentence))
         return cls(term, term_context)
 
@@ -129,6 +144,12 @@ class Step:
                 print("Bad Tactic Ending", text)
         self.text = text
         self.context = context
+    
+    def to_json(self) -> Any:
+        return {
+            "text": self.text,
+            "context": [s.to_json() for s in self.context]
+        }
 
     @classmethod
     def from_json(cls, json_data: Any) -> Step:
@@ -152,6 +173,9 @@ class Goal:
 
     def to_string(self) -> str:
         return "\n".join(self.hyps) + "\n\n" + self.goal
+    
+    def to_json(self) -> str:
+        return self.to_string()
 
     @classmethod
     def from_json(cls, json_data: str) -> Goal:
@@ -189,6 +213,15 @@ class FocusedStep:
         if not isinstance(other, FocusedStep):
             return False
         return hash(self) == hash(other)
+    
+    def to_json(self) -> Any:
+        return {
+            "term": self.term.to_json(),
+            "step": self.step.to_json(),
+            "n_step": self.n_step,
+            "goals": [g.to_json() for g in self.goals],
+            "next_steps": [s.to_json() for s in self.next_steps],
+        }
 
     @classmethod
     def from_json(cls, json_data: Any) -> FocusedStep:
@@ -241,6 +274,19 @@ class Proof:
                 break
             proof += step.step.text
         return proof
+    
+    def to_json(self) -> Any:
+        return {
+            "theorem": self.theorem.to_json(),
+            "steps": [s.to_json() for s in self.steps],
+        }
+    
+    @classmethod
+    def from_json(cls, json_data: Any) -> Proof:
+        theorem = Term.from_json(json_data["theorem"])
+        steps = [FocusedStep.from_json(s) for s in json_data["steps"]]
+        return cls(theorem, steps)
+
 
 
 @typechecked
@@ -252,6 +298,14 @@ class FileContext:
         self.workspace = workspace
         self.repository = repository
         self.avail_premises = avail_premises
+    
+    def to_json(self) -> Any:
+        return {
+            "file": self.file,
+            "workspace": self.workspace,
+            "repository": self.repository,
+            "avail_premises": [s.to_json() for s in self.avail_premises],
+        }
 
     @classmethod
     def from_json(cls, json_data: Any) -> FileContext:

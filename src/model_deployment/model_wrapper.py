@@ -120,7 +120,6 @@ class CodeLLamaLocalWrapper:
             "cuda"
         )
         model_input = self.tokenizer.decode(input_ids[0])
-        print(model_input)
 
         beam_width = n
         n_recs = n
@@ -133,7 +132,6 @@ class CodeLLamaLocalWrapper:
             self.stop_strings,
             batch_size=self.batch_size,
         )
-        print(sample_result.tactics)
         # sample_result = self.do_sample(input_ids, n)
         return self.__filter_recs(
             sample_result.tactics, sample_result.scores, sample_result.num_tokens

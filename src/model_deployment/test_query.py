@@ -20,8 +20,11 @@ from model_deployment.node_score import (
     DepthFirstScore,
     BreadthFirstScore,
 )
+from util.util import get_basic_logger
 
 from coqpyt.coq.proof_file import ProofFile
+
+_logger = get_basic_logger(__name__)
 
 # WRAPPER = GPT4Wrapper()
 # EXAMPLE_TYPE = GPT4BasicLmExample
@@ -34,19 +37,22 @@ NODE_SCORE_TYPE = TokenLengthNormalizedScore
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
+# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
+# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/examples/rev.v"
 
-
 TIMEOUT = 600
 BRANCH = 4
 EXPANSIONS = 500
 
+_logger.debug("Creating Proof File")
 with ProofFile(TEST_FILE, timeout=60) as proof_file:
-    proof_point = len(proof_file.steps) - 3
+    proof_point = len(proof_file.steps) - 2
+    _logger.debug("Creating Proof Manager")
     with ProofManager(
         TEST_FILE, proof_file, proof_point, WRAPPER.formatter
     ) as proof_manager:
@@ -54,6 +60,7 @@ with ProofFile(TEST_FILE, timeout=60) as proof_file:
             WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, TIMEOUT
         )
 
+        _logger.debug("Beginning Proof Search")
         result = tree_manager.search(print_trees=True)
         with open("proof-tree.json", "w") as fout:
             json_proof_tree = result.search_tree.to_json()
@@ -62,7 +69,7 @@ with ProofFile(TEST_FILE, timeout=60) as proof_file:
         match result:
             case SuccessfulSearch():
                 print(result.get_proof())
-                qed_path = result.search_tree.get_path_to_qed()
+                qed_path = result.search_tree.root.get_path_to_qed()
                 print(
                     (
                         f"Found proof after: {result.qed_node.creation_time / 1e9} seconds "
