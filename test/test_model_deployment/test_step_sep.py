@@ -20,11 +20,16 @@ class TestStepSep:
     RAW_DATA_LOC = "test/test_files/coq-mini-dataset"
 
     def test_proof_splitting(self) -> None:
+        num_steps_tested = 0
         for proof in self.proofs:
-            expected = [s.step.text for s in proof.steps]
-            actual = separate_steps("".join(expected))
-            assert expected == actual
-        _logger.error(f"Tested {len(self.proofs)} proofs.")
+            for i in range(len(proof.steps)):
+                for j in range(i + 1, len(proof.steps)):
+                    expected = [s.step.text for s in proof.steps[i : (j + 1)]]
+                    actual = separate_steps("".join(expected))
+                    assert expected == actual
+                    num_steps_tested += 1
+        _logger.error(f"Tested {num_steps_tested} steps.")
+        assert False
 
     def test_proof_split_unit1(self) -> None:
         expected = ["\nProof.", "\nProof.", "\n  induction n.", "\n  -"]
@@ -33,6 +38,7 @@ class TestStepSep:
 
     @classmethod
     def setup_class(cls) -> None:
+        cls.max_num_proofs = 1000
         cls.proofs: list[Proof] = []
         if not os.path.exists(cls.RAW_DATA_LOC):
             raise FileNotFoundError(

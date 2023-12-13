@@ -1,7 +1,5 @@
-Require Import Coq.Unicode.Utf8.
 
-Ltac reduce_eq := simpl; reflexivity.
 
-Theorem mult_0_plus : ∀ n m : nat, 0 + (S n * m) = S n * m.
-Proof.
-<prove>
+Lemma add_0: forall n, n + 0 = n. 
+Proof. 
+Admitted.

@@ -2,20 +2,23 @@ from __future__ import annotations
 from typing import Optional, Any
 import heapq
 import time
+import ipdb
 import re
 
 import sys, os
 
-from tactic_gen.lm_example import LmExample
 from model_deployment.model_wrapper import ModelWrapper, ModelResult
 from model_deployment.node_score import NodeScore
 from model_deployment.goal_comparer import ParsedObligations
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import SearchNode, SearchTree
+from util.util import get_basic_logger
 
 from data_management.dataset_file import DatasetFile, Proof
 
 from typeguard import typechecked
+
+_logger = get_basic_logger(__name__)
 
 
 @typechecked
@@ -151,7 +154,7 @@ class SearchTreeManager:
                 break
             if len(self.frontier) == 0:
                 break
-            print(f"Beginning iteration {i + 1} of search.")
+            _logger.info(f"Beginning iteration {i + 1} of search.")
             possible_complete_node = self.search_step(i, start)
             if print_trees:
                 self.search_tree.pretty_print(verbose=True)
@@ -231,13 +234,13 @@ class SearchTreeManager:
         redundant_to_str = (
             redundant_to.redundant_str() if redundant_to is not None else None
         )
-        valid_proof_steps = proof_check_result.attempted_steps
-        tactic_str = SearchNode.steps_to_str(valid_proof_steps)
         creation_time = time.time_ns() - search_start_time
         makes_progress = (
             redundant_to is None
-            or self.__is_bullet(tactic_str)
-            or self.__is_first_proof_tactic(parent_node.total_proof_str(), tactic_str)
+            or self.__is_bullet(attempted_tactic)
+            or self.__is_first_proof_tactic(
+                parent_node.total_proof_str(), attempted_tactic
+            )
         )
         proof = self.__get_possible_last_proof(proof_check_result.dataset_file)
         assert proof is not None
@@ -294,7 +297,7 @@ class SearchTreeManager:
         start_time = time.time_ns()
         result = self.model_wrapper.get_recs(example, self.max_branch)
         end_time = time.time_ns()
-        print(f"Model time: {(end_time - start_time) / 1e9}")
+        _logger.info(f"Model time: {(end_time - start_time) / 1e9}")
         children: list[SearchNode] = []
         next_frontier_pool: list[SearchNode] = []
         next_frontier_goals: list[ParsedObligations] = []
@@ -305,7 +308,7 @@ class SearchTreeManager:
             start_time = time.time_ns()
             proof_check_result = self.proof_manager.check_proof(proof_script)
             end_time = time.time_ns()
-            print(f"Check time: {(end_time - start_time) / 1e9}")
+            _logger.info(f"Check time: {(end_time - start_time) / 1e9}")
             node_score = self.score_type.from_unit_score(
                 score, num_tokens, self.max_branch
             )

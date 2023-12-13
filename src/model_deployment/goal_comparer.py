@@ -3,6 +3,7 @@ from coqpyt.coq.structs import Step, RangedSpan
 from coqpyt.coq.lsp.structs import Goal
 from typing import Any, Optional
 import ipdb
+import re
 
 from typeguard import typechecked
 
@@ -19,18 +20,39 @@ def extract_body_from_step(step: Step) -> Any:
     return def_expr[3]
 
 
+def strip_def(s: str) -> Optional[str]:
+    def_match = re.match(r"\s*Definition.*?:=(.*)", s, re.DOTALL)
+    if def_match:
+        (body,) = def_match.groups()
+        return body
+    return None
+
+
 @typechecked
 class ParsedHyp:
-    def __init__(self, ids: list[str], ast: Any) -> None:
+    def __init__(self, ids: list[str], ast: Any, text: str) -> None:
         self.ids = ids
         self.ast = ast
+        self.text = text
+
+    def __repr__(self) -> str:
+        try_get_body = strip_def(self.text)
+        text = try_get_body if try_get_body else self.text
+        return ", ".join(self.ids) + ": " + text
 
 
 @typechecked
 class ParsedObligation:
-    def __init__(self, hyps: list[ParsedHyp], goal_ast: Any) -> None:
+    def __init__(self, hyps: list[ParsedHyp], goal_ast: Any, text: str) -> None:
         self.hyps = hyps
         self.goal_ast = goal_ast
+        self.text = text
+
+    def __repr__(self) -> str:
+        try_get_body = strip_def(self.text)
+        goal = try_get_body if try_get_body else self.text
+        hyp_str = "\n".join([repr(h) for h in self.hyps])
+        return f"{hyp_str}\n-------------\n{goal}"
 
     def get_all_vars(self) -> list[str]:
         all_vars: list[str] = []
@@ -145,6 +167,9 @@ class ParsedObligation:
 class ParsedObligations:
     def __init__(self, obligations: list[ParsedObligation]) -> None:
         self.obligations = obligations
+
+    def __repr__(self) -> str:
+        return "OBS:\n" + "\n=============\n".join([repr(o) for o in self.obligations])
 
     def as_hard_as(self, other: ParsedObligations) -> bool:
         for other_ob in other.obligations:

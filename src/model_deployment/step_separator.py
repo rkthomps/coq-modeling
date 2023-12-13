@@ -1,4 +1,5 @@
-from parsy import regex, string, any_char, eof, seq
+from parsy import regex, string, any_char, eof, seq, ParseError
+import ipdb
 
 _open_commentp = string("(*")
 _close_commentp = string("*)")
@@ -11,7 +12,7 @@ _stringp = _quotep + any_char.until(_quotep, consume_other=True).concat()
 
 _period_end = regex(r"\.(?=\s|$)")
 _focus_tok = regex(r"\s[-+*]+(?=\s|$)")
-_bracket_open = regex(r"\s+{(?=\s)")
+_bracket_open = regex(r"\s+{(?=\s)|$")
 _bracket_close = regex(r"\s}(?=\s|$)")
 _focus_end = _focus_tok | _bracket_open | _bracket_close
 
@@ -29,4 +30,7 @@ _proofp = _stepp.many() << _whitespacep.many()
 
 
 def separate_steps(step_str: str) -> list[str]:
-    return _proofp.parse(step_str)
+    try:
+        return _proofp.parse(step_str)
+    except ParseError:
+        ipdb.set_trace()

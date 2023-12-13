@@ -2,14 +2,8 @@ from __future__ import annotations
 from typing import Any, Optional
 from types import TracebackType
 
-import pickle
-import time
-import traceback
 import sys, os
-import shutil
 from enum import Enum
-import pdb
-import jsonlines
 import ipdb
 
 from typeguard import typechecked
@@ -18,13 +12,8 @@ from util.util import get_fresh_path
 from data_management.dataset_file import (
     DatasetFile,
     FileContext,
-    Proof,
-    STEPS_NAME,
-    FILE_CONTEXT_NAME,
 )
-from data_management.create_lm_dataset import LmExampleConfig
 
-from data_management.get_counts import remove_comments
 from tactic_gen.lm_example import LmExample, LmFormatter
 from model_deployment.goal_comparer import (
     ParsedObligations,
@@ -32,10 +21,9 @@ from model_deployment.goal_comparer import (
     ParsedHyp,
     extract_body_from_step,
 )
-from model_deployment.step_separator import separate_steps
 from util.util import get_basic_logger
 
-from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep, CoqChange
+from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
 from coqpyt.coq.structs import ProofTerm, Term
 from coqpyt.coq.lsp.structs import Goal, GoalAnswer
 from coqpyt.coq.proof_file import ProofFile
@@ -199,13 +187,18 @@ class ProofManager:
         file_basename = os.path.basename(file_path)
         self.file_path = file_path
         self.lm_formatter = lm_formatter
-        self.__search_dir_path = get_fresh_path(file_dir, ".proof-search")
         self.aux_file_path = get_fresh_path(file_dir, f"aux_{file_basename}")
 
         self.proof_file = proof_file
         self.proof_point = proof_point
 
+        self.file_prefix = self.__get_file_prefix()
         self.__proof_stored_steps = self.__replace_proof_with_admitted_stub()
+
+    def __get_file_prefix(self) -> str:
+        return "".join(
+            [s.text for s in self.proof_file.steps[: (self.proof_point + 1)]]
+        )
 
     def __go_to_base(self) -> None:
         while self.proof_file.steps_taken < self.proof_point + 1:
@@ -218,7 +211,9 @@ class ProofManager:
         delete_strs: list[str] = []
         self.__go_to_base()
         assert self.proof_file.in_proof
-        while self.proof_file.in_proof:
+        while self.proof_file.in_proof and self.proof_file.steps_taken < len(
+            self.proof_file.steps
+        ):
             delete_idx = self.proof_file.steps_taken
             delete_strs.append(self.proof_file.steps[delete_idx].text)
             delete_indices.append(delete_idx)
@@ -281,11 +276,8 @@ class ProofManager:
             self.__add_step_to_proof_file(step)
 
     def __update_aux_file(self, partial_proof: str) -> None:
-        assert self.proof_point is not None
-        steps_to_proof = self.proof_file.steps[: (self.proof_point + 1)]
-        file_prefix = "".join([s.text for s in steps_to_proof])
         with open(self.aux_file_path, "w") as fout:
-            fout.write(f"{file_prefix}{partial_proof}")
+            fout.write(f"{self.file_prefix}{partial_proof}")
 
     def __get_all_goals(self, current_goals: GoalAnswer) -> list[Goal]:
         assert current_goals.goals is not None
@@ -306,11 +298,12 @@ class ProofManager:
 
     def __read_definition(
         self, coq_file: CoqFile, num_definitions: int, num_read: int
-    ) -> tuple[Any, int]:
+    ) -> tuple[Any, str, int]:
         num_steps = len(coq_file.steps)
         read_idx = num_steps - num_definitions + num_read
+        def_text = coq_file.steps[read_idx].text
         ast_def_body = extract_body_from_step(coq_file.steps[read_idx])
-        return ast_def_body, num_read + 1
+        return ast_def_body, def_text, num_read + 1
 
     def get_parsed_goals(
         self, partial_proof: str, current_goals: GoalAnswer
@@ -328,26 +321,35 @@ class ProofManager:
             for goal in all_goals:
                 parsed_hyps: list[ParsedHyp] = []
                 for hyp in goal.hyps:
-                    hyp_ast, num_read = self.__read_definition(
+                    hyp_ast, hyp_text, num_read = self.__read_definition(
                         coq_file, num_definitions, num_read
                     )
-                    parsed_hyp = ParsedHyp(hyp.names, hyp_ast)
+                    parsed_hyp = ParsedHyp(hyp.names, hyp_ast, hyp_text)
                     parsed_hyps.append(parsed_hyp)
-                goal_ast, num_read = self.__read_definition(
+                goal_ast, goal_text, num_read = self.__read_definition(
                     coq_file, num_definitions, num_read
                 )
-                parsed_goal = ParsedObligation(parsed_hyps, goal_ast)
+                parsed_goal = ParsedObligation(parsed_hyps, goal_ast, goal_text)
                 parsed_goals.append(parsed_goal)
         return ParsedObligations(parsed_goals)
 
     def check_proof(self, partial_proof: str) -> ProofCheckResult:
-        partial_steps = separate_steps(partial_proof)
+        # partial_steps = separate_steps(partial_proof)
         if (
             ("Admitted." in partial_proof)
             or ("admit." in partial_proof)
             or ("Abort." in partial_proof)
         ):
             return ProofCheckResult.get_invalid()
+        self.__update_aux_file(partial_proof)
+        with CoqFile(self.aux_file_path) as coq_file:
+            if not coq_file.is_valid:
+                return ProofCheckResult.get_invalid()
+            partial_steps = [s.text for s in coq_file.steps[(self.proof_point + 1) :]]
+            try:
+                assert "".join(partial_steps) == partial_proof
+            except AssertionError:
+                ipdb.set_trace()
         try:
             self.set_proof_file(partial_steps)
         except InvalidChangeException:
@@ -409,12 +411,7 @@ class ProofManager:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.__restore_proof_file()
-        self.close()
-
-    def close(self) -> None:
+        _logger.debug("Restoring proof file.")
         if os.path.exists(self.aux_file_path):
             os.remove(self.aux_file_path)
-            pass
-        if os.path.exists(self.__search_dir_path):
-            shutil.rmtree(self.__search_dir_path)
+        self.__restore_proof_file()
