@@ -109,6 +109,9 @@ class DataSplitEvalSet:
         eval_file_loc = os.path.join(self.eval_tmp_loc, file_info.file)
         _logger.debug(f"Eval loc: {eval_file_loc}")
         eval_file_dir = os.path.dirname(eval_file_loc)
+        if not os.path.exists(file_loc):
+            _logger.warning(f"File {file_loc} doesn't exist.")
+            raise FileNotFoundError(file_loc)
         os.makedirs(eval_file_dir, exist_ok=True)
         shutil.copy(file_loc, eval_file_loc)
         workspace_loc = os.path.join(self.data_loc, file_info.workspace)
@@ -136,6 +139,6 @@ class DataSplitEvalSet:
         seed = conf["seed"]
 
         cur_time = datetime.datetime.now()
-        time_name = cur_time.strftime("%Y-%m-%d:%H:%M:%S") 
+        time_name = cur_time.strftime("%Y-%m-%d:%H:%M:%S")
         eval_tmp_loc = os.path.join(eval_tmp_dir, time_name)
         return cls(data_split, split, data_loc, eval_tmp_loc, seed)

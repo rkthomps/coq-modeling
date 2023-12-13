@@ -20,6 +20,7 @@ from model_deployment.searcher import (
     ErroredSearch,
     SearchResult,
     search_result_from_json,
+    search_result_to_json,
 )
 from model_deployment.proof_manager import (
     ProofManager,
@@ -53,7 +54,7 @@ class EvalSearchResult:
 
     def to_json(self) -> Any:
         return {
-            "search_result": self.search_result.to_json(),
+            "search_result": search_result_to_json(self.search_result),
             "file": self.file.to_json(),
             "thm_idx": self.thm_idx,
             "statement": self.statement,
@@ -160,7 +161,24 @@ class Evaluator:
         file: FileInfo,
         result_hole: ThreadReturnObj,
     ) -> None:
-        for proof in self.eval_set.get_proof_gen(file):
+        "This is ugly but I want the evaluation to not crash."
+        try:
+            proof_gen = self.eval_set.get_proof_gen(file)
+        except:
+            error_str = traceback.format_exc()
+            _logger.error(f"Could not evaluate {file.file} with error: {error_str}")
+            return
+        while True:
+            try:
+                proof = next(proof_gen)
+            except StopIteration:
+                break
+            except:
+                error_str = traceback.format_exc()
+                _logger.error(
+                    f"Trouble getting next proof in file {file.file} with error {error_str}"
+                )
+                continue
             save_path = EvalSearchResult.save_path(
                 file.dp_name, proof.idx, self.results_loc
             )
@@ -217,18 +235,9 @@ class Evaluator:
             _logger.info(f"Num Errors: {num_errors}")
 
 
-def evaluate(evaluate_conf_loc: str, continue_eval: bool) -> None:
+def evaluate(evaluate_conf_loc: str) -> None:
     with open(evaluate_conf_loc, "r") as fin:
         evaluate_conf = load(fin, Loader=Loader)
-
-    results_loc: str = evaluate_conf["results_loc"]
-    if os.path.exists(results_loc):
-        if not continue_eval:
-            raise ValueError("Result directory already exists!")
-    else:
-        os.makedirs(results_loc)
-        shutil.copy(evaluate_conf_loc, results_loc)
-
     evaluator = Evaluator.from_conf(evaluate_conf)
     evaluator.evaluate()
 
@@ -236,11 +245,5 @@ def evaluate(evaluate_conf_loc: str, continue_eval: bool) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=("Run evaluation on a given model."))
     parser.add_argument("eval_config", help="Path to eval configuration file.")
-    parser.add_argument(
-        "--continue_eval",
-        "-c",
-        help="Continue evaluation from previous.",
-        action="store_true",
-    )
     args = parser.parse_args(sys.argv[1:])
-    evaluate(args.eval_config, bool(args.continue_eval))
+    evaluate(args.eval_config)

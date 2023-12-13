@@ -63,7 +63,7 @@ class Sentence:
         if not isinstance(other, Sentence):
             return False
         return hash(self) == hash(other)
-    
+
     def to_json(self) -> Any:
         return {
             "text": self.text,
@@ -108,12 +108,11 @@ class Term:
         if type(other) != Term:
             return False
         return hash(self) == hash(other)
-    
+
     def to_json(self) -> Any:
         term_json = self.term.to_json()
         context_json = {"context": [s.to_json() for s in self.term_context]}
-        return term_json | context_json 
-
+        return term_json | context_json
 
     @classmethod
     def from_json(cls, json_data: Any) -> Term:
@@ -144,12 +143,9 @@ class Step:
                 print("Bad Tactic Ending", text)
         self.text = text
         self.context = context
-    
+
     def to_json(self) -> Any:
-        return {
-            "text": self.text,
-            "context": [s.to_json() for s in self.context]
-        }
+        return {"text": self.text, "context": [s.to_json() for s in self.context]}
 
     @classmethod
     def from_json(cls, json_data: Any) -> Step:
@@ -173,7 +169,7 @@ class Goal:
 
     def to_string(self) -> str:
         return "\n".join(self.hyps) + "\n\n" + self.goal
-    
+
     def to_json(self) -> str:
         return self.to_string()
 
@@ -213,7 +209,7 @@ class FocusedStep:
         if not isinstance(other, FocusedStep):
             return False
         return hash(self) == hash(other)
-    
+
     def to_json(self) -> Any:
         return {
             "term": self.term.to_json(),
@@ -274,19 +270,18 @@ class Proof:
                 break
             proof += step.step.text
         return proof
-    
+
     def to_json(self) -> Any:
         return {
             "theorem": self.theorem.to_json(),
             "steps": [s.to_json() for s in self.steps],
         }
-    
+
     @classmethod
     def from_json(cls, json_data: Any) -> Proof:
         theorem = Term.from_json(json_data["theorem"])
         steps = [FocusedStep.from_json(s) for s in json_data["steps"]]
         return cls(theorem, steps)
-
 
 
 @typechecked
@@ -298,13 +293,13 @@ class FileContext:
         self.workspace = workspace
         self.repository = repository
         self.avail_premises = avail_premises
-    
+
     def to_json(self) -> Any:
         return {
             "file": self.file,
             "workspace": self.workspace,
             "repository": self.repository,
-            "avail_premises": [s.to_json() for s in self.avail_premises],
+            "context": [s.to_json() for s in self.avail_premises],
         }
 
     @classmethod

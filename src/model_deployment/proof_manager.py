@@ -200,11 +200,14 @@ class ProofManager:
             [s.text for s in self.proof_file.steps[: (self.proof_point + 1)]]
         )
 
-    def __go_to_base(self) -> None:
-        while self.proof_file.steps_taken < self.proof_point + 1:
+    def __go_through_point(self, point: int) -> None:
+        while self.proof_file.steps_taken < point + 1:
             self.proof_file.exec(1)
-        while self.proof_point + 1 < self.proof_file.steps_taken:
+        while point + 1 < self.proof_file.steps_taken:
             self.proof_file.exec(-1)
+
+    def __go_to_base(self) -> None:
+        self.__go_through_point(self.proof_point)
 
     def __get_whole_proof_delete_steps(self) -> tuple[list[int], list[str]]:
         delete_indices: list[int] = []
@@ -267,13 +270,35 @@ class ProofManager:
         steps: list[str],
     ) -> None:
         current_partial_proof = self.__get_current_partial_proof()
-        while not self.__is_proof_prefix(current_partial_proof, steps):
-            self.__delete_step_from_proof_file()
-            current_partial_proof = self.__get_current_partial_proof()
-        prefix_len = len(current_partial_proof)
-        remaining_current_proof = steps[prefix_len:]
-        for step in remaining_current_proof:
-            self.__add_step_to_proof_file(step)
+        prefix_len = 0
+        while (
+            prefix_len < len(current_partial_proof)
+            and prefix_len < len(steps)
+            and current_partial_proof[prefix_len] == steps[prefix_len]
+        ):
+            prefix_len += 1
+
+        num_steps_to_delete = len(current_partial_proof) - prefix_len
+        delete_steps = [
+            CoqDeleteStep(self.proof_point + prefix_len + i)
+            for i in range(num_steps_to_delete, 0, -1)
+        ]
+        add_steps = [
+            CoqAddStep(s, self.proof_point + prefix_len + i)
+            for i, s in enumerate(steps[prefix_len:])
+        ]
+        self.proof_file.change_steps(delete_steps + add_steps)
+        self.__go_through_point(self.proof_point + len(steps))
+        assert "Admitted." in self.proof_file.steps[self.proof_file.steps_taken].text
+        # while not self.__is_proof_prefix(current_partial_proof, steps):
+        #     self.__delete_step_from_proof_file()
+        #     current_partial_proof = self.__get_current_partial_proof()
+        # prefix_len = len(current_partial_proof)
+        # remaining_current_proof = steps[prefix_len:]
+        # for step in remaining_current_proof:
+        #     self.__add_step_to_proof_file(step)
+        # _logger.debug("".join(self.__get_current_partial_proof()))
+        # _logger.debug(f"Can close proof: {self.proof_file.can_close_proof}")
 
     def __update_aux_file(self, partial_proof: str) -> None:
         with open(self.aux_file_path, "w") as fout:
@@ -310,6 +335,7 @@ class ProofManager:
     ) -> ParsedObligations:
         assert current_goals.goals is not None
         all_goals = self.__get_all_goals(current_goals)
+        _logger.debug(f"Num goals: {len(all_goals)}")
         goal_as_definitions = self.__get_goal_strs(current_goals)
         goal_str = "\n\n".join(goal_as_definitions)
         to_write = f"{partial_proof}\n\n{goal_str}"
@@ -350,8 +376,12 @@ class ProofManager:
                 assert "".join(partial_steps) == partial_proof
             except AssertionError:
                 ipdb.set_trace()
+            if len(partial_steps) > 0 and "Qed." in partial_steps[-1]:
+                # We detect qed ourselves.
+                partial_steps = partial_steps[:-1]
         try:
             self.set_proof_file(partial_steps)
+            current_goals = self.proof_file.current_goals
         except InvalidChangeException:
             return ProofCheckResult.get_invalid()
         if self.proof_file.can_close_proof:
@@ -360,15 +390,14 @@ class ProofManager:
             return ProofCheckResult(
                 TacticResult.COMPLETE,
                 partial_steps,
-                self.proof_file.current_goals,
+                current_goals,
                 parsed_obligations,
                 dset_file,
             )
         dset_file = self.get_dataset_file()
-        assert self.proof_file.current_goals is not None
-        parsed_obligations = self.get_parsed_goals(
-            partial_proof, self.proof_file.current_goals
-        )
+        assert current_goals is not None
+        parsed_obligations = self.get_parsed_goals(partial_proof, current_goals)
+        print(parsed_obligations)
         return ProofCheckResult(
             TacticResult.VALID,
             partial_steps,
