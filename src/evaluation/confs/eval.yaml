@@ -1,0 +1,16 @@
+
+results_loc: /home/ubuntu/coq-modeling/evals/codellama-7b-basic-rnd-split-rnd-samp-8-pct
+eval_set: 
+  data_split_loc: /home/ubuntu/coq-modeling/splits/random-split.json 
+  split: val 
+  data_loc: /home/ubuntu/coq-modeling/raw-data/coq-dataset
+  eval_tmp_dir: /home/ubuntu/coq-modeling/evals/tmp
+  seed: 0
+timeout: 600
+branching_factor: 8
+max_leaf_expansions: 1000000
+model_wrapper:
+  alias: "local"
+  pretrained-name: /home/ubuntu/coq-modeling/models/codellama-7b-basic-rnd-split-rnd-samp-pct-8/checkpoint-4114
+node_score_type: token-normalized-score 
+

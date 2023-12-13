@@ -7,9 +7,6 @@
 	path = test/test_files/coq-mini-dataset/repos/yalhessi-verified-verifier
 	url = https://github.com/yalhessi/verified-verifier
 	ignore = untracked
-[submodule "codellama"]
-	path = codellama
-	url = https://github.com/facebookresearch/codellama
 [submodule "coq-crawler"]
 	path = coq-crawler
 	url = git@github.com:Nfsaavedra/coq-crawler.git
