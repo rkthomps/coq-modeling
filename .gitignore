@@ -37,7 +37,7 @@ src/tactic_gen/confs/**
 evals-small
 build-coq
 src/evaluation/confs/**
-!src/evaluation/confs/codellama.yaml
+!src/evaluation/confs/eval.yaml
 safe_val.txt
 shared-thms.json
 
