@@ -35,7 +35,7 @@ class SearchTree:
             file_context = FileContext.from_json(json_data["file_context"])
             root = SearchNode.from_json(json_data["root"], load_data_points)
         else:
-            file_context = FileContext.from_json([])
+            file_context = FileContext("", "", "", [])
             root = SearchNode.from_json(json_data["root"], load_data_points)
         return cls(file_context, root)
 

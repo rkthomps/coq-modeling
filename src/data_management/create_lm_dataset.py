@@ -91,20 +91,31 @@ def examples_to_queue(
     selected_steps: SelectedSteps,
     q: Queue[Optional[LmExample]],
 ) -> None:
+    _logger.debug(f"Processing {file_info.file}")
     dp_obj = file_info.get_dp(example_sample.data_loc)
     match selected_steps:
         case AllSteps():
             for proof in dp_obj.proofs:
                 for i in range(len(proof.steps)):
                     example = lm_formatter.example_from_step(
-                        i, proof, dp_obj, file_info, example_sample.split
+                        i,
+                        proof,
+                        dp_obj,
+                        file_info,
+                        example_sample.split,
+                        example_sample.data_loc,
                     )
                     q.put(example)
         case CertainSteps(steps=step_idxs):
             for step_idx in step_idxs:
                 proof = dp_obj.proofs[step_idx.proof_idx]
                 example = lm_formatter.example_from_step(
-                    step_idx.step_idx, proof, dp_obj, file_info, example_sample.split
+                    step_idx.step_idx,
+                    proof,
+                    dp_obj,
+                    file_info,
+                    example_sample.split,
+                    example_sample.data_loc,
                 )
                 q.put(example)
 

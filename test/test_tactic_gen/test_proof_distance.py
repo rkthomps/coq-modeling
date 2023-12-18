@@ -1,6 +1,14 @@
 from hypothesis import given, strategies as st, assume
 
-from tactic_gen.proof_distance import levenshtein_dist, levenshtein_dist_fast
+import datetime
+
+from data_management.splits import FileInfo, Split
+from tactic_gen.proof_distance import (
+    levenshtein_dist,
+    levenshtein_dist_fast,
+    SortedProofs,
+    StrippedProof,
+)
 
 
 class TestProofDistance:
