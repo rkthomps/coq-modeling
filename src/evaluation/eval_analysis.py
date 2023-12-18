@@ -53,7 +53,7 @@ class EvalDict:
         eval_objs: dict[str, EvalSearchResult] = {}
         for proof_name in shared_proofs:
             proof_path = os.path.join(path, EvalSearchResult.ATTEMPTS_NAME, proof_name)
-            eval_obj = EvalSearchResult.load(proof_path)
+            eval_obj = EvalSearchResult.load(proof_path, load_data_points=False)
             eval_objs[proof_name] = eval_obj
         return cls(name, path, eval_objs)
 

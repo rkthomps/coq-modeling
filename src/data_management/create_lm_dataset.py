@@ -25,6 +25,9 @@ from data_management.samples import (
     CertainSteps,
 )
 from data_management.jsonl_utils import shuffle, deduplicate
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 @typechecked
@@ -93,13 +96,15 @@ def examples_to_queue(
         case AllSteps():
             for proof in dp_obj.proofs:
                 for i in range(len(proof.steps)):
-                    example = lm_formatter.example_from_step(i, proof, dp_obj)
+                    example = lm_formatter.example_from_step(
+                        i, proof, dp_obj, file_info, example_sample.split
+                    )
                     q.put(example)
         case CertainSteps(steps=step_idxs):
             for step_idx in step_idxs:
                 proof = dp_obj.proofs[step_idx.proof_idx]
                 example = lm_formatter.example_from_step(
-                    step_idx.step_idx, proof, dp_obj
+                    step_idx.step_idx, proof, dp_obj, file_info, example_sample.split
                 )
                 q.put(example)
 

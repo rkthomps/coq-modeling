@@ -284,6 +284,12 @@ class SortedProofs:
     def nearest(self, new_stripped: StrippedProof) -> SimilarProofCandidate:
         nearest_one = self.nearest_n(new_stripped, n=1)
         assert len(nearest_one) == 1
+        prf1_step_str = "".join(nearest_one[0].proof.steps)
+        prf2_step_str = "".join(new_stripped.steps)
+        if prf1_step_str == prf2_step_str:
+            file_line1 = f"{new_stripped.file.file}:{new_stripped.line}"
+            file_line2 = f"{nearest_one[0].proof.file.file}:{nearest_one[0].proof.line}"
+            _logger.warning(f"Proofs from {file_line1} and {file_line2} are the same.")
         return nearest_one[0]
 
     def nearest_n(

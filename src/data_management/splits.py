@@ -52,6 +52,15 @@ class FileInfo:
             and self.workspace == other.workspace
             and self.repository == other.repository
         )
+
+    def get_creation_time(self, workspace: str) -> datetime.datetime:
+        try:
+            repo_path = os.path.join(workspace, REPOS_NAME, self.repository)
+            repo = git.Repo(repo_path)
+            fst, *_ = repo.iter_commits(reverse=True)
+            return fst.committed_datetime
+        except:
+            return INVALID_DATE
     
     def get_dp(self, data_loc: str) -> DatasetFile:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)

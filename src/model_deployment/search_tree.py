@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Optional, Any
+from dataclasses import dataclass
 
 import re
 
@@ -29,9 +30,13 @@ class SearchTree:
         }
 
     @classmethod
-    def from_json(cls, json_data: Any) -> SearchTree:
-        file_context = FileContext.from_json(json_data["file_context"])
-        root = SearchNode.from_json(json_data["root"])
+    def from_json(cls, json_data: Any, load_data_points: bool = True) -> SearchTree:
+        if load_data_points:
+            file_context = FileContext.from_json(json_data["file_context"])
+            root = SearchNode.from_json(json_data["root"], load_data_points)
+        else:
+            file_context = FileContext.from_json([])
+            root = SearchNode.from_json(json_data["root"], load_data_points)
         return cls(file_context, root)
 
 
@@ -163,7 +168,7 @@ class SearchNode:
         }
 
     @classmethod
-    def from_json(cls, json_data: Any) -> SearchNode:
+    def from_json(cls, json_data: Any, load_data_points: bool = True) -> SearchNode:
         valid = json_data["valid"]
         final_tactic = json_data["final_tactic"]
         makes_progress = json_data["makes_progress"]
@@ -171,8 +176,11 @@ class SearchNode:
         combined_proof_steps = json_data["combined_proof_steps"]
         score = NodeScore.from_json(json_data["score"])
         creation_time = json_data["creation_time"]
-        proof_data = json_data["proof"]
-        proof = Proof.from_json(proof_data) if proof_data else proof_data
+        if load_data_points:
+            proof_data = json_data["proof"]
+            proof = Proof.from_json(proof_data) if proof_data else proof_data
+        else:
+            proof = None
         expanded = json_data["expanded"]
         children = [SearchNode.from_json(c) for c in json_data["children"]]
         redundant_to_str = json_data["redundant_to_str"]

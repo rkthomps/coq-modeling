@@ -76,9 +76,11 @@ class EvalSearchResult:
             fout.write(json.dumps(self.to_json(), indent=2))
 
     @classmethod
-    def from_json(cls, json_data: Any) -> EvalSearchResult:
+    def from_json(
+        cls, json_data: Any, load_data_points: bool = True
+    ) -> EvalSearchResult:
         search_result_data = json_data["search_result"]
-        search_result = search_result_from_json(search_result_data)
+        search_result = search_result_from_json(search_result_data, load_data_points)
         file = FileInfo.from_json(json_data["file"])
         thm_idx = json_data["thm_idx"]
         statement = json_data["statement"]
@@ -86,10 +88,10 @@ class EvalSearchResult:
         return cls(search_result, file, thm_idx, statement, ground_truth_steps)
 
     @classmethod
-    def load(cls, path: str) -> EvalSearchResult:
+    def load(cls, path: str, load_data_points: bool = True) -> EvalSearchResult:
         with open(path, "r") as fin:
             json_data = json.load(fin)
-            return cls.from_json(json_data)
+            return cls.from_json(json_data, load_data_points)
 
 
 @dataclass
@@ -219,7 +221,9 @@ class Evaluator:
         num_errors = 0
         for file in self.eval_set.get_file_gen():
             try:
-                file_timeout = self.timeout * 1.5 * self.eval_set.rough_proof_count(file)
+                file_timeout = (
+                    self.timeout * 1.5 * self.eval_set.rough_proof_count(file)
+                )
             except FileNotFoundError:
                 _logger.warning(f"{file.file} not found.")
                 continue

@@ -1,13 +1,15 @@
 from __future__ import annotations
 from typing import Any
 import time
+import datetime
 
 from dataclasses import dataclass
 from typeguard import typechecked
 
+from data_management.splits import FileInfo, Split
+from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence, Goal
 from tactic_gen.proof_distance import SortedProofs, StrippedProof
 from tactic_gen.n_step_sampler import NStepSampler, OneStepSampler, n_step_from_conf
-from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence, Goal
 from model_deployment.premise_model_wrapper import (
     PremiseModelWrapper,
     get_ranked_premise_generator,
@@ -57,7 +59,13 @@ class BasicFormatter:
         self.conf = conf
 
     def example_from_step(
-        self, step_idx: int, proof: Proof, dp_obj: DatasetFile
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
     ) -> LmExample:
         step = proof.steps[step_idx]
         partial_proof_string = proof.proof_prefix_to_string(step)
@@ -125,12 +133,18 @@ class PremiseFormatter:
         return "\n".join(premise_strs)
 
     def example_from_step(
-        self, step_idx: int, proof: Proof, dp_obj: DatasetFile
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
     ) -> LmExample:
         step = proof.steps[step_idx]
         premise_str = self.get_premise_str(step, proof, dp_obj)
         basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj
+            step_idx, proof, dp_obj, file_info, split, data_loc
         )
         input = f"{premise_str}{PREM_SEP}{basic_lm_example.input}"
         return LmExample(input, basic_lm_example.output)
@@ -147,8 +161,8 @@ class PremiseFormatter:
         )
 
 
-class ProofRetrievalOricleFormatter:
-    ALIAS = "proof-retrieval-oricle"
+class ProofRetrievalOracleFormatter:
+    ALIAS = "proof-retrieval-oracle"
 
     def __init__(
         self,
@@ -162,23 +176,62 @@ class ProofRetrievalOricleFormatter:
         self.sorted_proofs = sorted_proofs
         self.conf = conf
         self.__basic_formatter = BasicFormatter(n_step_sampler, direct_num_steps, conf)
+        self.__cached_similar_proofs: dict[str, StrippedProof] = {}
+        self.__cached_times: dict[FileInfo, datetime.datetime] = {}
+
+    def __get_proof_key(self, proof: Proof) -> str:
+        return proof.proof_text_to_string()
 
     def example_from_step(
-        self, step_idx: int, proof: Proof, dp_obj: DatasetFile
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
     ) -> LmExample:
         """TODO: MAY NEED TO PASS IN FILEINFO OR SOMETHING TO THIS"""
         basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj
+            step_idx, proof, dp_obj, file_info, split, data_loc
         )
-        stripped_proof = StrippedProof.from_steps([s.step.text for s in proof.steps])
-        start = time.time()
-        similar_proof = self.sorted_proofs.nearest(stripped_proof)
-        end = time.time()
-        _logger.debug("Retrieved proof in {:5.3f} seconds".format(end - start))
+        if file_info in self.__cached_times:
+            creation_time = self.__cached_times[file_info]
+        else:
+            creation_time = file_info.get_creation_time(data_loc)
+            self.__cached_times[file_info] = creation_time
+        proof_key = self.__get_proof_key(proof)
+        if proof_key in self.__cached_similar_proofs:
+            similar_proof = self.__cached_similar_proofs[proof_key]
+        else:
+            stripped_proof = StrippedProof.from_proof(
+                proof, file_info, creation_time, split
+            )
+            stripped_proof = StrippedProof.from_steps(
+                [s.step.text for s in proof.steps]
+            )
+            start = time.time()
+            similar_proof = self.sorted_proofs.nearest(stripped_proof).proof
+            end = time.time()
+            _logger.debug("Retrieved proof in {:5.3f} seconds".format(end - start))
+            self.__cached_similar_proofs[proof_key] = similar_proof
+
         new_input = (
-            f"{similar_proof.proof.to_string()}{PROOF_RET_SEP}{basic_lm_example.input}"
+            f"{similar_proof.to_string()}{PROOF_RET_SEP}{basic_lm_example.input}"
         )
         return LmExample(new_input, basic_lm_example.output)
+
+    @classmethod
+    def from_conf(cls, conf: Any) -> ProofRetrievalOracleFormatter:
+        tmp_basic_formatter = BasicFormatter.from_conf(conf)
+        _logger.debug("Loading similar proof database.")
+        sorted_proofs = SortedProofs.load(conf["sorted_proof_loc"])
+        return cls(
+            tmp_basic_formatter.n_step_sampler,
+            tmp_basic_formatter.direct_num_steps,
+            sorted_proofs,
+            conf,
+        )
 
 
 class GoalFormatter:
@@ -196,10 +249,16 @@ class GoalFormatter:
         self.conf = conf
 
     def example_from_step(
-        self, step_idx: int, proof: Proof, dp_obj: DatasetFile
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
     ) -> LmExample:
         basic_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj
+            step_idx, proof, dp_obj, file_info, split, data_loc
         )
         n_step_result = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
         output = (
@@ -221,7 +280,13 @@ class BaseCodeLLamaLmFormatter:
     ALIAS = "codellama-base"
 
     def example_from_step(
-        self, step_idx: int, proof: Proof, dp_obj: DatasetFile
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
     ) -> LmExample:
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
@@ -248,7 +313,10 @@ class BaseCodeLLamaPremiseLmFormatter:
         self,
         step_idx: int,
         proof: Proof,
-        dset_obj: DatasetFile,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
     ) -> LmExample:
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
@@ -256,7 +324,7 @@ class BaseCodeLLamaPremiseLmFormatter:
             goal_strings.append(f"Goal {i + 1}:\n{goal.to_string()}")
         partial_proof_string = proof.proof_prefix_to_string(step, include_proof=True)
         final_goal_string = "\n\n".join(goal_strings)
-        premise_string = self.__premise_formatter.get_premise_str(step, proof, dset_obj)
+        premise_string = self.__premise_formatter.get_premise_str(step, proof, dp_obj)
         input = f"{premise_string}\n\n{final_goal_string}\n\n{partial_proof_string}"
         output = step.step.text
         return LmExample(input, output)
@@ -284,6 +352,9 @@ class GPT4Formatter:
         step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
     ) -> LmExample:
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
@@ -300,6 +371,7 @@ LmFormatter = (
     BasicFormatter
     | PremiseFormatter
     | GoalFormatter
+    | ProofRetrievalOracleFormatter
     | BaseCodeLLamaLmFormatter
     | BaseCodeLLamaPremiseLmFormatter
     | GPT4Formatter
@@ -317,6 +389,8 @@ def fmt_from_conf(conf: Any) -> LmFormatter:
             return BasicFormatter.from_conf(conf)
         case PremiseFormatter.ALIAS:
             return PremiseFormatter.from_conf(conf)
+        case ProofRetrievalOracleFormatter.ALIAS:
+            return ProofRetrievalOracleFormatter.from_conf(conf)
         case GoalFormatter.ALIAS:
             return GoalFormatter.from_conf(conf)
         case BaseCodeLLamaLmFormatter.ALIAS:
@@ -327,13 +401,19 @@ def fmt_from_conf(conf: Any) -> LmFormatter:
             return GPT4Formatter()
         case _:
             raise LmFormatterNotFoundError(
-                f"Could not find Lm Formatter: {attempted_alias}"
+                f'Could not find Lm Formatter: "{attempted_alias}"'
             )
 
 
 def fmt_get_conf(formatter: LmFormatter) -> Any:
     match formatter:
-        case BasicFormatter() | PremiseFormatter() | GoalFormatter() | BaseCodeLLamaPremiseLmFormatter():
+        case (
+            BasicFormatter()
+            | PremiseFormatter()
+            | GoalFormatter()
+            | ProofRetrievalOracleFormatter()
+            | BaseCodeLLamaPremiseLmFormatter()
+        ):
             return formatter.conf
         case BaseCodeLLamaLmFormatter() | GPT4Formatter():
             return None

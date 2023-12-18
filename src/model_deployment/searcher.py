@@ -39,9 +39,9 @@ class SuccessfulSearch:
         }
 
     @classmethod
-    def from_json(cls, json_data: Any) -> Any:
-        search_tree = SearchTree.from_json(json_data["search_tree"])
-        qed_node = SearchNode.from_json(json_data["qed_node"])
+    def from_json(cls, json_data: Any, load_data_points: bool = True) -> Any:
+        search_tree = SearchTree.from_json(json_data["search_tree"], load_data_points)
+        qed_node = SearchNode.from_json(json_data["qed_node"], load_data_points)
         return cls(search_tree, qed_node)
 
 
@@ -56,7 +56,7 @@ class FailedSearch:
         return {"search_tree": self.search_tree.to_json()}
 
     @classmethod
-    def from_json(cls, json_data: Any) -> Any:
+    def from_json(cls, json_data: Any, load_data_points: bool = True) -> Any:
         search_tree = SearchTree.from_json(json_data["search_tree"])
         return cls(search_tree)
 
@@ -87,12 +87,14 @@ def search_result_to_json(search_result: SearchResult) -> Any:
     return {"alias": search_result.ALIAS} | search_result.to_json()
 
 
-def search_result_from_json(json_data: Any) -> SearchResult:
+def search_result_from_json(
+    json_data: Any, load_data_points: bool = True
+) -> SearchResult:
     match json_data["alias"]:
         case "success":
-            return SuccessfulSearch.from_json(json_data)
+            return SuccessfulSearch.from_json(json_data, load_data_points)
         case "failure":
-            return FailedSearch.from_json(json_data)
+            return FailedSearch.from_json(json_data, load_data_points)
         case "error":
             return ErroredSearch.from_json(json_data)
         case a:
