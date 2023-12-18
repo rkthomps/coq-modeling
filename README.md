@@ -20,8 +20,11 @@ The data currently exists on "inesc.id.pt" machines & [google drive](https://dri
 - Data-points (preprocessed data)
 - Raw coq files
 For training tasks, the data-points segment of the dataset is sufficient.
-For evaluation tasks, the raw coq files segment of the dataset is sufficient.
-
+For evaluation tasks, the raw coq files segment of the dataset is sufficient.\
+For consistancy, format the data on your machine with the following directory structure
+- <dataset name (like "coq-dataset")>
+  - repos
+  - data_points
 
 
 ## Creating Tactic Generation Training Data
