@@ -16,12 +16,15 @@ Language models for Coq based on data collected from the coq lsp.
 - **Install Project:** Change to project directory and run `python3 -m pip install --editable .`
 
 ## Dowloading and Partitioning Data
-The data currently exists on "inesc.id.pt" machines. The dataset has two parts: 
+The data currently exists on "inesc.id.pt" machines & [google drive](https://drive.google.com/drive/folders/12fruVfOomVO9pnJSN1T8CnG4ci95CdL2?usp=drive_link). The dataset has two parts: 
 - Data-points (preprocessed data)
 - Raw coq files
 For training tasks, the data-points segment of the dataset is sufficient.
-For evaluation tasks, the raw coq files segment of the dataset is sufficient.
-
+For evaluation tasks, the raw coq files segment of the dataset is sufficient.\
+For consistancy, format the data on your machine with the following directory structure
+- <dataset name (like "coq-dataset")>
+  - repos
+  - data_points
 
 
 ## Creating Tactic Generation Training Data
