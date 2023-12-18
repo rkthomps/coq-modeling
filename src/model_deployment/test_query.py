@@ -38,9 +38,9 @@ NODE_SCORE_TYPE = TokenLengthNormalizedScore
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/examples/rev.v"

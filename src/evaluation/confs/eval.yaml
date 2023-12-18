@@ -1,5 +1,5 @@
 
-results_loc: /home/ubuntu/coq-modeling/evals/codellama-7b-tpe-1k-rnd-split-rnd-samp-pct-8
+results_loc: /home/ubuntu/coq-modeling/evals/codellama-7b-tpe-1k-rnd-split-rnd-samp-8-pct
 eval_set: 
   data_split_loc: /home/ubuntu/coq-modeling/splits/random-split.json 
   split: val 

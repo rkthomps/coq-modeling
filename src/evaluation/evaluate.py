@@ -218,13 +218,17 @@ class Evaluator:
         num_correct_proofs = 0
         num_errors = 0
         for file in self.eval_set.get_file_gen():
+            try:
+                file_timeout = self.timeout * 1.5 * self.eval_set.rough_proof_count(file)
+            except FileNotFoundError:
+                _logger.warning(f"{file.file} not found.")
+                continue
+            _logger.debug(f"Giving {file.file} {file_timeout} seconds.")
             thread_result = ThreadReturnObj(0, 0, 0)
             search_thread = Thread(
                 target=self.search_thread, args=(file, thread_result)
             )
             search_thread.start()
-            file_timeout = self.timeout * 1.5 * self.eval_set.rough_proof_count(file)
-            _logger.debug(f"Giving {file.file} {file_timeout} seconds.")
             search_thread.join(timeout=file_timeout)
             num_correct_proofs += thread_result.num_proofs_found
             num_proof_attempts += thread_result.num_proofs_attempted

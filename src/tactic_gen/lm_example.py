@@ -1,9 +1,11 @@
 from __future__ import annotations
-from typing import Any, Type, Optional
-from dataclasses import dataclass
+from typing import Any
+import time
 
+from dataclasses import dataclass
 from typeguard import typechecked
 
+from tactic_gen.proof_distance import SortedProofs, StrippedProof
 from tactic_gen.n_step_sampler import NStepSampler, OneStepSampler, n_step_from_conf
 from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence, Goal
 from model_deployment.premise_model_wrapper import (
@@ -11,9 +13,13 @@ from model_deployment.premise_model_wrapper import (
     get_ranked_premise_generator,
     premise_wrapper_from_conf,
 )
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 GOAL_SEP = "<G>"
 PREM_SEP = "<P>"
+PROOF_RET_SEP = "<F>"
 THM_SEP = "<T>"
 END_TOK = "<E>"
 N_TAC_TOK = "<N>"
@@ -139,6 +145,40 @@ class PremiseFormatter:
             tmp_basic_formatter.direct_num_steps,
             conf,
         )
+
+
+class ProofRetrievalOricleFormatter:
+    ALIAS = "proof-retrieval-oricle"
+
+    def __init__(
+        self,
+        n_step_sampler: NStepSampler,
+        direct_num_steps: bool,
+        sorted_proofs: SortedProofs,
+        conf: Any,
+    ) -> None:
+        self.n_step_sampler = n_step_sampler
+        self.direct_num_steps = direct_num_steps
+        self.sorted_proofs = sorted_proofs
+        self.conf = conf
+        self.__basic_formatter = BasicFormatter(n_step_sampler, direct_num_steps, conf)
+
+    def example_from_step(
+        self, step_idx: int, proof: Proof, dp_obj: DatasetFile
+    ) -> LmExample:
+        """TODO: MAY NEED TO PASS IN FILEINFO OR SOMETHING TO THIS"""
+        basic_lm_example = self.__basic_formatter.example_from_step(
+            step_idx, proof, dp_obj
+        )
+        stripped_proof = StrippedProof.from_steps([s.step.text for s in proof.steps])
+        start = time.time()
+        similar_proof = self.sorted_proofs.nearest(stripped_proof)
+        end = time.time()
+        _logger.debug("Retrieved proof in {:5.3f} seconds".format(end - start))
+        new_input = (
+            f"{similar_proof.proof.to_string()}{PROOF_RET_SEP}{basic_lm_example.input}"
+        )
+        return LmExample(new_input, basic_lm_example.output)
 
 
 class GoalFormatter:

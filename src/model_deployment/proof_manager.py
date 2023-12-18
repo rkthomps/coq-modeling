@@ -206,13 +206,16 @@ class ProofManager:
         while point + 1 < self.proof_file.steps_taken:
             self.proof_file.exec(-1)
 
-    def __go_to_base(self) -> None:
-        self.__go_through_point(self.proof_point)
+    def __go_to_point(self, point: int) -> None:
+        while self.proof_file.steps_taken < point:
+            self.proof_file.exec(1)
+        while point < self.proof_file.steps_taken:
+            self.proof_file.exec(-1)
 
     def __get_whole_proof_delete_steps(self) -> tuple[list[int], list[str]]:
         delete_indices: list[int] = []
         delete_strs: list[str] = []
-        self.__go_to_base()
+        self.__go_through_point(self.proof_point)
         assert self.proof_file.in_proof
         while self.proof_file.in_proof and self.proof_file.steps_taken < len(
             self.proof_file.steps
@@ -226,7 +229,7 @@ class ProofManager:
     def __replace_proof_with_admitted_stub(self) -> list[str]:
         delete_indices, delete_strs = self.__get_whole_proof_delete_steps()
         delete_commands = [CoqDeleteStep(i) for i in reversed(delete_indices)]
-        self.__go_to_base()
+        self.__go_through_point(self.proof_point)
         add_commands = [CoqAddStep("\nAdmitted.", self.proof_file.steps_taken - 1)]
         self.proof_file.change_steps(delete_commands + add_commands)
         return delete_strs
@@ -279,6 +282,7 @@ class ProofManager:
             prefix_len += 1
 
         num_steps_to_delete = len(current_partial_proof) - prefix_len
+        self.__go_to_point(self.proof_point)
         delete_steps = [
             CoqDeleteStep(self.proof_point + prefix_len + i)
             for i in range(num_steps_to_delete, 0, -1)
@@ -397,7 +401,6 @@ class ProofManager:
         dset_file = self.get_dataset_file()
         assert current_goals is not None
         parsed_obligations = self.get_parsed_goals(partial_proof, current_goals)
-        print(parsed_obligations)
         return ProofCheckResult(
             TacticResult.VALID,
             partial_steps,

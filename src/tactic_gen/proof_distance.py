@@ -154,11 +154,10 @@ class StrippedProof:
         )
 
     @classmethod
-    def from_text(cls, text: str) -> StrippedProof:
+    def from_steps(cls, steps: list[str]) -> StrippedProof:
         thm = "Lemma psuedo: False."
         file = FileInfo("notafile", "notafile", "notaworkspace", "notarepo")
         line = -1
-        steps = get_simple_steps(text)
         try:
             norm_steps = [TacticPairEncoding.normalize_step(s) for s in steps]
         except CoqParseError:
@@ -167,6 +166,11 @@ class StrippedProof:
         return StrippedProof(
             datetime.datetime.now(), file, line, thm, steps, norm_steps, split
         )
+
+    @classmethod
+    def from_text(cls, text: str) -> StrippedProof:
+        steps = get_simple_steps(text)
+        return cls.from_steps(steps)
 
     @classmethod
     def from_json(cls, json_data: Any) -> StrippedProof:
@@ -276,6 +280,11 @@ class SortedProofs:
         if len(q) > n:
             heapq.heappop(q)
         return q
+
+    def nearest(self, new_stripped: StrippedProof) -> SimilarProofCandidate:
+        nearest_one = self.nearest_n(new_stripped, n=1)
+        assert len(nearest_one) == 1
+        return nearest_one[0]
 
     def nearest_n(
         self, new_stripped: StrippedProof, n: int
