@@ -2,7 +2,9 @@ from __future__ import annotations
 from typing import Iterable, Callable, Any, Optional
 from dataclasses import dataclass
 
+import math
 import sys, os
+
 from evaluation.evaluate import (
     EvalSearchResult,
     SuccessfulSearch,
@@ -17,6 +19,32 @@ class PlotInfo:
     xs: list[float]
     ys: list[int]
     name: str
+
+
+@dataclass
+class LengthRange:
+    start: int
+    end: int
+
+    def label(self) -> str:
+        return f"[{self.start}-{self.end}]"
+
+
+class ProofRate:
+    def __init__(self, successes: int, attempts: int) -> None:
+        assert attempts > 0
+        self.successes = successes
+        self.attempts = attempts
+
+    def __repr__(self) -> str:
+        return f"Successes: {self.successes}, Attempts: {self.attempts}"
+
+    def rate(self) -> float:
+        return self.successes / self.attempts
+
+    def margin(self) -> float:
+        rate = self.rate()
+        return 1.96 * math.sqrt(rate * (1 - rate) / self.attempts)
 
 
 @dataclass
@@ -45,6 +73,22 @@ class EvalDict:
             values.append(value)
             nums.append(len(values))
         return PlotInfo(values, nums, self.eval_name)
+
+    def get_proof_rate_by_length(self, ranges: list[LengthRange]) -> list[ProofRate]:
+        rates: list[ProofRate] = []
+        for r in ranges:
+            successes = 0
+            attempts = 0
+            for _, obj in self.eval_objs.items():
+                if r.start <= len(obj.ground_truth_steps) <= r.end:
+                    match obj.search_result:
+                        case SuccessfulSearch():
+                            successes += 1
+                        case _:
+                            pass
+                    attempts += 1
+            rates.append(ProofRate(successes, attempts))
+        return rates
 
     @classmethod
     def from_shared_proofs(
