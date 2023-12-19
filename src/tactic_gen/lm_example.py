@@ -207,9 +207,6 @@ class ProofRetrievalOracleFormatter:
             stripped_proof = StrippedProof.from_proof(
                 proof, file_info, creation_time, split
             )
-            stripped_proof = StrippedProof.from_steps(
-                [s.step.text for s in proof.steps]
-            )
             start = time.time()
             similar_proof = self.sorted_proofs.nearest(stripped_proof).proof
             end = time.time()

@@ -296,17 +296,14 @@ class SortedProofs:
         self, new_stripped: StrippedProof, n: int
     ) -> list[SimilarProofCandidate]:
         target_key = self.__ordering_key(new_stripped)
-        _logger.debug("Finding start idx...")
         start_idx = self.__find_size_start_idx(
             target_key, 0, len(self.ordered_proofs) - 1
         )
         top_n: list[SimilarProofCandidate] = []
-        _logger.debug("Inspecting start idx...")
         self.__inspect_idx(top_n, start_idx, new_stripped, n)
         step_forward = True
         step_back = True
         for i in range(1, len(self.ordered_proofs)):
-            _logger.debug(f"Inspecting indices at len {i}...")
             if step_forward:
                 f_idx = start_idx + i
                 new_q = self.__inspect_idx(top_n, f_idx, new_stripped, n)
