@@ -175,6 +175,8 @@ if __name__ == "__main__":
     num_procs = 1
     if args.num_procs:
         num_procs = args.num_procs
+        if num_procs < 2:
+            raise ValueError("Data processing needs at least 2 processes.")
 
     example_config = LmExampleConfig.load(args.lm_data_config_loc)
 

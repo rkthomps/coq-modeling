@@ -53,6 +53,30 @@ class EvalDict:
     eval_path: str
     eval_objs: dict[str, EvalSearchResult]
 
+    def was_successful(self, proof_name: str) -> bool:
+        match self.eval_objs[proof_name].search_result:
+            case SuccessfulSearch():
+                return True
+            case _:
+                return False
+
+    def get_successful_times(self) -> list[float]:
+        times: list[float] = []
+        for _, obj in self.eval_objs.items():
+            match obj.search_result:
+                case SuccessfulSearch():
+                    times.append(obj.search_result.qed_node.creation_time)
+                case _:
+                    pass
+        return times
+
+    def filter(self, new_keys: set[str]) -> EvalDict:
+        new_dict: dict[str, EvalSearchResult] = {}
+        for k, v in self.eval_objs.items():
+            if k in new_keys:
+                new_dict[k] = v
+        return EvalDict(self.eval_name, self.eval_path, new_dict)
+
     def sorted_successful_evals(
         self, metric: SuccessMetric
     ) -> list[tuple[EvalSearchResult, SuccessfulSearch, float]]:
@@ -100,6 +124,21 @@ class EvalDict:
             eval_obj = EvalSearchResult.load(proof_path, load_data_points=False)
             eval_objs[proof_name] = eval_obj
         return cls(name, path, eval_objs)
+
+
+def filter_all_successful(
+    shared_proofs: set[str], eval_dicts: list[EvalDict]
+) -> set[str]:
+    success_keys: set[str] = set()
+    for proof in shared_proofs:
+        all_successful = True
+        for eval_dict in eval_dicts:
+            if not eval_dict.was_successful(proof):
+                all_successful = False
+                break
+        if all_successful:
+            success_keys.add(proof)
+    return success_keys
 
 
 def get_combined_num_proofs_by_metric(
