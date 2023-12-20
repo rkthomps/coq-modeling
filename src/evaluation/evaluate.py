@@ -143,9 +143,17 @@ class Evaluator:
             node_score_type,
         )
 
-    def get_search_result(self, proof: ProofInfo) -> SuccessfulSearch | FailedSearch:
+    def get_search_result(
+        self, proof: ProofInfo, file: FileInfo
+    ) -> SuccessfulSearch | FailedSearch:
         with ProofManager(
-            proof.file_loc, proof.proof_file, proof.idx, self.model_wrapper.formatter
+            proof.file_loc,
+            proof.proof_file,
+            proof.idx,
+            self.model_wrapper.formatter,
+            file,
+            self.eval_set.split,
+            self.eval_set.data_loc,
         ) as proof_manager:
             searcher = SearchTreeManager(
                 self.model_wrapper,
@@ -191,7 +199,7 @@ class Evaluator:
             ground_truth = proof.ground_truth_steps()
             start = time.time()
             try:
-                search_result = self.get_search_result(proof)
+                search_result = self.get_search_result(proof, file)
             except:
                 error_str = traceback.format_exc()
                 stop = time.time()

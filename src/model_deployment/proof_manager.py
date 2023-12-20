@@ -13,6 +13,7 @@ from data_management.dataset_file import (
     DatasetFile,
     FileContext,
 )
+from data_management.splits import Split, FileInfo
 
 from tactic_gen.lm_example import LmExample, LmFormatter
 from model_deployment.goal_comparer import (
@@ -182,6 +183,9 @@ class ProofManager:
         proof_file: ProofFile,
         proof_point: int,
         lm_formatter: LmFormatter,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
     ) -> None:
         file_dir = os.path.dirname(file_path)
         file_basename = os.path.basename(file_path)
@@ -191,6 +195,10 @@ class ProofManager:
 
         self.proof_file = proof_file
         self.proof_point = proof_point
+
+        self.file_info = file_info
+        self.split = split
+        self.data_loc = data_loc
 
         self.file_prefix = self.__get_file_prefix()
         self.__proof_stored_steps = self.__replace_proof_with_admitted_stub()
@@ -412,7 +420,14 @@ class ProofManager:
     def get_example(self, dset_file: DatasetFile) -> LmExample:
         proof = dset_file.proofs[-1]
         last_step_idx = len(proof.steps) - 1
-        example = self.lm_formatter.example_from_step(last_step_idx, proof, dset_file)
+        example = self.lm_formatter.example_from_step(
+            last_step_idx,
+            proof,
+            dset_file,
+            self.file_info,
+            self.split,
+            self.data_loc,
+        )
         return example
 
     def get_dataset_file(

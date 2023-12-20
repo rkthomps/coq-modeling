@@ -4,7 +4,7 @@ import requests
 import json
 import pdb
 
-
+from data_management.splits import FileInfo, Split 
 from model_deployment.searcher import (
     SearchTreeManager,
     SearchResult,
@@ -49,12 +49,17 @@ TIMEOUT = 600
 BRANCH = 4
 EXPANSIONS = 500
 
+dummy_file_info = FileInfo("", TEST_FILE, ".", ".") 
+dummy_split = Split.TEST
+dummy_data_loc = "."
+
+
 _logger.debug("Creating Proof File")
 with ProofFile(TEST_FILE, timeout=60) as proof_file:
     proof_point = len(proof_file.steps) - 2
     _logger.debug("Creating Proof Manager")
     with ProofManager(
-        TEST_FILE, proof_file, proof_point, WRAPPER.formatter
+        TEST_FILE, proof_file, proof_point, WRAPPER.formatter, dummy_file_info, dummy_split, dummy_data_loc 
     ) as proof_manager:
         tree_manager = SearchTreeManager(
             WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, TIMEOUT

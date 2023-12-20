@@ -1,0 +1,7 @@
+context_formatter: 
+  alias: "basic-context"
+candidate_formatter: 
+  alias: "basic-candidate"
+data_loc: /data/benchmarks/coq-dataset
+out_loc: /home/kthompson/coq-modeling/data/prf-select-basic 
+data_split_loc: /home/kthompson/coq-modeling/splits/random-split.json

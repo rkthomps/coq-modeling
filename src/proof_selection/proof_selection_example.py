@@ -7,17 +7,17 @@ from tactic_gen.step_parser import lex, normalize, tokens2str
 
 class ProofSelectionExample:
     def __init__(
-        self, candidate_proof: str, current_context: str, steps: list[str]
+        self, candidate_proof: str, current_context: str, norm_steps: list[str]
     ) -> None:
         self.candidate_proof = candidate_proof
         self.current_context = current_context
-        self.steps = steps
+        self.norm_steps = norm_steps
 
     def to_json(self) -> Any:
         return {
             "candidate_proof": self.candidate_proof,
             "current_context": self.current_context,
-            "steps": self.steps,
+            "steps": self.norm_steps,
         }
 
     @classmethod

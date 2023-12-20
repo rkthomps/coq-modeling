@@ -13,6 +13,7 @@ import yaml
 
 from data_management.splits import DataSplit, FileInfo, Split, split_file_path
 from data_management.jsonl_utils import deduplicate, shuffle
+from tactic_gen.step_parser import lex, tokens2str, normalize, CoqParseError
 from proof_selection.proof_selection_example import (
     context_formatter_from_conf,
     candidate_formatter_from_conf,
@@ -57,11 +58,14 @@ def examples_to_queue(
 ) -> None:
     dp_obj = file_info.get_dp(config.data_loc)
     for proof in dp_obj.proofs:
-        proof_candidate = config.candidate_formatter.format(proof, dp_obj)
-        proof_context = config.context_formatter.format(proof, dp_obj)
-        step_strs = [s.step.text for s in proof.steps]
-        example = ProofSelectionExample(proof_candidate, proof_context, step_strs)
-        q.put(example)
+        try:
+            proof_candidate = config.candidate_formatter.format(proof, dp_obj)
+            proof_context = config.context_formatter.format(proof, dp_obj)
+            step_strs = [tokens2str(normalize(lex(s.step.text))) for s in proof.steps]
+            example = ProofSelectionExample(proof_candidate, proof_context, step_strs)
+            q.put(example)
+        except CoqParseError:
+            continue
 
 
 ExampleFnArgs = tuple[
