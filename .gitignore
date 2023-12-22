@@ -34,6 +34,7 @@ src/tactic_gen/confs/**
 
 # - Eval
 evals-small
+evals-bad-imports
 build-coq
 src/evaluation/confs/**
 !src/evaluation/confs/eval.yaml
@@ -55,6 +56,7 @@ __pycache__
 # Coq Files
 .lia.cache
 .nia.cache
+.nra.cache
 
 # IDE files
 .vscode

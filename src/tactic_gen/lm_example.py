@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Optional
 import time
 import datetime
 
@@ -10,6 +10,7 @@ from data_management.splits import FileInfo, Split
 from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence, Goal
 from tactic_gen.proof_distance import SortedProofs, StrippedProof
 from tactic_gen.n_step_sampler import NStepSampler, OneStepSampler, n_step_from_conf
+from tactic_gen.step_parser import norm, CoqParseError
 from model_deployment.premise_model_wrapper import (
     PremiseModelWrapper,
     get_ranked_premise_generator,
@@ -66,7 +67,9 @@ class BasicFormatter:
         file_info: FileInfo,
         split: Split,
         data_loc: str,
+        ground_truth_steps: Optional[list[str]],
     ) -> LmExample:
+        ground_truth_steps = None
         step = proof.steps[step_idx]
         partial_proof_string = proof.proof_prefix_to_string(step)
         final_goal_string = fmt_goals(step.goals)
@@ -140,11 +143,13 @@ class PremiseFormatter:
         file_info: FileInfo,
         split: Split,
         data_loc: str,
+        ground_truth_steps: Optional[list[str]],
     ) -> LmExample:
+        ground_truth_steps = None
         step = proof.steps[step_idx]
         premise_str = self.get_premise_str(step, proof, dp_obj)
         basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj, file_info, split, data_loc
+            step_idx, proof, dp_obj, file_info, split, data_loc, ground_truth_steps
         )
         input = f"{premise_str}{PREM_SEP}{basic_lm_example.input}"
         return LmExample(input, basic_lm_example.output)
@@ -176,11 +181,11 @@ class ProofRetrievalOracleFormatter:
         self.sorted_proofs = sorted_proofs
         self.conf = conf
         self.__basic_formatter = BasicFormatter(n_step_sampler, direct_num_steps, conf)
-        self.__cached_similar_proofs: dict[str, StrippedProof] = {}
+        self.__cached_similar_proofs: dict[tuple[str, int], StrippedProof] = {}
         self.__cached_times: dict[FileInfo, datetime.datetime] = {}
 
-    def __get_proof_key(self, proof: Proof) -> str:
-        return proof.proof_text_to_string()
+    def __get_proof_key(self, proof: Proof, file_info: FileInfo) -> tuple[str, int]:
+        return file_info.file, proof.theorem.term.line
 
     def example_from_step(
         self,
@@ -190,22 +195,34 @@ class ProofRetrievalOracleFormatter:
         file_info: FileInfo,
         split: Split,
         data_loc: str,
+        ground_truth_steps: Optional[list[str]],
     ) -> LmExample:
         """TODO: MAY NEED TO PASS IN FILEINFO OR SOMETHING TO THIS"""
+        assert ground_truth_steps is not None
         basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj, file_info, split, data_loc
+            step_idx, proof, dp_obj, file_info, split, data_loc, ground_truth_steps
         )
         if file_info in self.__cached_times:
             creation_time = self.__cached_times[file_info]
         else:
             creation_time = file_info.get_creation_time(data_loc)
             self.__cached_times[file_info] = creation_time
-        proof_key = self.__get_proof_key(proof)
+        proof_key = self.__get_proof_key(proof, file_info)
         if proof_key in self.__cached_similar_proofs:
             similar_proof = self.__cached_similar_proofs[proof_key]
         else:
-            stripped_proof = StrippedProof.from_proof(
-                proof, file_info, creation_time, split
+            try:
+                norm_steps = [norm(s) for s in ground_truth_steps]
+            except CoqParseError:
+                norm_steps = None
+            stripped_proof = StrippedProof(
+                creation_time,
+                file_info,
+                proof.theorem.term.line,
+                proof.theorem.term.text,
+                ground_truth_steps,
+                norm_steps,
+                split,
             )
             start = time.time()
             similar_proof = self.sorted_proofs.nearest(stripped_proof).proof
@@ -253,9 +270,11 @@ class GoalFormatter:
         file_info: FileInfo,
         split: Split,
         data_loc: str,
+        ground_truth_steps: Optional[list[str]],
     ) -> LmExample:
+        ground_truth_steps = None
         basic_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj, file_info, split, data_loc
+            step_idx, proof, dp_obj, file_info, split, data_loc, ground_truth_steps
         )
         n_step_result = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
         output = (
@@ -284,7 +303,9 @@ class BaseCodeLLamaLmFormatter:
         file_info: FileInfo,
         split: Split,
         data_loc: str,
+        ground_truth_steps: Optional[list[str]],
     ) -> LmExample:
+        ground_truth_steps = None
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):
@@ -314,7 +335,9 @@ class BaseCodeLLamaPremiseLmFormatter:
         file_info: FileInfo,
         split: Split,
         data_loc: str,
+        ground_truth_steps: Optional[list[str]],
     ) -> LmExample:
+        ground_truth_steps = None
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):
@@ -352,7 +375,9 @@ class GPT4Formatter:
         file_info: FileInfo,
         split: Split,
         data_loc: str,
+        ground_truth_steps: Optional[list[str]],
     ) -> LmExample:
+        ground_truth_steps = None
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):

@@ -79,7 +79,7 @@ class TestCoqPytExample:
             assert proof_file.current_goals.goals is not None
             assert len(proof_file.current_goals.goals.goals) == 1
 
-            go_through_step(proof_file, 0)
+            # go_through_step(proof_file, 0)
             proof_file.change_steps(
                 [
                     CoqDeleteStep(2),

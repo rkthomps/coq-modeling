@@ -125,7 +125,10 @@ class SearchTreeManager:
         combined_valid_steps: list[str] = []
         initial_proof = SearchNode.steps_to_str(combined_valid_steps)
         initial_check_result = proof_manager.check_proof(initial_proof)
-        assert initial_check_result.tactic_result == TacticResult.VALID
+        try:
+            assert initial_check_result.tactic_result == TacticResult.VALID
+        except AssertionError:
+            ipdb.set_trace()
         assert initial_check_result.current_goals is not None
         assert initial_check_result.dataset_file is not None
         initial_score = self.score_type.get_initial_score(max_branch)

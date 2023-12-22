@@ -96,6 +96,7 @@ def examples_to_queue(
     match selected_steps:
         case AllSteps():
             for proof in dp_obj.proofs:
+                ground_truth_steps = [s.step.text for s in proof.steps]
                 for i in range(len(proof.steps)):
                     example = lm_formatter.example_from_step(
                         i,
@@ -104,11 +105,13 @@ def examples_to_queue(
                         file_info,
                         example_sample.split,
                         example_sample.data_loc,
+                        ground_truth_steps,
                     )
                     q.put(example)
         case CertainSteps(steps=step_idxs):
             for step_idx in step_idxs:
                 proof = dp_obj.proofs[step_idx.proof_idx]
+                ground_truth_steps = [s.step.text for s in proof.steps]
                 example = lm_formatter.example_from_step(
                     step_idx.step_idx,
                     proof,
@@ -116,6 +119,7 @@ def examples_to_queue(
                     file_info,
                     example_sample.split,
                     example_sample.data_loc,
+                    ground_truth_steps,
                 )
                 q.put(example)
 

@@ -13,17 +13,11 @@ Fixpoint min (l : (list nat)) : option nat :=
 Lemma exists_min: forall (l : (list nat)), 
     (l <> nil) -> exists h, min(l) = Some(h).
 Proof.
-  intros l H.
-  induction l.
-  - simpl.
-    exfalso.
-    apply H.
-    reflexivity.
-  - destruct l.
-    + simpl.
-      exists a.
-      reflexivity.
-    + simpl.
-      destruct (min l).
-      *
-Admitted.
+  intros. destruct l.  
+  - contradiction. 
+  - simpl. destruct (min l).
+    + destruct (n <? n0).
+      * exists n. reflexivity.       
+      * exists n0. reflexivity.
+    + exists n. reflexivity.
+Qed.

@@ -31,6 +31,7 @@ from torch.utils.data import Dataset
 # from datasets import Dataset
 import numpy as np
 
+from util.train_utils import get_optional_arg, get_required_arg, get_training_args
 from tactic_gen.lm_example import LmExample
 from tactic_gen.codellama_data import LmDataset
 from data_management.splits import Split, split2str, split_file_path
@@ -53,7 +54,7 @@ def load_config(path: str) -> dict[str, Any]:
 
 
 def make_output_dir(conf: dict[str, Any]) -> None:
-    output_dir = __get_required_arg("output_dir", conf)
+    output_dir = get_required_arg("output_dir", conf)
     if os.path.exists(output_dir):
         time_since_created = time.time() - os.path.getctime(output_dir)
         two_mins = 120
@@ -70,8 +71,8 @@ GIT_NAME = "git.txt"
 
 
 def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
-    output_dir = __get_required_arg("output_dir", conf)
-    data_path = __get_required_arg("data_path", conf)
+    output_dir = get_required_arg("output_dir", conf)
+    data_path = get_required_arg("data_path", conf)
     data_conf_loc = os.path.join(data_path, DATA_CONF_NAME)
     shutil.copy(conf_path, os.path.join(output_dir, TRAINING_CONF_NAME))
     shutil.copy(data_conf_loc, os.path.join(output_dir, DATA_CONF_NAME))
@@ -83,61 +84,17 @@ def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
         fout.write(commit)
 
 
-def __get_required_arg(key: str, conf: dict[str, Any]) -> Any:
-    if key not in conf:
-        print(f"{key} is a required field in the configuration file.")
-        exit(1)
-    return conf[key]
-
-
-def __get_optional_arg(key: str, conf: dict[str, Any], default: Any) -> Any:
-    if key not in conf:
-        print(f"{key} not found in configuration. Defaulting to {default}")
-        return default
-    return conf[key]
-
-
-def get_training_args(
-    conf: dict[str, Any], local_rank: Optional[int]
-) -> TrainingArguments:
-    return TrainingArguments(
-        output_dir=__get_required_arg("output_dir", conf),
-        per_device_train_batch_size=__get_required_arg(
-            "per_device_train_batch_size", conf
-        ),
-        gradient_accumulation_steps=__get_optional_arg(
-            "gradient_accumulation_steps", conf, 2
-        ),
-        # optim="paged_adamw_8bit", # causes problems retraining ?
-        learning_rate=__get_required_arg("learning_rate", conf),
-        logging_steps=__get_required_arg("logging_steps", conf),
-        num_train_epochs=__get_required_arg("num_train_epochs", conf),
-        max_steps=__get_optional_arg("max_steps", conf, -1),
-        save_strategy="epoch",
-        save_total_limit=__get_required_arg("save_total_limit", conf),
-        evaluation_strategy="steps",
-        eval_steps=__get_required_arg("eval_steps", conf),
-        per_device_eval_batch_size=__get_required_arg(
-            "per_device_eval_batch_size", conf
-        ),
-        eval_accumulation_steps=__get_optional_arg("eval_accumulation_steps", conf, 1),
-        # deepspeed=__get_required_arg("deepspeed", conf),
-        local_rank=(local_rank if local_rank else -1),
-        ddp_find_unused_parameters=False,
-    )
-
-
 def get_lora_conf(conf: dict[str, Any]) -> LoraConfig:
     return LoraConfig(
-        r=__get_required_arg("peft_lora_r", conf),
-        lora_alpha=__get_required_arg("peft_lora_alpha", conf),
+        r=get_required_arg("peft_lora_r", conf),
+        lora_alpha=get_required_arg("peft_lora_alpha", conf),
         bias="none",
         task_type="CAUSAL_LM",
     )
 
 
 def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
-    model_name = __get_required_arg("model_name", conf)
+    model_name = get_required_arg("model_name", conf)
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
         llm_int8_enable_fp32_cpu_offload=True,
@@ -166,8 +123,8 @@ def get_datasets(
     max_input_len: int,
     max_seq_len: int,
 ) -> tuple[LmDataset, LmDataset]:
-    data_path = __get_required_arg("data_path", conf)
-    num_eval_examples = __get_optional_arg("num_eval_examples", conf, None)
+    data_path = get_required_arg("data_path", conf)
+    num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
     train_path = split_file_path(data_path, Split.TRAIN)
     train_dataset = LmDataset(train_path, tokenizer, max_input_len, max_seq_len)
     val_path = split_file_path(data_path, Split.VAL)
@@ -178,8 +135,8 @@ def get_datasets(
 
 
 def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
-    model_name = __get_required_arg("model_name", conf)
-    seq_len = __get_required_arg("max_seq_len", conf)
+    model_name = get_required_arg("model_name", conf)
+    seq_len = get_required_arg("max_seq_len", conf)
     tokenizer: CodeLlamaTokenizer = CodeLlamaTokenizer.from_pretrained(model_name)
     tokenizer.add_eos_token = True
 
@@ -201,8 +158,8 @@ def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
 def get_trainer(
     conf: dict[str, Any], local_rank: Optional[int], checkpoint_name: Optional[str]
 ) -> Trainer:
-    max_seq_len = __get_required_arg("max_seq_len", conf)
-    max_input_len = __get_required_arg("max_input_len", conf)
+    max_seq_len = get_required_arg("max_seq_len", conf)
+    max_input_len = get_required_arg("max_input_len", conf)
 
     print("\n\nBuilding Training Config...")
     training_args = get_training_args(conf, local_rank)

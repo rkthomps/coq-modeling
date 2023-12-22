@@ -12,7 +12,7 @@ from threading import Thread
 from typeguard import typechecked
 from yaml import load, Loader
 
-from data_management.splits import FileInfo
+from data_management.splits import FileInfo, Split
 from model_deployment.searcher import (
     SearchTreeManager,
     SuccessfulSearch,
@@ -28,7 +28,13 @@ from model_deployment.proof_manager import (
 from model_deployment.model_wrapper import ModelWrapper, wrapper_from_conf
 from model_deployment.node_score import NodeScore, NODE_SCORE_ALIASES
 
-from evaluation.eval_set import DataSplitEvalSet, ProofInfo
+from evaluation.eval_set import (
+    DataSplitEvalSet,
+    FileListEvalSet,
+    EvalSet,
+    ProofInfo,
+    eval_set_from_conf,
+)
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
@@ -107,7 +113,7 @@ class Evaluator:
     def __init__(
         self,
         results_loc: str,
-        eval_set: DataSplitEvalSet,
+        eval_set: EvalSet,
         timeout: int,
         branching_factor: int,
         max_leaf_expansions: int,
@@ -127,7 +133,7 @@ class Evaluator:
     @classmethod
     def from_conf(cls, conf: Any) -> Evaluator:
         results_loc = conf["results_loc"]
-        eval_set = DataSplitEvalSet.from_conf(conf["eval_set"])
+        eval_set = eval_set_from_conf(conf["eval_set"])
         timeout = conf["timeout"]
         branching_factor = conf["branching_factor"]
         max_leaf_expansions = conf["max_leaf_expansions"]
@@ -146,13 +152,18 @@ class Evaluator:
     def get_search_result(
         self, proof: ProofInfo, file: FileInfo
     ) -> SuccessfulSearch | FailedSearch:
+        match self.eval_set:
+            case DataSplitEvalSet():
+                split = self.eval_set.split
+            case _:
+                split = Split.TEST
         with ProofManager(
             proof.file_loc,
             proof.proof_file,
             proof.idx,
             self.model_wrapper.formatter,
             file,
-            self.eval_set.split,
+            split,
             self.eval_set.data_loc,
         ) as proof_manager:
             searcher = SearchTreeManager(

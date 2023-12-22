@@ -116,6 +116,17 @@ def special2str(tok: SpecialToken) -> str:
             raise ValueError("Unhandled special token.")
 
 
+def norm(s: str) -> str:
+    return tokens2str(normalize(lex(s)))
+
+
+def try_norm(s: str) -> Optional[str]:
+    try:
+        return tokens2str(normalize(lex(s)))
+    except CoqParseError:
+        return None
+
+
 def tokens2str(toks: list[Token]) -> str:
     str_toks: list[str] = []
     for token in toks:

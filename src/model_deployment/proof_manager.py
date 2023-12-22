@@ -200,6 +200,7 @@ class ProofManager:
         self.split = split
         self.data_loc = data_loc
 
+        self.__workspace_loc = os.path.join(self.data_loc, self.file_info.workspace)
         self.file_prefix = self.__get_file_prefix()
         self.__proof_stored_steps = self.__replace_proof_with_admitted_stub()
 
@@ -355,7 +356,7 @@ class ProofManager:
         num_read = 0
         num_definitions = len(goal_as_definitions)
         parsed_goals: list[ParsedObligation] = []
-        with CoqFile(self.aux_file_path) as coq_file:
+        with CoqFile(self.aux_file_path, workspace=self.__workspace_loc) as coq_file:
             for goal in all_goals:
                 parsed_hyps: list[ParsedHyp] = []
                 for hyp in goal.hyps:
@@ -380,7 +381,7 @@ class ProofManager:
         ):
             return ProofCheckResult.get_invalid()
         self.__update_aux_file(partial_proof)
-        with CoqFile(self.aux_file_path) as coq_file:
+        with CoqFile(self.aux_file_path, workspace=self.__workspace_loc) as coq_file:
             if not coq_file.is_valid:
                 return ProofCheckResult.get_invalid()
             partial_steps = [s.text for s in coq_file.steps[(self.proof_point + 1) :]]
@@ -427,6 +428,7 @@ class ProofManager:
             self.file_info,
             self.split,
             self.data_loc,
+            self.__proof_stored_steps,
         )
         return example
 
