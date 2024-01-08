@@ -28,8 +28,8 @@ class TestStepSep:
                     actual = separate_steps("".join(expected))
                     assert expected == actual
                     num_steps_tested += 1
-        _logger.error(f"Tested {num_steps_tested} steps.")
-        assert False
+        # _logger.error(f"Tested {num_steps_tested} steps.")
+        # assert False
 
     def test_proof_split_unit1(self) -> None:
         expected = ["\nProof.", "\nProof.", "\n  induction n.", "\n  -"]

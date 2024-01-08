@@ -21,7 +21,12 @@ from typeguard import typechecked
 import git
 from tqdm import tqdm
 
-from data_management.dataset_file import DatasetFile, FileContext, FILE_CONTEXT_NAME, Proof
+from data_management.dataset_file import (
+    DatasetFile,
+    FileContext,
+    FILE_CONTEXT_NAME,
+    Proof,
+)
 
 
 REPOS_NAME = "repos"
@@ -39,7 +44,7 @@ class FileInfo:
         self.file = file
         self.workspace = workspace
         self.repository = repository
-    
+
     def __hash__(self) -> int:
         return hash((self.dp_name, self.file, self.workspace, self.repository))
 
@@ -61,11 +66,11 @@ class FileInfo:
             return fst.committed_datetime
         except:
             return INVALID_DATE
-    
+
     def get_dp(self, data_loc: str) -> DatasetFile:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
         return DatasetFile.from_directory(dp_loc)
-    
+
     def get_proofs(self, data_loc: str) -> list[Proof]:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
         return DatasetFile.get_proofs(dp_loc)
@@ -87,6 +92,13 @@ class FileInfo:
         file = json_data["file"]
         workspace = json_data["workspace"]
         repository = json_data["repository"]
+        return cls(dp_name, file, workspace, repository)
+
+    @classmethod
+    def incomplete_from_file(cls, file: str) -> FileInfo:
+        dp_name = file
+        workspace = ""
+        repository = ""
         return cls(dp_name, file, workspace, repository)
 
 
@@ -250,7 +262,7 @@ class DataSplit:
                 return self.val_projects
             case Split.TEST:
                 return self.test_projects
-    
+
     def get_all_projects(self) -> list[Project]:
         return self.train_projects + self.val_projects + self.test_projects
 

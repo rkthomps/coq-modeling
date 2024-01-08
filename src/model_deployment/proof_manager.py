@@ -252,30 +252,10 @@ class ProofManager:
         ]
         self.proof_file.change_steps(delete_steps + add_steps)
 
-    def __is_proof_prefix(self, steps1: list[str], steps2: list[str]) -> bool:
-        if len(steps1) > len(steps2):
-            return False
-        for i, step in enumerate(steps1):
-            if step != steps2[i]:
-                return False
-        return True
-
     def __get_current_partial_proof(self) -> list[str]:
         start_idx = self.proof_point + 1
         stop_idx = self.proof_file.steps_taken
         return [s.text for s in self.proof_file.steps[start_idx:stop_idx]]
-
-    def __add_step_to_proof_file(self, step: str) -> None:
-        assert self.proof_file.in_proof
-        self.proof_file.add_step(self.proof_file.steps_taken - 1, step)
-        self.proof_file.exec(1)
-        assert self.proof_file.in_proof
-
-    def __delete_step_from_proof_file(self) -> None:
-        assert self.proof_file.in_proof
-        self.proof_file.exec(-1)
-        self.proof_file.delete_step(self.proof_file.steps_taken)
-        assert self.proof_file.in_proof
 
     def set_proof_file(
         self,
@@ -291,7 +271,6 @@ class ProofManager:
             prefix_len += 1
 
         num_steps_to_delete = len(current_partial_proof) - prefix_len
-        self.__go_to_point(self.proof_point)
         delete_steps = [
             CoqDeleteStep(self.proof_point + prefix_len + i)
             for i in range(num_steps_to_delete, 0, -1)
@@ -303,15 +282,6 @@ class ProofManager:
         self.proof_file.change_steps(delete_steps + add_steps)
         self.__go_through_point(self.proof_point + len(steps))
         assert "Admitted." in self.proof_file.steps[self.proof_file.steps_taken].text
-        # while not self.__is_proof_prefix(current_partial_proof, steps):
-        #     self.__delete_step_from_proof_file()
-        #     current_partial_proof = self.__get_current_partial_proof()
-        # prefix_len = len(current_partial_proof)
-        # remaining_current_proof = steps[prefix_len:]
-        # for step in remaining_current_proof:
-        #     self.__add_step_to_proof_file(step)
-        # _logger.debug("".join(self.__get_current_partial_proof()))
-        # _logger.debug(f"Can close proof: {self.proof_file.can_close_proof}")
 
     def __update_aux_file(self, partial_proof: str) -> None:
         with open(self.aux_file_path, "w") as fout:

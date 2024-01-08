@@ -1,6 +1,10 @@
 
+
+# Data split
+data_split: "/home/ubuntu/coq-modeling/splits/random-split.json"
+
 # Location of partitioned files from coq-lsp raw data
-partitioned_data_loc: "/home/ubuntu/coq-modeling/raw-data/data-points-split"
+data_loc: "/home/ubuntu/coq-modeling/raw-data/coq-dataset"
 
 # Directory to save the processed premise selection data
 output_dataset_loc: "/home/ubuntu/coq-modeling/data/prem-select"

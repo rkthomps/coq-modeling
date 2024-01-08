@@ -9,6 +9,10 @@ import sys, os
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
 from coqpyt.coq.structs import TermType
 
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
+
 
 @dataclass
 class FilteredResult:
@@ -39,19 +43,19 @@ class PremiseFilter:
 
     def __print_warnings(self) -> None:
         if len(self.coq_excludes) > 0:
-            print(
+            _logger.info(
                 (
                     f"Excluding term types {self.coq_excludes} for premise selection "
                     "if they come from the coq standard library."
                 )
             )
         if len(self.non_coq_excludes) > 0:
-            print(
+            _logger.info(
                 f"Excluding term types {self.non_coq_excludes} for premise selection "
                 "if they do not come from the coq standard library."
             )
         if len(self.general_excludes) > 0:
-            print(
+            _logger.info(
                 f"Excluding term types {self.non_coq_excludes} for premise selection."
             )
 
@@ -111,14 +115,12 @@ class PremiseFilter:
             if passes_filter and premise_available and premise_in_context:
                 filtered_positive_candidates.append(pos_premise)
             if not premise_available:
-                print(
+                _logger.warning(
                     f"Same file positive premise not available at {pos_premise.file_path}:{pos_premise.line}",
-                    file=sys.stderr,
                 )
             if not premise_in_context:
-                print(
+                _logger.warning(
                     f"Positive premise not in context at {pos_premise.file_path}:{pos_premise.line}",
-                    file=sys.stderr,
                 )
         return filtered_positive_candidates
 
