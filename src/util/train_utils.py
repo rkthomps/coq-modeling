@@ -1,6 +1,58 @@
 from typing import Any, Optional
 
+import time
+import sys, os
+import shutil
+import subprocess
+
+from yaml import load, Loader
 from transformers import TrainingArguments
+
+TRAINING_CONF_NAME = "training_conf.yaml"
+REQS_NAME = "requirements.txt"
+GIT_NAME = "git.txt"
+
+from data_management.create_lm_dataset import DATA_CONF_NAME
+from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME
+
+
+def load_config(path: str) -> dict[str, Any]:
+    with open(path, "r") as fin:
+        conf = load(fin, Loader=Loader)
+    assert type(conf) == dict
+    assert all([type(s) == str for s in conf.keys()])
+    return conf
+
+
+def copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
+    output_dir = get_required_arg("output_dir", conf)
+    data_path = get_required_arg("data_path", conf)
+    if os.path.exists(os.path.join(data_path, DATA_CONF_NAME)):
+        data_conf_loc = os.path.join(data_path, DATA_CONF_NAME)
+        shutil.copy(data_conf_loc, os.path.join(output_dir, DATA_CONF_NAME))
+    else:
+        data_conf_loc = os.path.join(data_path, PREMISE_DATA_CONF_NAME)
+        shutil.copy(data_conf_loc, os.path.join(output_dir, PREMISE_DATA_CONF_NAME))
+
+    shutil.copy(conf_path, os.path.join(output_dir, TRAINING_CONF_NAME))
+    reqs = subprocess.check_output([sys.executable, "-m", "pip", "freeze"])
+    with open(os.path.join(output_dir, REQS_NAME), "wb") as fout:
+        fout.write(reqs)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"])
+    with open(os.path.join(output_dir, GIT_NAME), "wb") as fout:
+        fout.write(commit)
+
+
+def make_output_dir(conf: dict[str, Any]) -> None:
+    output_dir = get_required_arg("output_dir", conf)
+    if os.path.exists(output_dir):
+        time_since_created = time.time() - os.path.getctime(output_dir)
+        three_mins = 180
+        if time_since_created > three_mins:
+            print(f"{output_dir} already exists.")
+            exit(1)
+    else:
+        os.makedirs(output_dir)
 
 
 def get_required_arg(key: str, conf: dict[str, Any]) -> Any:

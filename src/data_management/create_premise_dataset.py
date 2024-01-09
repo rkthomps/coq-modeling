@@ -91,7 +91,6 @@ def get_examples_from_file(
     except FileNotFoundError:
         _logger.error(f"Could not find file: {file_info.file}")
         return
-    _logger.debug(f"Processing {file_info.file}")
     for proof in file_obj.proofs:
         for step in proof.steps:
             step_examples = PremiseTrainingExample.from_focused_step(
@@ -106,7 +105,6 @@ def get_examples_from_file(
             )
             for example in step_examples:
                 q.put(example)
-    _logger.debug(f"Done Processing {file_info.file}")
 
 
 PremiseArgs = tuple[
@@ -171,18 +169,21 @@ if __name__ == "__main__":
 
     premise_config = PremiseDataConfig.from_config(conf)
 
+    from data_management.dataset_file import DatasetFile
+
+    mytest = DatasetFile.from_directory(
+        "/home/kthompson/coq-modeling/raw-data/coq-dataset/data_points/uds-psl-coq-synthetic-incompleteness-theories-Shared-Libs-DLW-Utils-rel_iter.v"
+    )
+
+    for proof in mytest.proofs:
+        for step in proof.steps:
+            pos_avail = premise_config.premise_filter.get_pos_and_avail_premises(
+                step, proof, mytest
+            )
+
     if os.path.exists(premise_config.output_dataset_loc):
         raise FileExistsError(f"{premise_config.output_dataset_loc}")
     os.makedirs(premise_config.output_dataset_loc)
-
-    # mytest = DatasetFile.from_directory(
-    #     "/data/benchmarks/coq-dataset/data_points2/bendy-SFExtras-DenotationalSemantics-Fixpoints.v"
-    # )
-    # for proof in tqdm(mytest.proofs):
-    #     for step in proof.steps:
-    #         pos_avail = premise_config.premise_filter.get_pos_and_avail_premises(
-    #             step, proof, mytest
-    #         )
 
     with mp.Manager() as manager:
         q: Queue[Optional[PremiseTrainingExample]] = manager.Queue()

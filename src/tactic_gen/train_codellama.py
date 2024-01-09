@@ -31,7 +31,17 @@ from torch.utils.data import Dataset
 # from datasets import Dataset
 import numpy as np
 
-from util.train_utils import get_optional_arg, get_required_arg, get_training_args
+from util.train_utils import (
+    get_optional_arg,
+    get_required_arg,
+    get_training_args,
+    load_config,
+    make_output_dir,
+    copy_configs,
+    TRAINING_CONF_NAME,
+    REQS_NAME,
+    GIT_NAME,
+)
 from tactic_gen.lm_example import LmExample
 from tactic_gen.codellama_data import LmDataset
 from data_management.splits import Split, split2str, split_file_path
@@ -43,45 +53,6 @@ from data_management.create_lm_dataset import DATA_CONF_NAME
 
 # More ideas for arguments here:
 # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments
-
-
-def load_config(path: str) -> dict[str, Any]:
-    with open(path, "r") as fin:
-        conf = load(fin, Loader=Loader)
-    assert type(conf) == dict
-    assert all([type(s) == str for s in conf.keys()])
-    return conf
-
-
-def make_output_dir(conf: dict[str, Any]) -> None:
-    output_dir = get_required_arg("output_dir", conf)
-    if os.path.exists(output_dir):
-        time_since_created = time.time() - os.path.getctime(output_dir)
-        three_mins = 180
-        if time_since_created > three_mins:
-            print(f"{output_dir} already exists.")
-            exit(1)
-    else:
-        os.makedirs(output_dir)
-
-
-TRAINING_CONF_NAME = "training_conf.yaml"
-REQS_NAME = "requirements.txt"
-GIT_NAME = "git.txt"
-
-
-def __copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
-    output_dir = get_required_arg("output_dir", conf)
-    data_path = get_required_arg("data_path", conf)
-    data_conf_loc = os.path.join(data_path, DATA_CONF_NAME)
-    shutil.copy(conf_path, os.path.join(output_dir, TRAINING_CONF_NAME))
-    shutil.copy(data_conf_loc, os.path.join(output_dir, DATA_CONF_NAME))
-    reqs = subprocess.check_output([sys.executable, "-m", "pip", "freeze"])
-    with open(os.path.join(output_dir, REQS_NAME), "wb") as fout:
-        fout.write(reqs)
-    commit = subprocess.check_output(["git", "rev-parse", "HEAD"])
-    with open(os.path.join(output_dir, GIT_NAME), "wb") as fout:
-        fout.write(commit)
 
 
 def get_lora_conf(conf: dict[str, Any]) -> LoraConfig:
@@ -167,20 +138,9 @@ def get_trainer(
     tokenizer = get_tokenizer(conf)
 
     print("\n\nRetrieving Model...")
-    match checkpoint_name:
-        case _:
-            raw_model = get_model(conf)
-            lora_config = get_lora_conf(conf)
-            model = get_peft_model(raw_model, lora_config)
-        # case None:
-        #     raw_model = get_model(conf)
-        #     lora_config = get_lora_conf(conf)
-        #     model = get_peft_model(raw_model, lora_config)
-        # case _:
-        #     quant_conf = BitsAndBytesConfig(
-        #         load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
-        #     )
-        #     model = LlamaForCausalLM.from_pretrained(checkpoint_name, quantization_config=quant_conf)
+    raw_model = get_model(conf)
+    lora_config = get_lora_conf(conf)
+    model = get_peft_model(raw_model, lora_config)
 
     print("\n\nConstructing Dataset...")
     train_dataset, val_dataset = get_datasets(
@@ -223,6 +183,6 @@ if __name__ == "__main__":
         trainer.train(checkpoint_name)
     else:
         make_output_dir(conf)
-        __copy_configs(args.yaml_config, conf)
+        copy_configs(args.yaml_config, conf)
         print("Training from scratch")
         trainer.train()

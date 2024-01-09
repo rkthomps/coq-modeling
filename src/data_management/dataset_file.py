@@ -5,9 +5,13 @@ import sys, os
 import jsonlines
 import json
 import re
+import ipdb
 
 from typeguard import typechecked
 from coqpyt.coq.structs import TermType
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 STEPS_NAME = "steps.jsonl"
@@ -348,6 +352,17 @@ class DatasetFile:
     def __get_oof_avail_premises(self) -> list[Sentence]:
         oof_premises: set[Sentence] = set()
         for premise in self.file_context.avail_premises:
+            # Rarely, but sometimes, the file path does not start with /coq-dataset
+            if premise.file_path.startswith("/root"):
+                pass
+            elif premise.file_path.startswith("/coq-dataset"):
+                pass
+            elif premise.file_path.startswith("../coq-dataset"):
+                premise.file_path = premise.file_path[2:]
+            else:
+                _logger.warning(
+                    f"Unexpected file path prefix: {premise.file_path[:20]}"
+                )
             if premise.file_path != self.file_context.file:
                 oof_premises.add(premise)
         return list(oof_premises)
