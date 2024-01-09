@@ -1,13 +1,13 @@
 
 
 # Data split
-data_split: "/home/ubuntu/coq-modeling/splits/random-split.json"
+data_split: "/home/kthompson/coq-modeling/splits/random-split.json"
 
 # Location of partitioned files from coq-lsp raw data
-data_loc: "/home/ubuntu/coq-modeling/raw-data/coq-dataset"
+data_loc: "/home/kthompson/coq-modeling/raw-data/coq-dataset"
 
 # Directory to save the processed premise selection data
-output_dataset_loc: "/home/ubuntu/coq-modeling/data/prem-select"
+output_dataset_loc: "/home/kthompson/coq-modeling/data/prem-select"
 
 # Number of negative premises to use per positive premise
 num_negatives_per_positive: 3

@@ -26,9 +26,11 @@ from data_management.splits import (
     split_file_path,
 )
 from data_management.jsonl_utils import shuffle, deduplicate
-
+from util.util import get_basic_logger
 
 PREMISE_DATA_CONF_NAME = "premise-data-config.yaml"
+
+_logger = get_basic_logger(__name__)
 
 
 @typechecked
@@ -79,13 +81,17 @@ class PremiseDataConfig:
         )
 
 
-@typechecked
 def get_examples_from_file(
     file_info: FileInfo,
     premise_conf: PremiseDataConfig,
-) -> list[Any]:
-    training_examples: list[Any] = []
-    file_obj = file_info.get_dp(premise_conf.data_loc)
+    q: Queue[Optional[PremiseTrainingExample]],
+) -> None:
+    try:
+        file_obj = file_info.get_dp(premise_conf.data_loc)
+    except FileNotFoundError:
+        _logger.error(f"Could not find file: {file_info.file}")
+        return
+    _logger.debug(f"Processing {file_info.file}")
     for proof in file_obj.proofs:
         for step in proof.steps:
             step_examples = PremiseTrainingExample.from_focused_step(
@@ -98,9 +104,9 @@ def get_examples_from_file(
                 premise_conf.premise_format_type,
                 premise_conf.premise_filter,
             )
-            json_examples = [e.to_json() for e in step_examples]
-            training_examples.extend(json_examples)
-    return training_examples
+            for example in step_examples:
+                q.put(example)
+    _logger.debug(f"Done Processing {file_info.file}")
 
 
 PremiseArgs = tuple[
@@ -122,6 +128,7 @@ def get_dataset_args(
 
 def writer(q: Queue[Optional[PremiseTrainingExample]], out_file: str) -> None:
     num_examples_written = 0
+    _logger.debug(f"Opening {out_file}")
     with open(out_file, "w") as fout:
         while True:
             example = q.get()
@@ -163,6 +170,19 @@ if __name__ == "__main__":
         conf = load(fin, Loader=Loader)
 
     premise_config = PremiseDataConfig.from_config(conf)
+
+    if os.path.exists(premise_config.output_dataset_loc):
+        raise FileExistsError(f"{premise_config.output_dataset_loc}")
+    os.makedirs(premise_config.output_dataset_loc)
+
+    # mytest = DatasetFile.from_directory(
+    #     "/data/benchmarks/coq-dataset/data_points2/bendy-SFExtras-DenotationalSemantics-Fixpoints.v"
+    # )
+    # for proof in tqdm(mytest.proofs):
+    #     for step in proof.steps:
+    #         pos_avail = premise_config.premise_filter.get_pos_and_avail_premises(
+    #             step, proof, mytest
+    #         )
 
     with mp.Manager() as manager:
         q: Queue[Optional[PremiseTrainingExample]] = manager.Queue()

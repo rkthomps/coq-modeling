@@ -1,5 +1,8 @@
+from __future__ import annotations
 import logging
 import os
+import re
+import datetime
 
 from coqpyt.coq.base_file import CoqFile
 
@@ -51,3 +54,37 @@ def get_simple_steps(proof_text: str) -> list[str]:
             return [s.text for s in coq_file.steps]
     finally:
         os.remove(tmp_path)
+
+
+class LogEntry:
+    log_pattern = re.compile(r"(.*?); (.*?); (.*?); (.*)")
+
+    def __init__(
+        self, time: datetime.datetime, name: str, entry_type: str, message: str
+    ) -> None:
+        self.time = time
+        self.name = name
+        self.entry_type = entry_type
+        self.message = message
+
+    @classmethod
+    def from_line(cls, line: str) -> LogEntry:
+        log_match = cls.log_pattern.match(line)
+        if log_match is None:
+            raise ValueError(f"Could not parse log line {line}")
+        time_str, name, entry_type, message = log_match.groups()
+        time = datetime.datetime.strptime(time_str + "000", r"%Y-%m-%d %H:%M:%S,%f")
+        return cls(time, name, entry_type, message)
+
+
+def get_log_entries(file: str) -> list[LogEntry]:
+    log_entries: list[LogEntry] = []
+    with open(file, "r") as fin:
+        for line in fin:
+            try:
+                log_entry = LogEntry.from_line(line.strip())
+                log_entries.append(log_entry)
+            except ValueError:
+                _logger.debug(f"Could not parse line: {line}")
+                pass
+    return log_entries
