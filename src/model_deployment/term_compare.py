@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Any
+
 from coqpyt.coq.base_file import CoqFile, GoalAnswer
 from data_management.splits import DataSplit, FileInfo
 
@@ -11,16 +14,38 @@ len(all goals) = 1 - len(current goal) ?
 
 """
 
+from data_management.splits import FileInfo
 
-def get_var_to_generalize(goals: GoalAnswer) -> str:
+
+def simplify_ast1(coq_ast: Any) -> Any:
+    match coq_ast:
+        case {"v": rest, "loc": _}:
+            return simplify_ast1(rest)
+        case dict():
+            return {simplify_ast(k): simplify_ast(v) for k, v in coq_ast.items()}
+        case list():
+            return [simplify_ast(i) for i in coq_ast]
+        case other:
+            return other
+
+
+def simplify_ast2(coq_ast: Any) -> Any:
+    match coq_ast:
+        case ["CRef", ["Ser_Qualid", ["DirPath", []], ["Id", id]], None]:
+            return ["Id", id]
+        case dict():
+            return {simplify_ast2(k): simplify_ast2(v) for k, v in coq_ast.items()}
+        case list():
+            return [simplify_ast2(i) for i in coq_ast]
+        case other:
+            return other
+
+
+def simplify_ast(coq_ast: Any) -> Any:
+    simp = simplify_ast1(coq_ast)
+    simp = simplify_ast2(simp)
+    return simp
+
+
+def get_all_normal_goals_and_proofs(file_info: FileInfo):
     pass
-
-
-def get_normal_form(aux_file_path: str, workspace_path: str, file_prefix: str):
-    with open(aux_file_path, "w") as fout:
-        fout.write(file_prefix)
-
-    with CoqFile(aux_file_path, workspace=workspace_path) as coq_file:
-        coq_file.run()
-        goals = coq_file.current_goals
-        assert goals is not None

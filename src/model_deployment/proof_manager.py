@@ -23,6 +23,7 @@ from model_deployment.goal_comparer import (
     extract_body_from_step,
 )
 from util.util import get_basic_logger
+from util.coqpyt_utils import get_all_goals
 
 from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
 from coqpyt.coq.structs import ProofTerm, Term
@@ -287,16 +288,8 @@ class ProofManager:
         with open(self.aux_file_path, "w") as fout:
             fout.write(f"{self.file_prefix}{partial_proof}")
 
-    def __get_all_goals(self, current_goals: GoalAnswer) -> list[Goal]:
-        assert current_goals.goals is not None
-        collapsed_stack: list[Goal] = []
-        for stack_goals1, stack_goals2 in current_goals.goals.stack:
-            collapsed_stack.extend(stack_goals1)
-            collapsed_stack.extend(stack_goals2)
-        return current_goals.goals.goals + collapsed_stack + current_goals.goals.shelf
-
     def __get_goal_strs(self, current_goals: GoalAnswer) -> list[str]:
-        all_goals = self.__get_all_goals(current_goals)
+        all_goals = get_all_goals(current_goals)
         final_strings: list[str] = []
         for i, goal in enumerate(all_goals):
             for j, hyp in enumerate(goal.hyps):
@@ -317,7 +310,7 @@ class ProofManager:
         self, partial_proof: str, current_goals: GoalAnswer
     ) -> ParsedObligations:
         assert current_goals.goals is not None
-        all_goals = self.__get_all_goals(current_goals)
+        all_goals = get_all_goals(current_goals)
         _logger.debug(f"Num goals: {len(all_goals)}")
         goal_as_definitions = self.__get_goal_strs(current_goals)
         goal_str = "\n\n".join(goal_as_definitions)
