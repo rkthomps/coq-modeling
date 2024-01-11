@@ -17,18 +17,26 @@ from yaml import load, Loader
 
 from typeguard import typechecked
 
+from transformers import PreTrainedModel, PretrainedConfig
 from premise_selection.training_types import PremiseBatch
 from premise_selection.datamodule import tokenize_strings
 
 
-class PremiseRetriever(torch.nn.Module):
-    def __init__(
-        self,
-        encoder: T5EncoderModel,
-    ) -> None:
-        super(PremiseRetriever, self).__init__()
-        self.device = "cuda"
-        self.encoder = encoder
+class PremiseRetrieverConfig(PretrainedConfig):
+    model_type = "premise-retriever"
+    model_name = "google/byt5-small"
+
+    def __init__(self, **kwargs) -> None:
+        super(PremiseRetrieverConfig, self).__init__(**kwargs)
+
+
+class PremiseRetriever(PreTrainedModel):
+    config_class = PremiseRetrieverConfig
+
+    def __init__(self, config: PremiseRetrieverConfig) -> None:
+        super(PremiseRetriever, self).__init__(config)
+        self.config = config
+        self.encoder = T5EncoderModel.from_pretrained(config.model_name)
 
     def _encode(self, input_ids: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         ## TODO: COULD ADD SOME SORT OF "CPU CHECKPOINTING"
@@ -52,15 +60,13 @@ class PremiseRetriever(torch.nn.Module):
         premise_ids: torch.Tensor,
         premise_mask: torch.Tensor,
         label: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> dict[str, torch.Tensor]:
         context_embs = self._encode(context_ids, context_mask)
         premise_embs = self._encode(premise_ids, premise_mask)
         similarity = torch.mm(context_embs, premise_embs.t())
         epsilon = 1e-4
         assert (-1 - epsilon) <= similarity.min() <= similarity.max() <= (1 + epsilon)
-        cuda_label = label.to(self.device)
-        loss = F.mse_loss(similarity, cuda_label)
-        return loss
+        return {"similarities": similarity}
 
     @classmethod
     def fresh(cls, model_name: str) -> PremiseRetriever:

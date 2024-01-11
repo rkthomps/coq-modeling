@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from data_management.splits import split_file_path, Split
 from premise_selection.datamodule import PremiseSelectionDataset
-from premise_selection.model import PremiseRetriever
+from premise_selection.model import PremiseRetriever, PremiseRetrieverConfig
 from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME
 
 from util.train_utils import (
@@ -22,6 +22,7 @@ import transformers
 from transformers import TrainingArguments, Trainer, ByT5Tokenizer
 from torch.utils.data import Dataset, DataLoader
 import torch
+import torch.nn.functional as F
 
 
 def get_tokenizer(conf: dict[str, Any]) -> ByT5Tokenizer:
@@ -35,8 +36,9 @@ def get_model(conf: dict[str, Any]) -> PremiseRetriever:
         model = PremiseRetriever.from_pretrained(conf["checkpoint_name"])
         return model
 
-    model_name = get_required_arg("model_name", conf)
-    model = PremiseRetriever.fresh(model_name)
+    model_config = PremiseRetrieverConfig()
+    model = PremiseRetriever(model_config)
+
     return model
 
 
@@ -49,18 +51,24 @@ def get_datasets(
     # num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
     train_path = split_file_path(data_path, Split.TRAIN)
     train_dataset = PremiseSelectionDataset(
-        train_path, tokenizer, max_seq_len, max_num_examples=2000
+        train_path, tokenizer, max_seq_len 
     )
     val_path = split_file_path(data_path, Split.VAL)
     val_dataset = PremiseSelectionDataset(
-        val_path, tokenizer, max_seq_len, max_num_examples=2000
+        val_path, tokenizer, max_seq_len, max_num_examples=10000
     )
     return train_dataset, val_dataset
 
 
 class CustomTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
-        return model(**inputs)
+        cuda_label = inputs["label"].to(model.device)
+        outputs = model(**inputs)
+        similarities = outputs["similarities"]
+        loss = F.mse_loss(similarities, cuda_label)
+        if return_outputs:
+            return loss, outputs
+        return loss
 
 
 def get_trainer(
