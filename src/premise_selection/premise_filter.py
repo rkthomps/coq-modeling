@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Any, Optional
+import ipdb
 
 from dataclasses import dataclass
 from typeguard import typechecked
@@ -114,14 +115,15 @@ class PremiseFilter:
             )
             if passes_filter and premise_available and premise_in_context:
                 filtered_positive_candidates.append(pos_premise)
-            if not premise_available:
+            if passes_filter and not premise_available:
                 _logger.warning(
                     f"Same file positive premise not available at {pos_premise.file_path}:{pos_premise.line}",
                 )
-            if not premise_in_context:
+            if passes_filter and not premise_in_context:
                 _logger.warning(
                     f"Positive premise not in context at {pos_premise.file_path}:{pos_premise.line}",
                 )
+
         return filtered_positive_candidates
 
     def get_pos_and_avail_premises(
