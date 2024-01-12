@@ -7,7 +7,7 @@ from typing import Any, Optional
 from data_management.splits import split_file_path, Split
 from premise_selection.datamodule import PremiseSelectionDataset
 from premise_selection.model import PremiseRetriever, PremiseRetrieverConfig
-from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME
+from util.constants import PREMISE_DATA_CONF_NAME
 
 from util.train_utils import (
     get_optional_arg,
@@ -50,9 +50,7 @@ def get_datasets(
     data_path = get_required_arg("data_path", conf)
     # num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
     train_path = split_file_path(data_path, Split.TRAIN)
-    train_dataset = PremiseSelectionDataset(
-        train_path, tokenizer, max_seq_len 
-    )
+    train_dataset = PremiseSelectionDataset(train_path, tokenizer, max_seq_len)
     val_path = split_file_path(data_path, Split.VAL)
     val_dataset = PremiseSelectionDataset(
         val_path, tokenizer, max_seq_len, max_num_examples=10000

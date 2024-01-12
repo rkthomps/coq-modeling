@@ -8,12 +8,14 @@ import subprocess
 from yaml import load, Loader
 from transformers import TrainingArguments
 
-TRAINING_CONF_NAME = "training_conf.yaml"
-REQS_NAME = "requirements.txt"
-GIT_NAME = "git.txt"
 
-from data_management.create_lm_dataset import DATA_CONF_NAME
-from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME
+from util.constants import (
+    DATA_CONF_NAME,
+    PREMISE_DATA_CONF_NAME,
+    REQS_NAME,
+    GIT_NAME,
+    TRAINING_CONF_NAME,
+)
 
 
 def load_config(path: str) -> dict[str, Any]:

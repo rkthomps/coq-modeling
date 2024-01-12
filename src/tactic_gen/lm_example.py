@@ -13,6 +13,7 @@ from tactic_gen.n_step_sampler import NStepSampler, OneStepSampler, n_step_from_
 from tactic_gen.step_parser import norm, CoqParseError
 from model_deployment.premise_model_wrapper import (
     PremiseModelWrapper,
+    move_prem_wrapper_to,
     get_ranked_premise_generator,
     premise_wrapper_from_conf,
 )
@@ -51,6 +52,7 @@ def fmt_goals(goals: list[Goal]) -> str:
 
 class BasicFormatter:
     ALIAS = "basic"
+    REQUIRES_GPU = False
 
     def __init__(
         self, n_step_sampler: NStepSampler, direct_num_steps: bool, conf: Any
@@ -91,6 +93,7 @@ class BasicFormatter:
 
 class PremiseFormatter:
     ALIAS = "premise"
+    REQUIRES_GPU = True
     MAX_N_EXAMPLES = 100
 
     def __init__(
@@ -168,6 +171,7 @@ class PremiseFormatter:
 
 class ProofRetrievalOracleFormatter:
     ALIAS = "proof-retrieval-oracle"
+    REQUIRES_GPU = False
 
     def __init__(
         self,
@@ -250,6 +254,7 @@ class ProofRetrievalOracleFormatter:
 
 class GoalFormatter:
     ALIAS = "goal-cotrain"
+    REQUIRES_GPU = False
     STOP_STRINGS = [END_TOK]
 
     def __init__(
@@ -294,6 +299,7 @@ class GoalFormatter:
 
 class BaseCodeLLamaLmFormatter:
     ALIAS = "codellama-base"
+    REQUIRES_GPU = False
 
     def example_from_step(
         self,
@@ -319,6 +325,7 @@ class BaseCodeLLamaLmFormatter:
 
 class BaseCodeLLamaPremiseLmFormatter:
     ALIAS = "codellama-base-premise"
+    REQUIRES_GPU = True
 
     def __init__(self, premise_model_wrapper: PremiseModelWrapper, conf: Any) -> None:
         self.premise_model_wrapper = premise_model_wrapper
@@ -357,6 +364,7 @@ class BaseCodeLLamaPremiseLmFormatter:
 
 class GPT4Formatter:
     ALIAS = "gpt4"
+    REQUIRES_GPU = False
     SCRIPT_TAG = "<PS>"
     STATE_TAG = "<ST>"
     SYS_MSG = (
@@ -402,6 +410,14 @@ LmFormatter = (
 
 class LmFormatterNotFoundError(Exception):
     pass
+
+
+def move_fmt_to(formatter: LmFormatter, device: str) -> None:
+    match formatter:
+        case BasicFormatter() | ProofRetrievalOracleFormatter() | GoalFormatter() | BaseCodeLLamaLmFormatter() | GPT4Formatter():
+            pass
+        case PremiseFormatter() | BaseCodeLLamaPremiseLmFormatter():
+            move_prem_wrapper_to(formatter.premise_model_wrapper, device)
 
 
 def fmt_from_conf(conf: Any) -> LmFormatter:

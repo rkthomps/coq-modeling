@@ -73,9 +73,11 @@ class PremiseRetriever(PreTrainedModel):
         encoder = T5EncoderModel.from_pretrained(model_name)
         return cls(encoder)
 
-    def encode_str(self, to_encode: str) -> torch.Tensor:
+    def encode_str(
+        self, to_encode: str, tokenizer: ByT5Tokenizer, max_seq_len: int
+    ) -> torch.Tensor:
         with torch.no_grad():
-            tokens = tokenize_strings(self.tokenizer, [to_encode], self.max_seq_len)
+            tokens = tokenize_strings(tokenizer, [to_encode], max_seq_len)
             input_ids = tokens.input_ids
             input_masks = tokens.attention_mask
             encoding = self._encode(input_ids, input_masks)  # shape should be 1 x h_dim

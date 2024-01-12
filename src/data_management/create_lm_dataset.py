@@ -6,12 +6,14 @@ import argparse
 import multiprocessing as mp
 from queue import Queue
 
+
+import torch
 from typeguard import typechecked
 import json
 from tqdm import tqdm
 import yaml
 
-from tactic_gen.lm_example import LmExample, LmFormatter, fmt_from_conf
+from tactic_gen.lm_example import LmExample, LmFormatter, fmt_from_conf, move_fmt_to
 from data_management.splits import (
     FileInfo,
     Split,
@@ -26,6 +28,7 @@ from data_management.samples import (
 )
 from data_management.jsonl_utils import shuffle, deduplicate
 from util.util import get_basic_logger
+from util.constants import DATA_CONF_NAME
 
 _logger = get_basic_logger(__name__)
 
@@ -89,9 +92,12 @@ def examples_to_queue(
     lm_formatter: LmFormatter,
     file_info: FileInfo,
     selected_steps: SelectedSteps,
+    device_idx: int,
     q: Queue[Optional[LmExample]],
 ) -> None:
     _logger.debug(f"Processing {file_info.file}")
+    cuda_str = f"cuda:{device_idx}"
+    move_fmt_to(lm_formatter, cuda_str)
     dp_obj = file_info.get_dp(example_sample.data_loc)
     match selected_steps:
         case AllSteps():
@@ -125,23 +131,29 @@ def examples_to_queue(
 
 
 __ArgTuple = tuple[
-    ExampleSample, LmFormatter, FileInfo, SelectedSteps, Queue[Optional[LmExample]]
+    ExampleSample, LmFormatter, FileInfo, SelectedSteps, int, Queue[Optional[LmExample]]
 ]
 
 
 def __get_split_transformation_args(
     example_sampler: ExampleSample,
-    example_formatter: LmFormatter,
+    formatter: LmFormatter,
     q: Queue[LmExample | None],
 ) -> list[__ArgTuple]:
+    num_devices = torch.cuda.device_count()
     arg_list: list[__ArgTuple] = []
-    for file, selected_steps in example_sampler.step_generator():
-        arg_list.append((example_sampler, example_formatter, file, selected_steps, q))
+    for i, (file, selected_steps) in enumerate(example_sampler.step_generator()):
+        device_idx = i % num_devices
+        arg_list.append(
+            (example_sampler, formatter, file, selected_steps, device_idx, q)
+        )
     return arg_list
 
 
 def get_split_transformation_args(
-    example_config: LmExampleConfig, split: Split, q: Queue[Optional[LmExample]]
+    example_config: LmExampleConfig,
+    split: Split,
+    q: Queue[Optional[LmExample]],
 ) -> list[__ArgTuple]:
     match split:
         case Split.TRAIN:
@@ -158,9 +170,8 @@ def get_split_transformation_args(
             )
 
 
-DATA_CONF_NAME = "lm-example-conf.yaml"
-
 if __name__ == "__main__":
+    mp.set_start_method("spawn")
     parser = argparse.ArgumentParser(
         "Create a jsonl dataset from the data collected by the coq lsp."
     )

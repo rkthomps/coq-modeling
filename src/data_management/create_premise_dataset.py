@@ -27,8 +27,8 @@ from data_management.splits import (
 )
 from data_management.jsonl_utils import shuffle, deduplicate
 from util.util import get_basic_logger
+from util.constants import PREMISE_DATA_CONF_NAME
 
-PREMISE_DATA_CONF_NAME = "premise-data-config.yaml"
 
 _logger = get_basic_logger(__name__)
 

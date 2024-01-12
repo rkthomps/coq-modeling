@@ -348,29 +348,41 @@ class DatasetFile:
     def proofs_to_string(self) -> str:
         proof_strings = [p.proof_text_to_string() for p in self.proofs]
         return "\n\n".join(proof_strings)
+    
+    @staticmethod
+    def fix_path(path: str) -> str:
+        if path.startswith("/root"):
+            return path
+        elif path.startswith("../root"):
+            return path[2:]
+        elif path.startswith("/coq-dataset"):
+            return path
+        elif path.startswith("repos"):
+            return f"/coq-dataset/{path}"
+        elif path.startswith("../coq-dataset"):
+            return path[2:]
+        else:
+            _logger.debug(
+                f"Unexpected file path prefix: {path[:20]}"
+            )
+            return path
+
 
     def __get_oof_avail_premises(self) -> list[Sentence]:
         oof_premises: set[Sentence] = set()
         for premise in self.file_context.avail_premises:
-            # Rarely, but sometimes, the file path does not start with /coq-dataset
-            if premise.file_path.startswith("/root"):
-                pass
-            elif premise.file_path.startswith("/coq-dataset"):
-                pass
-            elif premise.file_path.startswith("../coq-dataset"):
-                premise.file_path = premise.file_path[2:]
-            else:
-                _logger.warning(
-                    f"Unexpected file path prefix: {premise.file_path[:20]}"
-                )
-            if premise.file_path != self.file_context.file:
+            norm_prem_path = self.fix_path(premise.file_path)
+            norm_file_path = self.fix_path(self.file_context.file)
+            if norm_prem_path != norm_file_path: 
                 oof_premises.add(premise)
         return list(oof_premises)
 
     def __get_in_file_avail_premises(self) -> list[Sentence]:
         in_file_premises: set[Sentence] = set()
         for premise in self.file_context.avail_premises:
-            if premise.file_path == self.file_context.file:
+            norm_prem_path = self.fix_path(premise.file_path)
+            norm_file_path = self.fix_path(self.file_context.file)
+            if norm_prem_path == norm_file_path: 
                 in_file_premises.add(premise)
         return list(in_file_premises)
 

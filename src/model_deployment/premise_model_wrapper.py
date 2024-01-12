@@ -5,7 +5,9 @@ import sys, os
 import json
 import requests
 
+from tqdm import tqdm
 import torch
+from transformers import ByT5Tokenizer
 from yaml import load, Loader
 from typeguard import typechecked
 
@@ -28,6 +30,9 @@ from model_deployment.serve_prem_utils import (
 )
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
 from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME
+
+from util.train_utils import get_required_arg
+from util.constants import TRAINING_CONF_NAME
 
 
 @typechecked
@@ -63,15 +68,19 @@ class LocalPremiseModelWrapper:
     def __init__(
         self,
         retriever: PremiseRetriever,
+        max_seq_len: int,
+        tokenizer: ByT5Tokenizer,
         context_format: type[ContextFormat],
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
         checkpoint_loc: str,
     ) -> None:
+        self.retriever = retriever
+        self.max_seq_len = max_seq_len
+        self.tokenizer = tokenizer
         self.context_format = context_format
         self.premise_format = premise_format
         self.premise_filter = premise_filter
-        self.retriever = retriever
         self.checkpoint_loc = checkpoint_loc
         self.encoding_cache = RoundRobinCache(self.MAX_CACHE_SIZE)
         self.hits = 0
@@ -82,7 +91,9 @@ class LocalPremiseModelWrapper:
             self.hits += 1
             return self.encoding_cache.get(to_encode)
         self.misses += 1
-        encoding = self.retriever.encode_str(to_encode)
+        encoding = self.retriever.encode_str(
+            to_encode, self.tokenizer, self.max_seq_len
+        )
         self.encoding_cache.add(to_encode, encoding)
         return encoding
 
@@ -118,18 +129,29 @@ class LocalPremiseModelWrapper:
 
     @classmethod
     def from_checkpoint(cls, checkpoint_loc: str) -> LocalPremiseModelWrapper:
-        model_loc = PremiseRetriever.get_model_loc(checkpoint_loc)
+        model_loc = os.path.dirname(checkpoint_loc)
         data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
         with open(data_preparation_conf, "r") as fin:
             premise_conf = load(fin, Loader=Loader)
+        model_conf_loc = os.path.join(model_loc, TRAINING_CONF_NAME)
+        with open(model_conf_loc, "r") as fin:
+            model_conf = load(fin, Loader=Loader)
+        max_seq_len = get_required_arg("max_seq_len", model_conf)
+        tokenizer = ByT5Tokenizer.from_pretrained(model_conf["model_name"])
         premise_format_alias = premise_conf["premise_format_alias"]
         context_format_alias = premise_conf["context_format_alias"]
         premise_format = PREMISE_ALIASES[premise_format_alias]
         context_format = CONTEXT_ALIASES[context_format_alias]
         premise_filter = PremiseFilter.from_json(premise_conf["premise_filter"])
-        retriever = PremiseRetriever.load_from_checkpoint_loc(checkpoint_loc)
+        retriever = PremiseRetriever.from_pretrained(checkpoint_loc)
         return cls(
-            retriever, context_format, premise_format, premise_filter, checkpoint_loc
+            retriever,
+            max_seq_len,
+            tokenizer,
+            context_format,
+            premise_format,
+            premise_filter,
+            checkpoint_loc,
         )
 
     @classmethod
@@ -215,6 +237,17 @@ def get_ranked_premise_generator(
 class PremiseModelNotFound(Exception):
     pass
 
+
+def move_prem_wrapper_to(
+    premise_model_wrapper: PremiseModelWrapper, device: str
+) -> None:
+    match premise_model_wrapper:
+        case LocalPremiseModelWrapper():
+            premise_model_wrapper.retriever = premise_model_wrapper.retriever.to(device)
+        case _:
+            pass
+
+
 def premise_wrapper_from_conf(conf: Any) -> PremiseModelWrapper:
     attempted_alias = conf["alias"]
     match attempted_alias:
@@ -223,4 +256,6 @@ def premise_wrapper_from_conf(conf: Any) -> PremiseModelWrapper:
         case PremiseServerModelWrapper.ALIAS:
             return PremiseServerModelWrapper.from_conf(conf)
         case _:
-            raise PremiseModelNotFound(f"Could not find premise model wrapper: {attempted_alias}")
+            raise PremiseModelNotFound(
+                f"Could not find premise model wrapper: {attempted_alias}"
+            )

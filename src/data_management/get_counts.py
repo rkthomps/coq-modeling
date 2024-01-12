@@ -18,6 +18,9 @@ from coqpyt.coq.structs import TermType
 from premise_selection.premise_filter import PremiseFilter
 from data_management.dataset_file import DatasetFile, Sentence, data_shape_expected
 from data_management.splits import DATA_POINTS_NAME
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 def remove_comments(step_text: str) -> str:
@@ -33,7 +36,7 @@ class Origin(enum.Enum):
     COQ_STD_LIB = 1
     COQ_USER_CONTRIB = 2
     LOCAL_IN_FILE = 3
-    LOCAL_OUT_OF_FILE = 3
+    LOCAL_OUT_OF_FILE = 4
 
 
 @typechecked
@@ -92,13 +95,15 @@ class PremTypeTable:
 
     @staticmethod
     def get_origin(premise: Sentence, dset_file: DatasetFile) -> Origin:
+        norm_premise_path = DatasetFile.fix_path(premise.file_path)
+        norm_file_path = DatasetFile.fix_path(dset_file.file_context.file)
         coq_lib_str = os.path.join("lib", "coq", "theories") + "/"
-        if coq_lib_str in premise.file_path:
+        if coq_lib_str in norm_premise_path:
             return Origin.COQ_STD_LIB
         coq_contrib_str = os.path.join("lib", "user-contrib") + "/"
-        if coq_contrib_str in premise.file_path:
+        if coq_contrib_str in norm_premise_path:
             return Origin.COQ_USER_CONTRIB
-        if premise.file_path == dset_file.file_context.file:
+        if norm_premise_path == norm_file_path:
             return Origin.LOCAL_IN_FILE
         return Origin.LOCAL_OUT_OF_FILE
 
@@ -191,13 +196,14 @@ class PosPremiseAggregator(PremTableAggregator):
         self.num_nonempty_premises = num_nonempty_premises
         self.num_has_period = num_has_period
 
-    def add_premise_step(self, step_text: str, pos_premises: list[Sentence], dset_file: DatasetFile) -> None:
+    def add_premise_step(
+        self, step_text: str, pos_premises: list[Sentence], dset_file: DatasetFile
+    ) -> None:
         self.add_table(PremTypeTable.from_premises(pos_premises, dset_file))
         if len(pos_premises) > 0:
             self.num_nonempty_premises += 1
         step_without_comments = remove_comments(step_text)
         if "." in step_without_comments.strip().rstrip("."):
-            print(step_text)
             self.num_has_period += 1
 
     def compute_by_key(self) -> dict[str, float]:
@@ -334,12 +340,16 @@ class FileResult:
                     step, proof, dset_file, oof_set, set(in_file_premises)
                 )
                 pos_aggregator.add_premise_step(step.step.text, pos_premises, dset_file)
-                in_file_avail_table = PremTypeTable.from_premises(in_file_premises, dset_file)
+                in_file_avail_table = PremTypeTable.from_premises(
+                    in_file_premises, dset_file
+                )
                 avail_aggregator.add_table(in_file_avail_table)
             num_steps += len(proof.steps)
         num_proofs = len(dset_file.proofs)
         num_files = 1
-        oof_avail_table = PremTypeTable.from_premises(oof_premises, dset_file, weight=num_steps)
+        oof_avail_table = PremTypeTable.from_premises(
+            oof_premises, dset_file, weight=num_steps
+        )
         avail_aggregator.add_table(oof_avail_table)
         return cls(num_proofs, num_steps, num_files, avail_aggregator, pos_aggregator)
 
