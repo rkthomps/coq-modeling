@@ -2,18 +2,21 @@ from __future__ import annotations
 from typing import Any
 from dataclasses import dataclass
 
+import os
+
 from coqpyt.coq.base_file import CoqFile, GoalAnswer
+from coqpyt.coq.lsp.structs import Goal
 from data_management.splits import DataSplit, FileInfo
 
 from parsy import string, regex, whitespace, seq, forward_declaration, Parser, peek
 
-# drive
-
 from data_management.splits import FileInfo
+from util.util import get_fresh_path
 
 
 term_p = forward_declaration()
-expr_p = forward_declaration()
+expr_p_app = forward_declaration()
+expr_p_var = forward_declaration()
 
 __raw_name_p = regex(r"\w+") << whitespace.optional()
 __reserved_p = (
@@ -104,7 +107,7 @@ __fix_p_raw = seq(
     string("fix") << whitespace >> __name_p,
     params_p << __struct_arg_p << __colon_p,
     __name_p,
-    __def_p >> expr_p,
+    __def_p >> expr_p_app,
 ).combine(combine_fix)
 
 fix_p = __fix_p_raw | parens(__fix_p_raw)
@@ -157,7 +160,7 @@ def combine_app_p(abstr: Abstraction, args: list[Expr]) -> AppT:
     return AppT(abstr, args)
 
 
-__app_p_raw = seq(abstraction_p, expr_p.at_least(1)).combine(combine_app_p)
+__app_p_raw = seq(abstraction_p, expr_p_var.at_least(1)).combine(combine_app_p)
 
 app_p = __app_p_raw | parens(__app_p_raw)
 
@@ -174,7 +177,7 @@ def combine_match_branch(pattern: ConstrExpr, body: Expr) -> MatchBranch:
 
 match_branch_p = seq(
     string("|") << whitespace >> constr_expr_p << string("=>") << whitespace,
-    expr_p << whitespace.optional(),
+    expr_p_app << whitespace.optional(),
 ).combine(combine_match_branch)
 
 
@@ -188,7 +191,7 @@ def combine_match(expr: Expr, branches: list[MatchBranch]) -> MatchT:
     return MatchT(expr, branches)
 
 
-__parens_expr_or_var_p = var_p | parens(expr_p)
+__parens_expr_or_var_p = var_p | parens(expr_p_app)
 
 __match_p_raw = seq(
     string("match")
@@ -212,38 +215,78 @@ Expr = FixT | MatchT | AppT | VarT
 Term = FixT | MatchT | AppT | VarT | ProdT
 
 term_p.become(app_p | fix_p | match_p | prod_p | var_p)
-expr_p.become(app_p | fix_p | match_p | var_p)
+expr_p_app.become(app_p | fix_p | match_p | var_p)
+expr_p_var.become(var_p | app_p | fix_p | match_p | var_p)
 
 
-def simplify_ast1(coq_ast: Any) -> Any:
-    match coq_ast:
-        case {"v": rest, "loc": _}:
-            return simplify_ast1(rest)
-        case dict():
-            return {simplify_ast(k): simplify_ast(v) for k, v in coq_ast.items()}
-        case list():
-            return [simplify_ast(i) for i in coq_ast]
-        case other:
-            return other
-
-
-def simplify_ast2(coq_ast: Any) -> Any:
-    match coq_ast:
-        case ["CRef", ["Ser_Qualid", ["DirPath", []], ["Id", id]], None]:
-            return ["Id", id]
-        case dict():
-            return {simplify_ast2(k): simplify_ast2(v) for k, v in coq_ast.items()}
-        case list():
-            return [simplify_ast2(i) for i in coq_ast]
-        case other:
-            return other
-
-
-def simplify_ast(coq_ast: Any) -> Any:
-    simp = simplify_ast1(coq_ast)
-    simp = simplify_ast2(simp)
-    return simp
-
-
-def get_all_normal_goals_and_proofs(file_info: FileInfo):
+class EmptyFgGoalError(Exception):
     pass
+
+
+class HypsEmptyError(Exception):
+    pass
+
+
+def __appears_in_hyp_or_goal(var: str, goal: Goal) -> bool:
+    for hyp in goal.hyps:
+        if var in hyp.ty:
+            return True
+    if var in goal.ty:
+        return True
+    return False
+
+
+def has_hyp(goal: Goal) -> bool:
+    return len(goal.hyps) > 0
+
+
+def get_generalize_var(goal: Goal) -> str:
+    if len(goal.hyps) == 0:
+        raise HypsEmptyError("No vars to generalize.")
+    for hyp in goal.hyps:
+        for name in hyp.names:
+            if __appears_in_hyp_or_goal(name, goal):
+                return name
+    return goal.hyps[0].names[0]
+
+
+def get_fg_goal(goal: GoalAnswer) -> Goal:
+    assert goal.goals is not None
+    fg_goals = goal.goals.goals
+    if len(fg_goals) == 0:
+        raise EmptyFgGoalError("No foreground goals.")
+    return fg_goals[0]
+
+
+def get_norm_goal(data_loc: str, file_info: FileInfo, proof_prefix: str) -> Term:
+    file_loc = os.path.join(data_loc, file_info.file)
+    workspace_loc = os.path.join(data_loc, file_info.workspace)
+    aux_file = get_fresh_path(".", "goal_aux.v")
+
+    try:
+        with open(aux_file, "w") as fout:
+            fout.write(proof_prefix)
+        with CoqFile(file_loc, workspace_loc) as coq_file:
+            coq_file.run()
+            goals = coq_file.current_goals
+            fg_goal = get_fg_goal(goals)
+            while has_hyp(fg_goal):
+                generalize_var = get_generalize_var(fg_goal)
+                last_step = len(coq_file.steps)
+                step_text = f"\ngeneralize dependent {generalize_var}."
+                coq_file.add_step(last_step - 1, step_text)
+                coq_file.exec()
+                goals = coq_file.current_goals
+                fg_goal = get_fg_goal(goals)
+            last_step = len(coq_file.steps)
+            rid_notations = "\nUnset Printing Notations."
+            coq_file.add_step(last_step - 1, rid_notations)
+            simpl = "\ncbv."
+            last_step = len(coq_file.steps)
+            coq_file.add_step(last_step - 1, simpl)
+            goals = coq_file.current_goals
+            fg_goal = get_fg_goal(goals)
+            return term_p.parse(fg_goal.ty)
+    finally:
+        if os.path.exists(aux_file):
+            os.remove(aux_file)
