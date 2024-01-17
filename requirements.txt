@@ -120,3 +120,5 @@ wcwidth==0.2.8
 Werkzeug==3.0.0
 xxhash==3.4.1
 yarl==1.9.2
+typeguard==4.1.5
+ipdb==0.13.13

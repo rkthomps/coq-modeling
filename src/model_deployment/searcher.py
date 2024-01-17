@@ -5,13 +5,12 @@ import time
 import ipdb
 import re
 
-import sys, os
-
-from model_deployment.model_wrapper import ModelWrapper, ModelResult
+from model_deployment.model_wrapper import ModelWrapper
 from model_deployment.node_score import NodeScore
 from model_deployment.goal_comparer import ParsedObligations
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import SearchNode, SearchTree
+from model_deployment.step_separator import separate_steps
 from util.util import get_basic_logger
 
 from data_management.dataset_file import DatasetFile, Proof
@@ -303,60 +302,73 @@ class SearchTreeManager:
         result = self.model_wrapper.get_recs(example, self.max_branch)
         end_time = time.time_ns()
         _logger.info(f"Model time: {(end_time - start_time) / 1e9}")
-        children: list[SearchNode] = []
         next_frontier_pool: list[SearchNode] = []
         next_frontier_goals: list[ParsedObligations] = []
-        for tactic, score, num_tokens in zip(
+        leaf_subtree.children = []
+
+        for tactics, score, num_tokens in zip(
             result.next_tactic_list, result.score_list, result.num_tokens_list
         ):
-            proof_script = leaf_subtree.total_proof_str() + tactic
-            start_time = time.time_ns()
-            proof_check_result = self.proof_manager.check_proof(proof_script)
-            end_time = time.time_ns()
-            _logger.info(f"Check time: {(end_time - start_time) / 1e9}")
-            node_score = self.score_type.from_unit_score(
-                score, num_tokens, self.max_branch
-            )
-            match proof_check_result.tactic_result:
-                case TacticResult.COMPLETE:
-                    complete_node = self.__get_complete_child_node(
-                        proof_check_result,
-                        tactic,
-                        leaf_subtree,
-                        node_score,
-                        search_start_time,
-                    )
-                    children.append(complete_node)
-                    leaf_subtree.children = children
-                    return complete_node
+            parent, steps = leaf_subtree, separate_steps(tactics)
+            for tactic in steps:
+                proof_script = parent.total_proof_str() + tactic
+                start_time = time.time_ns()
+                proof_check_result = self.proof_manager.check_proof(proof_script)
+                end_time = time.time_ns()
+                _logger.info(f"Check time: {(end_time - start_time) / 1e9}")
+                node_score = self.score_type.from_unit_score(
+                    score, num_tokens, self.max_branch
+                )
+                # If we want the node_score to be different I can create a Decorator
 
-                case TacticResult.INVALID:
-                    invalid_node = self.__get_invalid_child_node(
-                        proof_check_result,
-                        tactic,
-                        leaf_subtree,
-                        node_score,
-                        search_start_time,
-                    )
-                    children.append(invalid_node)
-
-                case TacticResult.VALID:
-                    valid_node = self.__get_valid_child_node(
-                        proof_check_result,
-                        tactic,
-                        leaf_subtree,
-                        node_score,
-                        search_start_time,
-                    )
-                    children.append(valid_node)
-                    # We will check again if the candide makes progress to make
-                    # sure it isn't superceded by later candidates.
-                    if valid_node.makes_progress:
-                        assert proof_check_result.parsed_current_goals is not None
-                        next_frontier_pool.append(valid_node)
-                        next_frontier_goals.append(
-                            proof_check_result.parsed_current_goals
+                match proof_check_result.tactic_result:
+                    case TacticResult.COMPLETE:
+                        complete_node = self.__get_complete_child_node(
+                            proof_check_result,
+                            tactic,
+                            parent,
+                            node_score,
+                            search_start_time,
                         )
+                        parent.children.append(complete_node)
+                        return complete_node
+
+                    case TacticResult.INVALID:
+                        invalid_node = self.__get_invalid_child_node(
+                            proof_check_result,
+                            tactic,
+                            parent,
+                            node_score,
+                            search_start_time,
+                        )
+                        parent.children.append(invalid_node)
+                        break
+
+                    case TacticResult.VALID:
+                        valid_node = self.__get_valid_child_node(
+                            proof_check_result,
+                            tactic,
+                            parent,
+                            node_score,
+                            search_start_time,
+                        )
+                        parent.children.append(valid_node)
+
+                        # NOTE: We may want to change the parent to the valid 
+                        # node if we want different scores for the prefixes
+                        # for certain score types.
+                        #parent = valid_node
+                        
+                        # We will check again if the candidate makes progress to make
+                        # sure it isn't superseded by previous candidates.
+                        if valid_node.makes_progress:
+                            assert proof_check_result.parsed_current_goals is not None
+                            next_frontier_pool.append(valid_node)
+                            next_frontier_goals.append(
+                                proof_check_result.parsed_current_goals
+                            )
+                        else:
+                            break
 
         filtered_candidates = self.__filter_next_candidates(
             next_frontier_pool, next_frontier_goals
@@ -366,7 +378,6 @@ class SearchTreeManager:
             self.seen_goals.append(confirmed_goals)
             self.seen_goals_nodes.append(confirmed_next_candidate)
 
-        leaf_subtree.children = children
         return None
 
     @staticmethod

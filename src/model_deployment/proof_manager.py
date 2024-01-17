@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Optional
 from types import TracebackType
 
-import sys, os
+import os
 from enum import Enum
 import ipdb
 
@@ -27,7 +27,7 @@ from util.coqpyt_utils import get_all_goals
 
 from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
 from coqpyt.coq.structs import ProofTerm, Term
-from coqpyt.coq.lsp.structs import Goal, GoalAnswer
+from coqpyt.coq.lsp.structs import GoalAnswer
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.exceptions import InvalidChangeException
