@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 import os
 
-from coqpyt.coq.base_file import CoqFile, GoalAnswer
-from coqpyt.coq.lsp.structs import Goal
+from coqpyt.coq.base_file import CoqFile
+from coqpyt.coq.lsp.structs import Goal, GoalAnswer
 from data_management.splits import DataSplit, FileInfo
 
 from parsy import string, regex, whitespace, seq, forward_declaration, Parser, peek
