@@ -306,20 +306,31 @@ class SearchTreeManager:
         next_frontier_goals: list[ParsedObligations] = []
         leaf_subtree.children = []
 
-        for tactics, score, num_tokens in zip(
-            result.next_tactic_list, result.score_list, result.num_tokens_list
-        ):
-            parent, steps = leaf_subtree, separate_steps(tactics)
-            for tactic in steps:
-                proof_script = parent.total_proof_str() + tactic
+        # Order results by score when expanding the tree.
+        results = sorted(
+            zip(result.next_tactic_list, result.score_list, result.num_tokens_list),
+            key=lambda r: self.score_type.from_unit_score(
+                r[1], r[2], self.max_branch
+            ).compute(),
+            reverse=True,
+        )
+
+        for tactics, score, num_tokens in results:
+            parent, steps, tactic = leaf_subtree, separate_steps(tactics), ""
+            unfold_tactics: list[str] = []
+            for step in steps:
+                tactic = tactic + step
+                unfold_tactics.append(tactic)
+
+            for tactic in unfold_tactics[::-1]:
                 start_time = time.time_ns()
+                proof_script = leaf_subtree.total_proof_str() + tactic
                 proof_check_result = self.proof_manager.check_proof(proof_script)
                 end_time = time.time_ns()
                 _logger.info(f"Check time: {(end_time - start_time) / 1e9}")
                 node_score = self.score_type.from_unit_score(
                     score, num_tokens, self.max_branch
                 )
-                # If we want the node_score to be different I can create a Decorator
 
                 match proof_check_result.tactic_result:
                     case TacticResult.COMPLETE:
@@ -342,7 +353,6 @@ class SearchTreeManager:
                             search_start_time,
                         )
                         parent.children.append(invalid_node)
-                        break
 
                     case TacticResult.VALID:
                         valid_node = self.__get_valid_child_node(
@@ -354,11 +364,6 @@ class SearchTreeManager:
                         )
                         parent.children.append(valid_node)
 
-                        # NOTE: We may want to change the parent to the valid 
-                        # node if we want different scores for the prefixes
-                        # for certain score types.
-                        #parent = valid_node
-                        
                         # We will check again if the candidate makes progress to make
                         # sure it isn't superseded by previous candidates.
                         if valid_node.makes_progress:
@@ -367,8 +372,6 @@ class SearchTreeManager:
                             next_frontier_goals.append(
                                 proof_check_result.parsed_current_goals
                             )
-                        else:
-                            break
 
         filtered_candidates = self.__filter_next_candidates(
             next_frontier_pool, next_frontier_goals
