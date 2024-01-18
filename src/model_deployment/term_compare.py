@@ -11,9 +11,9 @@ import shutil
 import ipdb
 import argparse
 
-from coqpyt.coq.base_file import CoqFile, GoalAnswer
-from coqpyt.coq.lsp.structs import Goal, Hyp
-from coqpyt.coq.exceptions import InvalidStepException
+from coqpyt.coq.base_file import CoqFile
+from coqpyt.coq.lsp.structs import Goal, Hyp, GoalAnswer
+from coqpyt.coq.exceptions import InvalidChangeException 
 from data_management.splits import DataSplit, FileInfo
 
 from parsy import (
