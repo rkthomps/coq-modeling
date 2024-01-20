@@ -1,5 +1,9 @@
 from coqpyt.coq.structs import GoalAnswer
 from coqpyt.coq.lsp.structs import Goal
+from coqpyt.coq.base_file import CoqFile
+from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
+
+import ipdb
 
 
 def get_all_goals(goal_answer: GoalAnswer) -> list[Goal]:
@@ -9,3 +13,63 @@ def get_all_goals(goal_answer: GoalAnswer) -> list[Goal]:
         collapsed_stack.extend(stack_goals1)
         collapsed_stack.extend(stack_goals2)
     return goal_answer.goals.goals + collapsed_stack + goal_answer.goals.shelf
+
+
+def go_through_point(coq_file: CoqFile, point: int) -> None:
+    while coq_file.steps_taken < point + 1:
+        coq_file.exec(1)
+    while point + 1 < coq_file.steps_taken:
+        coq_file.exec(-1)
+
+
+def go_to_point(coq_file: CoqFile, point: int) -> None:
+    while coq_file.steps_taken < point:
+        coq_file.exec(1)
+    while point < coq_file.steps_taken:
+        coq_file.exec(-1)
+
+
+def get_proof_indices(coq_file: CoqFile) -> list[int]:
+    go_to_point(coq_file, 0)
+    cur_in_proof = coq_file.in_proof
+    indices: list[int] = []
+    while coq_file.steps_taken < len(coq_file.steps):
+        coq_file.exec(1)
+        if not cur_in_proof and coq_file.in_proof:
+            indices.append(coq_file.steps_taken - 1)
+        cur_in_proof = coq_file.in_proof
+    return indices
+
+
+
+def get_whole_proof_delete_steps(
+    coq_file: CoqFile, thm_idx: int
+) -> tuple[list[int], list[str]]:
+    delete_indices: list[int] = []
+    delete_strs: list[str] = []
+    go_through_point(coq_file, thm_idx)
+    assert coq_file.in_proof
+    while coq_file.in_proof and coq_file.steps_taken < len(coq_file.steps):
+        delete_idx = coq_file.steps_taken
+        delete_strs.append(coq_file.steps[delete_idx].text)
+        delete_indices.append(delete_idx)
+        coq_file.exec(1)
+    return delete_indices, delete_strs
+
+
+def replace_proof_with_admitted_stub(coq_file: CoqFile, thm_idx: int) -> list[str]:
+    delete_indices, delete_strs = get_whole_proof_delete_steps(coq_file, thm_idx)
+    delete_commands = [CoqDeleteStep(i) for i in reversed(delete_indices)]
+    go_through_point(coq_file, thm_idx)
+    add_commands = [CoqAddStep("\nAdmitted.", coq_file.steps_taken - 1)]
+    coq_file.change_steps(delete_commands + add_commands)
+    return delete_strs
+
+
+def restore_proof_file(
+    coq_file: CoqFile, thm_idx: int, orig_proof_steps: list[str]
+) -> None:
+    delete_indices, _ = get_whole_proof_delete_steps(coq_file, thm_idx)
+    delete_steps = [CoqDeleteStep(i) for i in reversed(delete_indices)]
+    add_steps = [CoqAddStep(s, thm_idx + i) for i, s in enumerate(orig_proof_steps)]
+    coq_file.change_steps(delete_steps + add_steps)
