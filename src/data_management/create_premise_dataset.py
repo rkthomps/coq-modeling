@@ -158,7 +158,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args(sys.argv[1:])
-    num_procs = 1
+    num_procs = 2
     if args.num_procs:
         num_procs = args.num_procs
         if num_procs < 2:
@@ -168,18 +168,6 @@ if __name__ == "__main__":
         conf = load(fin, Loader=Loader)
 
     premise_config = PremiseDataConfig.from_config(conf)
-
-    from data_management.dataset_file import DatasetFile
-
-    mytest = DatasetFile.from_directory(
-        "/home/kthompson/coq-modeling/raw-data/coq-dataset/data_points/uds-psl-coq-synthetic-incompleteness-theories-Shared-Libs-DLW-Utils-rel_iter.v"
-    )
-
-    for proof in mytest.proofs:
-        for step in proof.steps:
-            pos_avail = premise_config.premise_filter.get_pos_and_avail_premises(
-                step, proof, mytest
-            )
 
     if os.path.exists(premise_config.output_dataset_loc):
         raise FileExistsError(f"{premise_config.output_dataset_loc}")
