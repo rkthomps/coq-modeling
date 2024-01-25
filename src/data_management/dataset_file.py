@@ -338,6 +338,8 @@ class FileContext:
 
 @typechecked
 class DatasetFile:
+    __warn_num = 0
+
     def __init__(self, file_context: FileContext, proofs: list[Proof]) -> None:
         # TODO: Turn into list of proofs.
         self.file_context = file_context
@@ -348,32 +350,29 @@ class DatasetFile:
     def proofs_to_string(self) -> str:
         proof_strings = [p.proof_text_to_string() for p in self.proofs]
         return "\n\n".join(proof_strings)
-    
-    @staticmethod
-    def fix_path(path: str) -> str:
-        if path.startswith("/root"):
-            return path
-        elif path.startswith("../root"):
-            return path[2:]
-        elif path.startswith("/coq-dataset"):
-            return path
-        elif path.startswith("repos"):
-            return f"/coq-dataset/{path}"
-        elif path.startswith("../coq-dataset"):
-            return path[2:]
-        else:
-            _logger.debug(
-                f"Unexpected file path prefix: {path[:20]}"
-            )
-            return path
 
+    @classmethod
+    def fix_path(cls, path: str) -> str:
+        while path.startswith("../") or path.startswith("..\\"):
+            path = path[3:]
+        return path
+
+    @classmethod
+    def __share_subpath(cls, path1: str, path2: str) -> bool:
+        return path1.endswith(path2) or path2.endswith(path1)
 
     def __get_oof_avail_premises(self) -> list[Sentence]:
+        """
+        Not a direct comparison of paths. 
+        Consider zyla-random-proofs-Interpreter.v where premises
+        can have file path ../coq-dataset/... and the file context
+        can have file path /coq-dataset/....
+        """
         oof_premises: set[Sentence] = set()
         for premise in self.file_context.avail_premises:
             norm_prem_path = self.fix_path(premise.file_path)
             norm_file_path = self.fix_path(self.file_context.file)
-            if norm_prem_path != norm_file_path: 
+            if not self.__share_subpath(norm_prem_path, norm_file_path):
                 oof_premises.add(premise)
         return list(oof_premises)
 
@@ -382,7 +381,7 @@ class DatasetFile:
         for premise in self.file_context.avail_premises:
             norm_prem_path = self.fix_path(premise.file_path)
             norm_file_path = self.fix_path(self.file_context.file)
-            if norm_prem_path == norm_file_path: 
+            if self.__share_subpath(norm_prem_path, norm_file_path):
                 in_file_premises.add(premise)
         return list(in_file_premises)
 
