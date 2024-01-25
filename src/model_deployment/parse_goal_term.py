@@ -2,6 +2,10 @@ from typing import Any
 
 from model_deployment.goal_term import (
     VarT,
+    TupleT,
+    TupleTypeT,
+    TargetT,
+    LetT,
     ParamT,
     ConstructorApp,
     FixT,
@@ -28,6 +32,8 @@ from parsy import (
 
 term_p = forward_declaration()
 term_p_var = forward_declaration()
+term_par_tuple = forward_declaration()
+term_par_tuple_type = forward_declaration()
 
 __raw_name_p = regex(r"(\w|\.|')+") << whitespace.optional()
 __reserved_p = (
@@ -39,6 +45,8 @@ __reserved_p = (
     | string("exists")
     | string("match")
     | string("fun")
+    | string("let")
+    | string("in")
 ).should_fail("reserved")
 __name_p = peek(__reserved_p) >> __raw_name_p
 
@@ -56,7 +64,9 @@ def combined_constr_app(cstr_name: str, cstr_exprs: list[ConstrExpr]) -> Constru
     return ConstructorApp(cstr_name, cstr_exprs)
 
 
-__constr_app_p_raw = seq(__name_p, constr_expr_p.at_least(1))
+__constr_app_p_raw = seq(__name_p, constr_expr_p.at_least(1)).combine(
+    combined_constr_app
+)
 __constr_app_p = __constr_app_p_raw | parens(__constr_app_p_raw)
 
 constr_expr_p.become(__constr_app_p | var_p)
@@ -82,6 +92,45 @@ __param_set_p_paren = parens(__param_set_p_raw)
 
 __multi_param_set_p_paren = __param_set_p_paren.at_least(1).combine(join_lists)
 params_p = __param_set_p_raw | __multi_param_set_p_paren
+
+
+def combine_tuple_p(*args: Term) -> TupleT:
+    return TupleT(list(args))
+
+
+__tuple_p_raw = term_par_tuple.sep_by(
+    string(",") << whitespace.optional(), min=2
+).combine(combine_tuple_p)
+__tuple_p_paren = parens(__tuple_p_raw)
+# tuple_p = __tuple_p_raw | parens(__tuple_p_raw)
+tuple_p = parens(__tuple_p_raw)
+
+
+def combine_tuple_type_p(*args: Term) -> TupleTypeT:
+    return TupleTypeT(list(args))
+
+
+__tuple_type_raw = term_par_tuple_type.sep_by(
+    string("*") << whitespace.optional(), min=2
+).combine(combine_tuple_type_p)
+
+__tuple_type_p_paren = parens(__tuple_type_raw)
+tuple_type_p = __tuple_type_raw | parens(__tuple_type_raw)
+
+
+target_p = var_p | tuple_p
+
+
+def combine_let_p(target: TargetT, source: Term, body: Term) -> LetT:
+    return LetT(target, source, body)
+
+
+__let_p = seq(
+    string("let") >> whitespace >> target_p << string(":=") << whitespace,
+    term_p << string("in") << whitespace,
+    term_p,
+).combine(combine_let_p)
+let_p = __let_p | parens(__let_p)
 
 
 def combine_fix(id: str, params: list[ParamT], ty: Term, body: Term) -> FixT:
@@ -151,21 +200,57 @@ def combine_match(expr: Term, branches: list[MatchBranchT]) -> MatchT:
     return MatchT(expr, branches)
 
 
-__parens_expr_or_var_p = var_p | parens(term_p)
-
 __match_p_raw = seq(
-    string("match")
-    << whitespace
-    >> __parens_expr_or_var_p
-    << string("with")
-    << whitespace,
+    string("match") << whitespace >> term_p << string("with") << whitespace,
     match_branch_p.at_least(1) << string("end") << whitespace.optional(),
 ).combine(combine_match)
 
 match_p = __match_p_raw | parens(__match_p_raw)
 
-__term_p_raw = app_p | fix_p | fun_p | match_p | prod_p | var_p
+__term_p_raw = (
+    prod_p | fix_p | fun_p | match_p | let_p | tuple_p | tuple_type_p | app_p | var_p
+)
 term_p.become(__term_p_raw | parens(__term_p_raw))
 
-__term_p_var = var_p | app_p | fix_p | fun_p | match_p | prod_p
+__term_p_var = (
+    prod_p
+    | fix_p
+    | fun_p
+    | match_p
+    | let_p
+    | var_p
+    | app_p
+    | tuple_p
+    | tuple_type_p
+    | prod_p
+)
 term_p_var.become(__term_p_var | parens(__term_p_var))
+
+__term_par_tuple = (
+    prod_p
+    | fix_p
+    | fun_p
+    | match_p
+    | let_p
+    # | tuple_p
+    # | tuple_type_p
+    | var_p
+    | app_p
+    | prod_p
+)
+term_par_tuple.become(__term_par_tuple | parens(__term_par_tuple))
+
+__term_par_tuple_type = (
+    prod_p
+    | fix_p
+    | fun_p
+    | match_p
+    | let_p
+    # | tuple_p
+    # | tuple_type_p
+    | var_p
+    | app_p
+    | prod_p
+)
+
+term_par_tuple_type.become(__term_par_tuple_type | parens(__term_par_tuple_type))

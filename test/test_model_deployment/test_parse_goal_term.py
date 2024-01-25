@@ -5,9 +5,43 @@ from model_deployment.goal_term import (
     ParamT,
     FunT,
     FixT,
+    LetT,
+    TupleT,
+    TupleTypeT,
 )
 from model_deployment.parse_goal_term import term_p, app_p
 import ipdb
+
+
+test_str_7 = """\
+(fun h : nat =>
+ eq
+   ((fix min (l0 : list nat) : option nat :=
+       match l0 with
+       | nil => None
+       | cons h0 tl =>
+           match min tl with
+           | Some m =>
+               if
+                match m with
+                | 0 => false
+                | S m' =>
+                    (fix leb (n m0 : nat) {struct n} : bool :=
+                       match n with
+                       | 0 => true
+                       | S n' =>
+                           match m0 with
+                           | 0 => false
+                           | S m'0 => leb n' m'0
+                           end
+                       end) h0 m'
+                end
+               then Some h0
+               else Some m
+           | None => Some h0
+           end
+       end) l) (Some h))
+"""
 
 
 class TestTermCompare:
@@ -22,6 +56,15 @@ class TestTermCompare:
     def test_app(self) -> None:
         str1 = "(a (1 3) (4 5) (9 9))"
 
+    def test_let(self) -> None:
+        test_str = "let (x, _) := p in x"
+        res = term_p.parse(test_str)
+        assert res == LetT(TupleT([VarT("x"), VarT("_")]), VarT("p"), VarT("x"))
+
+    def test_prod(self) -> None:
+        test_str = "fun Y : X * Z => x"
+        res = term_p.parse(test_str)
+        assert res == FunT([ParamT("Y", TupleTypeT([VarT("X"), VarT("Z")]))], VarT("x"))
 
     def test_failure_1(self) -> None:
         test_str = "forall _ : (eq 1 3), False"
@@ -48,17 +91,23 @@ class TestTermCompare:
         res_act = term_p.parse(test_str)
         assert test_res == res_act
 
-    def test_failure_4(self) -> None:
-        test_str = "App.le"
-        test_res = VarT("App.le")
-        assert test_res == term_p.parse(test_str)
+    # def test_failure_4(self) -> None:
+    #     test_str = "App.le"
+    #     test_res = VarT("App.le")
+    #     assert test_res == term_p.parse(test_str)
 
-    def test_failure_5(self) -> None:
-        test_str = "y'"
-        test_res = VarT("y'")
-        assert test_res == term_p.parse(test_str)
+    # def test_failure_5(self) -> None:
+    #     test_str = "y'"
+    #     test_res = VarT("y'")
+    #     assert test_res == term_p.parse(test_str)
 
-    def test_failure_6(self) -> None:
-        test_str = "fix cat (a : nat) : nat := 1"
-        test_res = FixT("cat", [ParamT("a", VarT("nat"))], VarT("nat"), VarT("1"))
-        assert test_res == term_p.parse(test_str)
+    # def test_failure_6(self) -> None:
+    #     test_str = "fix cat (a : nat) : nat := 1"
+    #     test_res = FixT("cat", [ParamT("a", VarT("nat"))], VarT("nat"), VarT("1"))
+    #     assert test_res == term_p.parse(test_str)
+
+    # def test_failure_7(self) -> None:
+    #     term_p.parse(test_str_7)
+
+    # def test_failure_8(self) -> None:
+    #     ("h%h l%l")

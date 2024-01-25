@@ -239,20 +239,20 @@ class DataSplit:
         )
 
     @staticmethod
-    def __get_shuffled_files(projs: list[Project], data_loc: str) -> list[FileInfo]:
+    def __get_shuffled_files(projs: list[Project]) -> list[FileInfo]:
         flat_dps = [file for proj in projs for file in proj.files]
         random.seed(RANDOM_SEED)
         random.shuffle(flat_dps)
         return flat_dps
 
-    def get_file_list(self, data_loc: str, split: Split) -> list[FileInfo]:
+    def get_file_list(self, split: Split) -> list[FileInfo]:
         match split:
             case Split.TRAIN:
-                return self.__get_shuffled_files(self.train_projects, data_loc)
+                return self.__get_shuffled_files(self.train_projects)
             case Split.VAL:
-                return self.__get_shuffled_files(self.val_projects, data_loc)
+                return self.__get_shuffled_files(self.val_projects)
             case Split.TEST:
-                return self.__get_shuffled_files(self.test_projects, data_loc)
+                return self.__get_shuffled_files(self.test_projects)
 
     def get_project_list(self, split: Split) -> list[Project]:
         match split:
@@ -414,9 +414,9 @@ class DataSplit:
         num_raw_files = len(os.listdir(data_points_loc))
         print(f"Num raw files: {num_raw_files}")
         num_captured_files = (
-            len(data_split.get_file_list(data_loc, Split.TRAIN))
-            + len(data_split.get_file_list(data_loc, Split.VAL))
-            + len(data_split.get_file_list(data_loc, Split.TEST))
+            len(data_split.get_file_list(Split.TRAIN))
+            + len(data_split.get_file_list(Split.VAL))
+            + len(data_split.get_file_list(Split.TEST))
         )
         print(f"Num captured files: {num_captured_files}")
         return data_split

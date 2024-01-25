@@ -9,6 +9,7 @@ evals
 reports
 distances
 analysis
+proof-db
 
 # Temporary
 test_size.py
@@ -44,6 +45,7 @@ shared-thms.json
 
 # scripts
 clean_search.sh
+refresh_evals.sh
 
 
 # Python files
@@ -65,6 +67,7 @@ __pycache__
 # Proof search files
 .proof-search
 proof-tree.json
+*goal_aux.v
 
 # Temporary/Throw-away python scripts
 src/throw_away

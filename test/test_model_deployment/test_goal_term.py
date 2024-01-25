@@ -38,6 +38,11 @@ class TestGoalTerm:
         assert term_dist(term1, term2) == 1
 
     def test_term_dist5(self) -> None:
+        term1 = term_p.parse("(a b c)")
+        term2 = term_p.parse("(a c b)")
+        assert term_dist(term1, term2) == 1
+
+    def test_term_dist5(self) -> None:
         term1 = term_p.parse("(a (1 3) (4 5) (9 9))")
         term2 = term_p.parse("(a (4 5) (1 3))")
         assert term_dist(term1, term2) == 3

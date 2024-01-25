@@ -1,7 +1,11 @@
 from __future__ import annotations
 from typing import Any, Optional
 import json
-from dataclasses import dataclass
+import ipdb
+
+
+def hash_list(term_list: list[Any]) -> int:
+    return hash(tuple([hash(e) for e in term_list]))
 
 
 class VarT:
@@ -10,8 +14,16 @@ class VarT:
     def __init__(self, id: str) -> None:
         self.id = id
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, VarT):
+            return False
+        return hash(self) == hash(other)
+
+    def __hash__(self) -> int:
+        return hash(self.get_key())
+
     def get_key(self) -> str:
-        return f"key: {self.id}"
+        return f"var: {self.id}"
 
     def get_subterms(self) -> list[Term]:
         return []
@@ -27,12 +39,135 @@ class VarT:
         return cls(json_data["id"])
 
 
+class TupleT:
+    ALIAS = "Tuple"
+
+    def __init__(self, components: list[Term]) -> None:
+        self.components = components
+
+    def __hash__(self) -> int:
+        return hash((self.get_key(), hash_list(self.components)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TupleT):
+            return False
+        return hash(self) == hash(other)
+
+    def get_key(self) -> str:
+        return f"tuple"
+
+    def get_subterms(self) -> list[Term]:
+        return self.components
+
+    def to_json(self) -> Any:
+        return {"components": [term_to_json(t) for t in self.components]}
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> TupleT:
+        components = [term_from_json(t) for t in json_data["components"]]
+        return cls(components)
+
+
+class TupleTypeT:
+    ALIAS = "TupleType"
+
+    def __init__(self, components: list[Term]) -> None:
+        self.components = components
+
+    def __hash__(self) -> int:
+        return hash((self.get_key(), hash_list(self.components)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TupleT):
+            return False
+        return hash(self) == hash(other)
+
+    def get_key(self) -> str:
+        return f"tuple type"
+
+    def get_subterms(self) -> list[Term]:
+        return self.components
+
+    def to_json(self) -> Any:
+        return {"components": [term_to_json(t) for t in self.components]}
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> TupleTypeT:
+        components = [term_from_json(t) for t in json_data["components"]]
+        return cls(components)
+
+
+TargetT = VarT | TupleT
+
+
+def target_to_json(target: TargetT) -> Any:
+    return {"alias": target.ALIAS} | target.to_json()
+
+
+def target_from_json(json_data: Any) -> TargetT:
+    attempted_alias = json_data["alias"]
+    match attempted_alias:
+        case VarT.ALIAS:
+            return VarT.from_json(json_data)
+        case TupleT.ALIAS:
+            return TupleT.from_json(json_data)
+        case _:
+            raise ValueError(f"Unexpected alias: {attempted_alias} in let.")
+
+
+class LetT:
+    ALIAS = "LET"
+
+    def __init__(self, target: TargetT, source: Term, body: Term) -> None:
+        self.target = target
+        self.source = source
+        self.body = body
+
+    def get_key(self) -> str:
+        return f"target"
+
+    def __hash__(self) -> int:
+        return hash(
+            (self.get_key(), hash(self.target), hash(self.source), hash(self.body))
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, LetT):
+            return False
+        return hash(self) == hash(other)
+
+    def get_subterms(self) -> list[Term]:
+        return [self.target, self.source, self.body]
+
+    def to_json(self) -> Any:
+        return {
+            "target": target_to_json(self.target),
+            "source": term_to_json(self.source),
+            "body": term_to_json(self.body),
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> LetT:
+        target = target_from_json(json_data["target"])
+        source = term_from_json(json_data["source"])
+        body = term_from_json(json_data["body"])
+        return cls(target, source, body)
+
+
 class ConstructorApp:
     ALIAS = "Constructor App"
 
     def __init__(self, constr: str, args: list[ConstrExpr]) -> None:
         self.constr = constr
         self.args = args
+
+    def __hash__(self) -> int:
+        return hash((self.get_key(), hash_list(self.args)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ConstructorApp):
+            return False
+        return hash(self) == hash(other)
 
     def get_key(self) -> str:
         return f"const: {self.to_string()}"
@@ -77,6 +212,14 @@ class ParamT:
         self.id = id
         self.ty = ty
 
+    def __hash__(self) -> int:
+        return hash((self.get_key(), hash(self.ty)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ParamT):
+            return False
+        return hash(self) == hash(other)
+
     def get_key(self) -> str:
         return f"param: {self.id}"
 
@@ -94,7 +237,6 @@ class ParamT:
         return cls(json_data["id"], term_from_json(json_data["ty"]))
 
 
-@dataclass
 class FixT:
     ALIAS = "FIX"
 
@@ -103,6 +245,16 @@ class FixT:
         self.params = params
         self.ty = ty
         self.body = body
+
+    def __hash__(self) -> int:
+        return hash(
+            (self.get_key(), hash_list(self.params), hash(self.ty), hash(self.body))
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FixT):
+            return False
+        return hash(self) == hash(other)
 
     def get_key(self) -> str:
         return f"fix: {self.id}"
@@ -126,13 +278,20 @@ class FixT:
         return cls(json_data["id"], params, ty, body)
 
 
-@dataclass
 class ProdT:
     ALIAS = "PROD"
 
     def __init__(self, params: list[ParamT], body: Term) -> None:
         self.params = params
         self.body = body
+
+    def __hash__(self) -> int:
+        return hash((self.get_key(), hash_list(self.params), hash(self.body)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ProdT):
+            return False
+        return hash(self) == hash(other)
 
     def get_key(self) -> str:
         return f"prod: "
@@ -159,13 +318,20 @@ class ProdT:
 #         self.body = body
 
 
-@dataclass
 class FunT:
     ALIAS = "FUN"
 
     def __init__(self, params: list[ParamT], body: Term) -> None:
         self.params = params
         self.body = body
+
+    def __hash__(self) -> int:
+        return hash((self.get_key(), hash_list(self.params), hash(self.body)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FunT):
+            return False
+        return hash(self) == hash(other)
 
     def get_key(self) -> str:
         return f"fun: "
@@ -206,13 +372,20 @@ def abstraction_from_json(json_data: Any) -> Abstraction:
             raise ValueError(f"Unknown abstraction alias {attempted_alias}")
 
 
-@dataclass
 class AppT:
     ALIAS = "APP"
 
     def __init__(self, fn: Abstraction, args: list[Term]) -> None:
         self.fn = fn
         self.args = args
+
+    def __hash__(self) -> int:
+        return hash((hash(self.get_key()), hash(self.fn), hash_list(self.args)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AppT):
+            return False
+        return hash(self) == hash(other)
 
     def get_key(self) -> str:
         return f"app: {self.fn.get_key()}"
@@ -233,13 +406,20 @@ class AppT:
         return cls(fn, args)
 
 
-@dataclass
 class MatchBranchT:
     ALIAS = "MATCH BRANCH"
 
     def __init__(self, pattern: ConstrExpr, body: Term) -> None:
         self.pattern = pattern
         self.body = body
+
+    def __hash__(self) -> int:
+        return hash((self.get_key(), hash(self.body)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, MatchBranchT):
+            return False
+        return hash(self) == hash(other)
 
     def get_key(self) -> str:
         return self.pattern.get_key()
@@ -260,13 +440,20 @@ class MatchBranchT:
         return cls(pattern, body)
 
 
-@dataclass
 class MatchT:
     ALIAS = "MATCH"
 
     def __init__(self, expr: Term, branches: list[MatchBranchT]) -> None:
         self.expr = expr
         self.branches = branches
+
+    def __hash__(self) -> int:
+        return hash((self.get_key(), hash(self.expr), hash_list(self.branches)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, MatchT):
+            return False
+        return hash(self) == hash(other)
 
     def get_key(self) -> str:
         return f"match"
@@ -287,7 +474,19 @@ class MatchT:
         return cls(expr, branches)
 
 
-Term = FixT | MatchT | AppT | VarT | ProdT | FunT | ParamT | MatchBranchT
+Term = (
+    FixT
+    | MatchT
+    | AppT
+    | VarT
+    | ProdT
+    | FunT
+    | ParamT
+    | MatchBranchT
+    | LetT
+    | TupleTypeT
+    | TupleT
+)
 
 
 def term_to_json(term: Term) -> Any:
@@ -317,11 +516,18 @@ def term_from_json(json_data: Any) -> Term:
             return ParamT.from_json(json_data)
         case MatchBranchT.ALIAS:
             return MatchBranchT.from_json(json_data)
+        case TupleT.ALIAS:
+            return TupleT.from_json(json_data)
+        case TupleTypeT.ALIAS:
+            return TupleTypeT.from_json(json_data)
+        case LetT.ALIAS:
+            return LetT.from_json(json_data)
+
         case _:
             raise ValueError(f"Cannot find term type for alias {attempted_alias}")
 
 
-dist_cache: dict[tuple[str, str], int] = {}
+dist_cache: dict[tuple[int, int], int] = {}
 
 
 def term_size(t: Term) -> int:
@@ -332,10 +538,9 @@ def term_size(t: Term) -> int:
 
 
 def term_dist(t1: Term, t2: Term) -> int:
-    t1_str = term_to_str(t1)
-    t2_str = term_to_str(t2)
-    if (t1_str, t2_str) in dist_cache:
-        return dist_cache[(t1_str, t2_str)]
+    problem_key = hash(t1), hash(t2)
+    if problem_key in dist_cache:
+        return dist_cache[problem_key]
     t1_subterms = t1.get_subterms()
     t2_subterms = t2.get_subterms()
 
@@ -382,20 +587,21 @@ def term_dist(t1: Term, t2: Term) -> int:
                     arg_min = i, j
         selected_dists.append(min_dist)
         pop_row, pop_col = arg_min
-        if pop_row != 0:
+        if pop_row != pop_col:
             broke_order = True
-        row_dists.pop(pop_row)
-        row_dists = [r[:pop_col] + r[(pop_col + 1) :] for r in row_dists]
+        for i in range(len(row_subterms)):
+            row_dists[i][pop_col] = max_size
+        for j in range(len(col_subterms)):
+            row_dists[pop_row][j] = max_size
         cols_used.add(pop_col)
     cols_unused = set(range(len(col_subterms))) - cols_used
     col_penalty = sum([term_size(col_subterms[i]) for i in cols_unused])
     order_penalty = 1 if broke_order else 0
-    print(order_penalty)
     unif_dist = order_penalty + root_penalty + sum(selected_dists) + col_penalty
 
     t1_whole_dist = min(t1_whole_dists)
     t2_whole_dist = min(t2_whole_dists)
 
     result = min(t1_whole_dist, t2_whole_dist, unif_dist)
-    dist_cache[(t1_str, t2_str)] = result
+    dist_cache[problem_key] = result
     return result

@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 from data_management.splits import FileInfo, DataSplit, Split, split2str, str2split
 
+
 @typechecked
 class StepIndex:
     def __init__(self, proof_idx: int, step_idx: int) -> None:
@@ -36,9 +37,11 @@ class StepIndex:
 class AllSteps:
     pass
 
+
 @dataclass
 class CertainSteps:
     steps: list[StepIndex]
+
 
 SelectedSteps = AllSteps | CertainSteps
 
@@ -62,7 +65,7 @@ class CompleteSample:
     def step_generator(
         self,
     ) -> Generator[tuple[FileInfo, SelectedSteps], None, None]:
-        for file in self.data_split.get_file_list(self.data_loc, self.split):
+        for file in self.data_split.get_file_list(self.split):
             yield (file, AllSteps())
 
     @classmethod
