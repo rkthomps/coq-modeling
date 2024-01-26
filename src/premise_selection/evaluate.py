@@ -15,14 +15,19 @@ from tqdm import tqdm
 
 from typeguard import typechecked
 
-from data_management.split_raw_data import SPLITS
+from data_management.splits import DataSplit, Split, DATA_POINTS_NAME
 from data_management.dataset_file import DatasetFile, Sentence, data_shape_expected
 from premise_selection.model import PremiseRetriever
 from model_deployment.premise_model_wrapper import (
     PremiseModelWrapper,
     PremiseServerModelWrapper,
     LocalPremiseModelWrapper,
+    get_ranked_premise_generator,
 )
+
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 @typechecked
@@ -90,13 +95,15 @@ class EvalData:
 @typechecked
 class Evaluator:
     def __init__(
-        self, model_wrapper: PremiseModelWrapper, partitioned_data_loc: str, split: str
+        self,
+        model_wrapper: PremiseModelWrapper,
+        data_loc: str,
+        data_split: DataSplit,
+        split: Split,
     ) -> None:
-        assert split in SPLITS
-        self.split_loc = os.path.join(partitioned_data_loc, split)
-        assert data_shape_expected(self.split_loc)
         self.model_wrapper = model_wrapper
-        self.partitioned_data_loc = partitioned_data_loc
+        self.data_loc = data_loc
+        self.data_split = data_split
         self.split = split
 
     def run_and_save_evaluation(self, save_loc: str) -> None:
@@ -111,9 +118,13 @@ class Evaluator:
         """Note that |eval_results| = # steps requiring at least one premise."""
         num_steps = 0
         eval_results: list[EvalResult] = []
-        for raw_dataset_file in tqdm(os.listdir(self.split_loc)):
-            file_loc = os.path.join(self.split_loc, raw_dataset_file)
-            parsed_dataset_file = DatasetFile.from_directory(file_loc)
+        for file_info in tqdm(self.data_split.get_file_list(self.data_loc, self.split)):
+            file_loc = os.path.join(self.data_loc, DATA_POINTS_NAME, file_info.dp_name)
+            try:
+                parsed_dataset_file = DatasetFile.from_directory(file_loc)
+            except FileNotFoundError:
+                _logger.warning(f"Could not find file: {file_info.dp_name}")
+                continue
             for proof in parsed_dataset_file.proofs:
                 for step in proof.steps:
                     num_steps += 1
@@ -126,11 +137,10 @@ class Evaluator:
                     num_avail_premises = len(filter_result.avail_premises)
                     if (num_positive_premises == 0) or (num_avail_premises == 0):
                         continue
-                    ranked_premises_generator = (
-                        self.model_wrapper.get_ranked_premise_generator(
-                            step, proof, filter_result.avail_premises
-                        )
+                    ranked_premises_generator = get_ranked_premise_generator(
+                        self.model_wrapper, step, proof, filter_result.avail_premises
                     )
+
                     hits_on: list[int] = []
                     premises_to_cover = filter_result.pos_premises
                     for i, premise_rec in enumerate(ranked_premises_generator):
@@ -160,30 +170,20 @@ class Evaluator:
             return False
 
 
-def get_save_loc(checkpoint_loc: str) -> str:
-    checkpoint_basename = os.path.basename(args.checkpoint_loc)
-    checkpoint_suffix = ".ckpt"
-    assert type(checkpoint_basename) == str
-    assert checkpoint_basename.endswith(checkpoint_suffix)
-    model_loc = PremiseRetriever.get_model_loc(checkpoint_loc)
-    save_basename = checkpoint_basename[: (-1 * len(checkpoint_suffix))] + "-eval.json"
-    save_loc = os.path.join(model_loc, save_basename)
-    return save_loc
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Conduct an evaluation of a premise selection model."
     )
     parser.add_argument("checkpoint_loc", help="Path to model checkpoint to evaluate.")
-    parser.add_argument("partitioned_data_loc", help="Location of partioned raw data.")
-    parser.add_argument("split", help=f"One of {SPLITS}. Which split to evaluate on")
+    parser.add_argument("data_loc", help="Path to dataset.")
+    parser.add_argument("data_split_loc", help="Path to data split")
+    parser.add_argument("save_loc", help="Where to save eval results.")
 
     args = parser.parse_args(sys.argv[1:])
 
     # model_wrapper = PremiseServerModelWrapper.from_url("http://127.0.0.1:5000")
     model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
+    data_split = DataSplit.load(args.data_split_loc)
 
-    evaluator = Evaluator(model_wrapper, args.partitioned_data_loc, args.split)
-    save_loc = get_save_loc(args.checkpoint_loc)
-    evaluator.run_and_save_evaluation(save_loc)
+    evaluator = Evaluator(model_wrapper, args.data_loc, data_split, Split.VAL)
+    evaluator.run_and_save_evaluation(args.save_loc)

@@ -109,10 +109,11 @@ class LocalPremiseModelWrapper:
     def get_premise_scores_from_strings(
         self, context_str: str, premise_strs: list[str]
     ) -> list[float]:
-        encoded_context = self.__encode_str(context_str)
+        device = self.retriever.device
+        encoded_context = self.__encode_str(context_str).to(device)
         premise_encodings: list[torch.Tensor] = []
         for premise_str in premise_strs:
-            encoded_premise = self.__encode_str(premise_str)
+            encoded_premise = self.__encode_str(premise_str).to(device)
             premise_encodings.append(encoded_premise)
         premise_matrix = torch.cat(premise_encodings)
         similarities = torch.mm(encoded_context, premise_matrix.t())
