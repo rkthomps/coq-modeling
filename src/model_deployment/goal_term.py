@@ -474,6 +474,21 @@ class MatchT:
         return cls(expr, branches)
 
 
+class CaseT:
+    def __init__(
+        self, term: Term, alias: Optional[str], pattern: Optional[Term]
+    ) -> None:
+        self.term = term
+        self.alias = alias
+        self.pattern = pattern
+
+    def get_subterms(self) -> list[Term]:
+        if self.pattern:
+            return [self.term, self.pattern]
+        else:
+            return [self.term]
+
+
 Term = (
     FixT
     | MatchT

@@ -9,9 +9,8 @@ from model_deployment.goal_term import (
     TupleT,
     TupleTypeT,
 )
-from model_deployment.parse_goal_term import term_p, app_p
+from model_deployment.parse_goal_term import term_p, app_p, term_p_var
 import ipdb
-
 
 test_str_7 = """\
 (fun h : nat =>
@@ -61,6 +60,11 @@ class TestTermCompare:
         res = term_p.parse(test_str)
         assert res == LetT(TupleT([VarT("x"), VarT("_")]), VarT("p"), VarT("x"))
 
+    def test_tuple(self) -> None:
+        test_str = "(a, b)"
+        res = TupleT([VarT("a"), VarT("b")])
+        assert res == term_p.parse(test_str)
+
     def test_prod(self) -> None:
         test_str = "fun Y : X * Z => x"
         res = term_p.parse(test_str)
@@ -72,6 +76,18 @@ class TestTermCompare:
             [ParamT("_", AppT(VarT("eq"), [VarT("1"), VarT("3")]))], VarT("False")
         )
         assert term_p.parse(test_str) == test_res
+
+    def test_failure_1_paren(self) -> None:
+        test_str = "(forall _ : (eq 1 3), False)"
+        test_res = ProdT(
+            [ParamT("_", AppT(VarT("eq"), [VarT("1"), VarT("3")]))], VarT("False")
+        )
+        assert term_p_var.parse(test_str) == test_res
+
+    def test_failure_1_simpl(self) -> None:
+        test_str = "(forall _ : True, False)"
+        test_res = ProdT([ParamT("_", VarT("True"))], VarT("False"))
+        assert term_p_var.parse(test_str) == test_res
 
     def test_failure_2(self) -> None:
         # test_str = "forall (a : A) (s : forall _ : A, bool), sumbool (eq (s a) true) (forall _ : eq (s a) true, False)"
@@ -91,23 +107,38 @@ class TestTermCompare:
         res_act = term_p.parse(test_str)
         assert test_res == res_act
 
-    # def test_failure_4(self) -> None:
-    #     test_str = "App.le"
-    #     test_res = VarT("App.le")
-    #     assert test_res == term_p.parse(test_str)
+    def test_failure_4(self) -> None:
+        test_str = "App.le"
+        test_res = VarT("App.le")
+        assert test_res == term_p.parse(test_str)
 
-    # def test_failure_5(self) -> None:
-    #     test_str = "y'"
-    #     test_res = VarT("y'")
-    #     assert test_res == term_p.parse(test_str)
+    def test_failure_5(self) -> None:
+        test_str = "y'"
+        test_res = VarT("y'")
+        assert test_res == term_p.parse(test_str)
 
-    # def test_failure_6(self) -> None:
-    #     test_str = "fix cat (a : nat) : nat := 1"
-    #     test_res = FixT("cat", [ParamT("a", VarT("nat"))], VarT("nat"), VarT("1"))
-    #     assert test_res == term_p.parse(test_str)
+    def test_failure_6(self) -> None:
+        test_str = "fix cat (a : nat) : nat := 1"
+        test_res = FixT("cat", [ParamT("a", VarT("nat"))], VarT("nat"), VarT("1"))
+        assert test_res == term_p.parse(test_str)
 
-    # def test_failure_7(self) -> None:
-    #     term_p.parse(test_str_7)
+    def test_failure_7(self) -> None:
+        term_p.parse(test_str_7)
 
-    # def test_failure_8(self) -> None:
-    #     ("h%h l%l")
+    def test_failure_8(self) -> None:
+        #         test_str = """\
+        # forall (A : Type) (P : forall _ : A, Type) (f : forall (_ : E.t) (_ : A), A)
+        # (initial : A) (set : S.t)
+        # (_ : forall (x : E.t) (acc : A) (_ : P acc), P (f x acc))
+        # (_ : P initial), P (S.fold f set initial)"""
+        test_str = """forall (f : forall (_ : E.t), A) (initial : A), P"""
+        term_p.parse(test_str)
+
+    def test_failure_9(self) -> None:
+        test_str = """((let (compare0, _, _) := C in compare0) x x)"""
+        term_p.parse(test_str)
+
+    def test_funky_symbol(self) -> None:
+        test_str = "Σ"
+        test_res = VarT("Σ")
+        assert term_p.parse(test_str) == test_res

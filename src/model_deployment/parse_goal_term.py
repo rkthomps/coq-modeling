@@ -36,17 +36,18 @@ term_par_tuple = forward_declaration()
 term_par_tuple_type = forward_declaration()
 
 __raw_name_p = regex(r"(\w|\.|')+") << whitespace.optional()
+__end_p = regex(r"\W|$")
 __reserved_p = (
-    string("with")
-    | string("end")
-    | string("fix")
-    | string("fun")
-    | string("forall")
-    | string("exists")
-    | string("match")
-    | string("fun")
-    | string("let")
-    | string("in")
+    string("with") << __end_p
+    | string("end") << __end_p
+    | string("fix") << __end_p
+    | string("fun") << __end_p
+    | string("forall") << __end_p
+    | string("exists") << __end_p
+    | string("match") << __end_p
+    | string("fun") << __end_p
+    | string("let") << __end_p
+    | string("in") << __end_p
 ).should_fail("reserved")
 __name_p = peek(__reserved_p) >> __raw_name_p
 
@@ -101,8 +102,7 @@ def combine_tuple_p(*args: Term) -> TupleT:
 __tuple_p_raw = term_par_tuple.sep_by(
     string(",") << whitespace.optional(), min=2
 ).combine(combine_tuple_p)
-__tuple_p_paren = parens(__tuple_p_raw)
-# tuple_p = __tuple_p_raw | parens(__tuple_p_raw)
+# __tuple_p_protected = peek(__tuple_p_raw) >> __tuple_p_raw
 tuple_p = parens(__tuple_p_raw)
 
 
@@ -113,8 +113,7 @@ def combine_tuple_type_p(*args: Term) -> TupleTypeT:
 __tuple_type_raw = term_par_tuple_type.sep_by(
     string("*") << whitespace.optional(), min=2
 ).combine(combine_tuple_type_p)
-
-__tuple_type_p_paren = parens(__tuple_type_raw)
+# __tuple_type_p_protected = peek(__tuple_type_raw) >> __tuple_type_raw
 tuple_type_p = __tuple_type_raw | parens(__tuple_type_raw)
 
 
@@ -174,7 +173,7 @@ __fun_p_raw = seq(
 fun_p = __fun_p_raw | parens(__fun_p_raw)
 
 
-abstraction_p = fix_p | var_p | fun_p
+abstraction_p = fix_p | var_p | fun_p | let_p
 
 
 def combine_app_p(abstr: Abstraction, args: list[Term]) -> AppT:
@@ -182,6 +181,7 @@ def combine_app_p(abstr: Abstraction, args: list[Term]) -> AppT:
 
 
 __app_p_raw = seq(abstraction_p, term_p_var.at_least(1)).combine(combine_app_p)
+# __app_p_protected = peek(__app_p_raw) >> __app_p_raw
 
 app_p = __app_p_raw | parens(__app_p_raw)
 
@@ -208,49 +208,18 @@ __match_p_raw = seq(
 match_p = __match_p_raw | parens(__match_p_raw)
 
 __term_p_raw = (
-    prod_p | fix_p | fun_p | match_p | let_p | tuple_p | tuple_type_p | app_p | var_p
+    app_p | prod_p | tuple_p | tuple_type_p | var_p | fix_p | fun_p | match_p | let_p
 )
 term_p.become(__term_p_raw | parens(__term_p_raw))
 
 __term_p_var = (
-    prod_p
-    | fix_p
-    | fun_p
-    | match_p
-    | let_p
-    | var_p
-    | app_p
-    | tuple_p
-    | tuple_type_p
-    | prod_p
+    var_p | app_p | prod_p | tuple_p | tuple_type_p | fix_p | fun_p | match_p | let_p
 )
 term_p_var.become(__term_p_var | parens(__term_p_var))
 
-__term_par_tuple = (
-    prod_p
-    | fix_p
-    | fun_p
-    | match_p
-    | let_p
-    # | tuple_p
-    # | tuple_type_p
-    | var_p
-    | app_p
-    | prod_p
-)
+__term_par_tuple = app_p | var_p | fix_p | fun_p | match_p | let_p | prod_p
 term_par_tuple.become(__term_par_tuple | parens(__term_par_tuple))
 
-__term_par_tuple_type = (
-    prod_p
-    | fix_p
-    | fun_p
-    | match_p
-    | let_p
-    # | tuple_p
-    # | tuple_type_p
-    | var_p
-    | app_p
-    | prod_p
-)
+__term_par_tuple_type = app_p | var_p | fix_p | fun_p | match_p | let_p | prod_p
 
 term_par_tuple_type.become(__term_par_tuple_type | parens(__term_par_tuple_type))
