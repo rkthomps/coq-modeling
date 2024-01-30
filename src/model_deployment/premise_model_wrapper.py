@@ -109,6 +109,8 @@ class LocalPremiseModelWrapper:
     def get_premise_scores_from_strings(
         self, context_str: str, premise_strs: list[str]
     ) -> list[float]:
+        if len(premise_strs) == 0:
+            return []
         device = self.retriever.device
         encoded_context = self.__encode_str(context_str).to(device)
         premise_encodings: list[torch.Tensor] = []
@@ -118,7 +120,7 @@ class LocalPremiseModelWrapper:
         premise_matrix = torch.cat(premise_encodings)
         similarities = torch.mm(encoded_context, premise_matrix.t())
         assert similarities.shape[0] == 1
-        return similarities.squeeze().tolist()
+        return similarities[0].tolist()
 
     def to_json(self) -> Any:
         return {"checkpoint_path", self.checkpoint_loc}

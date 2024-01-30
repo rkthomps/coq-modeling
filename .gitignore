@@ -5,6 +5,7 @@ data-small
 models
 models-small
 preprocessing
+premise-eval
 evals
 reports
 distances
