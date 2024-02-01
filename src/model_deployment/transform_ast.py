@@ -813,31 +813,39 @@ class SortT:
 
 
 class RecordT:
-    def __init__(self, terms: list[list[Term]]) -> None:
+    def __init__(self, terms: list[tuple[QualIdT, Term]]) -> None:
         self.terms = terms
 
     def to_strtree(self) -> StrTree:
-        ts = [t for term_list in self.terms for t in term_list]
-        return StrTree("record", [t.to_strtree() for t in ts])
+        sub_strtrees: list[StrTree] = []
+        for qual, term in self.terms:
+            sub_strtrees.append(qual.to_strtree())
+            sub_strtrees.append(term.to_strtree())
+        return StrTree("record", sub_strtrees)
 
     def to_json(self) -> Any:
         return {
-            "terms": [[term_to_json(t) for t in term_list] for term_list in self.terms]
+            "terms": [
+                {"qual": term_to_json(q), "term": term_to_json(t)}
+                for q, t in self.terms
+            ]
         }
 
     @classmethod
     def from_json(cls, json_data: Any) -> RecordT:
-        terms = [
-            [term_from_json(t) for t in term_list] for term_list in json_data["terms"]
-        ]
+        terms: list[tuple[QualIdT, Term]] = []
+        for term_dict in json_data["terms"]:
+            terms.append((term_dict["qual"], term_dict["term"]))
         return cls(terms)
 
     @classmethod
     def from_ast(cls, ast: Any) -> RecordT:
         assert type(ast) == list
         assert ast[0] == "CRecord"
-        term_nlist = [[term_from_ast(t) for t in term_list] for term_list in ast[1]]
-        return cls(term_nlist)
+        terms: list[tuple[QualIdT, Term]] = []
+        for binding in ast[1]:
+            terms.append((QualIdT.from_ast_qual(binding[0]), term_from_ast(binding[1])))
+        return cls(terms)
 
 
 class UnknownT:

@@ -1,0 +1,10 @@
+
+
+split: val
+data_split_loc: splits/random-split.json
+data_loc: raw-data/coq-dataset
+n_recs: 1
+save_loc: step-evals/basic-rnd-split-rnd-samp-8-pct
+model_wrapper:
+  alias: local
+  pretrained-name: models/codellama-7b-basic-rnd-split-rnd-samp-pct-8/checkpoint-4114 

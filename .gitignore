@@ -12,6 +12,7 @@ distances
 analysis
 banks
 proof-db
+step-evals
 
 # Temporary
 test_size.py

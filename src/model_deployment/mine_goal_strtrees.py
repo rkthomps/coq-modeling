@@ -332,49 +332,45 @@ def get_norm_goal(
             return None
         end = len(coq_file.steps) - 1
         steps_added = 0
-        try:
-            go_through_point(coq_file, end)
-            goals = coq_file.current_goals
-            fg_goal = get_fg_goal(goals)
-            pretty_goal = repr(fg_goal)
-            cannot_generalize: set[str] = set()
-            generalize_var = get_generalize_var(fg_goal, cannot_generalize)
-            while generalize_var:
-                cannot_generalize.add(generalize_var)
-                step_text = f"\ngeneralize dependent {generalize_var}."
-                try:
-                    coq_file.add_step(end + steps_added, step_text)
-                    coq_file.exec()
-                    steps_added += 1
-                    goals = coq_file.current_goals
-                    fg_goal = get_fg_goal(goals)
-                except InvalidChangeException:
-                    pass
-                generalize_var = get_generalize_var(fg_goal, cannot_generalize)
-            rid_notations = "\nUnset Printing Notations."
-            coq_file.add_step(end + steps_added, rid_notations)
-            coq_file.exec()
-            steps_added += 1
-            simpl = "\ncbv."
-            coq_file.add_step(end + steps_added, simpl)
-            coq_file.exec()
-            steps_added += 1
-            goals = coq_file.current_goals
-            fg_goal = get_fg_goal(goals)
+        go_through_point(coq_file, end)
+        goals = coq_file.current_goals
+        fg_goal = get_fg_goal(goals)
+        pretty_goal = repr(fg_goal)
+        cannot_generalize: set[str] = set()
+        generalize_var = get_generalize_var(fg_goal, cannot_generalize)
+        while generalize_var:
+            cannot_generalize.add(generalize_var)
+            step_text = f"\ngeneralize dependent {generalize_var}."
             try:
-                coq_file.add_step(end + steps_added, "\nAdmitted.")
+                coq_file.add_step(end + steps_added, step_text)
+                coq_file.exec()
                 steps_added += 1
-                new_def = f"\n\nDefinition a := ({fg_goal.ty})."
-                coq_file.add_step(end + steps_added, new_def)
-                steps_added += 1
-                ast = coq_file.steps[-1].ast.span
-                ast_no_def = get_body_from_definition(ast)
-                term_strtree = term_from_ast(ast_no_def).to_strtree()
-                return term_strtree, pretty_goal
-            except ParseError:
-                raise ValueError(f"Could not parse: {fg_goal.ty}")
-        finally:
-            __restore_coq_file(coq_file, end, steps_added)
+                goals = coq_file.current_goals
+                fg_goal = get_fg_goal(goals)
+            except InvalidChangeException:
+                pass
+            generalize_var = get_generalize_var(fg_goal, cannot_generalize)
+        rid_notations = "\nUnset Printing Notations."
+        coq_file.add_step(end + steps_added, rid_notations)
+        coq_file.exec()
+        steps_added += 1
+        simpl = "\ncbv."
+        coq_file.add_step(end + steps_added, simpl)
+        coq_file.exec()
+        steps_added += 1
+        goals = coq_file.current_goals
+        fg_goal = get_fg_goal(goals)
+
+    with open(tmp_file, "w") as fout:
+        fout.write(proof_prefix + f"\nAdmitted.\n\nDefinition a := ({fg_goal.ty}).")
+
+    with CoqFile(
+        os.path.abspath(tmp_file), workspace=os.path.abspath(workspace_loc)
+    ) as coq_file:
+        ast = coq_file.steps[-1].ast.span
+        ast_no_def = get_body_from_definition(ast)
+        term_strtree = term_from_ast(ast_no_def).to_strtree()
+        return term_strtree, pretty_goal
 
 
 def __get_goal_len(coq_file: CoqFile) -> Optional[int]:
@@ -490,6 +486,7 @@ def mine_file_goals(
             if flawless:
                 db.thump_completed_coqfile(file_info, save_loc)
         except Exception as e:
+            traceback.print_exc()
             _logger.warning(
                 f"Trouble processing {file_info.file} of n steps {len(coq_file.steps)} with exception {e.__class__}"
             )
