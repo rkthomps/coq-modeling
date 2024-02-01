@@ -2,7 +2,12 @@ from __future__ import annotations
 from typing import Any, Optional
 from dataclasses import dataclass
 from typeguard import typechecked
+import json
 import ipdb
+
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 @typechecked
@@ -12,6 +17,9 @@ class Name:
 
     def to_json(self) -> Any:
         return {"id": self.id}
+
+    def to_strtree(self) -> StrTree:
+        return StrTree(f"name: {self.id}", [])
 
     @classmethod
     def from_json(cls, json_data: Any) -> Name:
@@ -28,8 +36,33 @@ class Name:
     def from_ast(cls, ast: Any) -> Name:
         assert isinstance(ast, dict)
         name_list = ast["v"]
-        assert name_list[0] == "Name"
-        return cls(name_list[1][1])
+        if name_list[0] == "Name":
+            return cls(name_list[1][1])
+        if name_list[0] == "Anonymous":
+            return cls("_")
+        raise ValueError(f"Unexpected Name in {ast}")
+
+
+@typechecked
+class StringT:
+    def __init__(self, val: str) -> None:
+        self.val = val
+
+    def to_strtree(self) -> StrTree:
+        return StrTree(f"str: {self.val}", [])
+
+    def to_json(self) -> Any:
+        return {"val": self.val}
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> StringT:
+        return cls(json_data["val"])
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> StringT:
+        assert isinstance(ast, list)
+        assert ast[0] == "String"
+        return cls(ast[1])
 
 
 @typechecked
@@ -38,6 +71,9 @@ class NumberT:
         self.num = num
         self.frac = frac
         self.exp = exp
+
+    def to_strtree(self) -> StrTree:
+        return StrTree(f"num: {self.num}; {self.frac}; {self.exp}", [])
 
     def to_json(self) -> Any:
         return {
@@ -51,16 +87,44 @@ class NumberT:
         return cls(json_data["num"], json_data["frac"], json_data["exp"])
 
     @classmethod
-    def from_ast_num(cls, ast: Any) -> NumberT:
-        assert ast[0] == "Number"
+    def from_ast(cls, ast: Any) -> NumberT:
+        try:
+            assert ast[0] == "Number"
+        except:
+            pass
+            # ipdb.set_trace()
         assert ast[1][0] == ["SPlus"]
         return cls(ast[1][1]["int"], ast[1][1]["frac"], ast[1][1]["exp"])
 
-    @classmethod
-    def from_ast(cls, ast: Any) -> NumberT:
-        assert isinstance(ast, list)
-        assert ast[0] == "CPrim"
-        return cls.from_ast_num(ast[1])
+
+PrimT = StringT | NumberT
+
+
+def prim_to_json(prim: PrimT) -> Any:
+    return {"prim_name": prim.__class__.__name__} | prim.to_json()
+
+
+def prim_from_json(json_data: Any) -> PrimT:
+    attempted_name = json_data["prim_name"]
+    match attempted_name:
+        case StringT.__name__:
+            return StringT.from_json(json_data)
+        case NumberT.__name__:
+            return NumberT.from_json(json_data)
+        case _:
+            raise ValueError(f"Unrecognized primitive: {attempted_name}")
+
+
+def prim_from_ast(ast: Any) -> PrimT:
+    assert isinstance(ast, list)
+    assert ast[0] == "CPrim"
+    match ast[1][0]:
+        case "Number":
+            return NumberT.from_ast(ast[1])
+        case "String":
+            return StringT.from_ast(ast[1])
+        case _:
+            raise ValueError(f"unrecognized primative: {ast[1][0]}")
 
 
 @typechecked
@@ -71,6 +135,9 @@ class QualIdT:
 
     def to_string(self) -> str:
         return ".".join(self.quals + [self.id])
+
+    def to_strtree(self) -> StrTree:
+        return StrTree(f"qual: {self.to_string()}", [])
 
     def to_json(self) -> Any:
         return {
@@ -89,10 +156,14 @@ class QualIdT:
         assert len(ast_list) == 3
         assert ast_list[0] == "Ser_Qualid"
         assert ast_list[1][0] == "DirPath"
-        dir_list = ast_list[1][1]
+        dir_list = [d[1] for d in ast_list[1][1]]
         assert ast_list[2][0] == "Id"
         id = ast_list[2][1]
-        return cls(dir_list, id)
+        try:
+            return cls(dir_list, id)
+        except:
+            pass
+            # ipdb.set_trace()
 
     @classmethod
     def from_ast_ref(cls, ast: Any) -> QualIdT:
@@ -107,6 +178,10 @@ class Binder:
     def __init__(self, names: list[Name], ty: Term) -> None:
         self.names = names
         self.ty = ty
+
+    def to_strtree(self) -> StrTree:
+        name = ", ".join([n.id for n in self.names])
+        return StrTree(f"binder: {name}", [self.ty.to_strtree()])
 
     def to_json(self) -> Any:
         return {"names": [n.to_json() for n in self.names], "ty": term_to_json(self.ty)}
@@ -132,6 +207,11 @@ class FunT:
     def __init__(self, binders: list[Binder], body: Term) -> None:
         self.binders = binders
         self.body = body
+
+    def to_strtree(self) -> StrTree:
+        return StrTree(
+            "forall", [b.to_strtree() for b in self.binders] + [self.body.to_strtree()]
+        )
 
     def to_json(self) -> Any:
         return {
@@ -163,6 +243,11 @@ class ProdT:
         self.binders = binders
         self.body = body
 
+    def to_strtree(self) -> StrTree:
+        return StrTree(
+            "forall", [b.to_strtree() for b in self.binders] + [self.body.to_strtree()]
+        )
+
     def to_json(self) -> Any:
         return {
             "binders": [b.to_json() for b in self.binders],
@@ -193,14 +278,9 @@ class PatCAlias:
         self.pattern = pattern
         self.name = name
 
-    @classmethod
-    def from_ast(cls, ast: Any) -> PatCAlias:
-        assert isinstance(ast, list)
-        assert len(ast) == 3
-        assert ast[0] == "CPatAlias"
-        pattern = pattern_from_ast(ast[1])
-        name = Name.from_ast(ast[2])
-        return cls(pattern, name)
+    def to_strtree(self) -> StrTree:
+        name = f"alias {name}"
+        return StrTree(name, [self.pattern.to_strtree()])
 
     def to_json(self) -> Any:
         return {
@@ -212,6 +292,15 @@ class PatCAlias:
     def from_json(cls, json_data: Any) -> PatCAlias:
         pattern = pattern_from_json(json_data["pattern"])
         name = Name.from_json(json_data["name"])
+        return cls(pattern, name)
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> PatCAlias:
+        assert isinstance(ast, list)
+        assert len(ast) == 3
+        assert ast[0] == "CPatAlias"
+        pattern = pattern_from_ast(ast[1])
+        name = Name.from_ast(ast[2])
         return cls(pattern, name)
 
 
@@ -227,7 +316,9 @@ class PatCstr:
             "rest": [r.to_json() for r in self.rest],
         }
 
-    # TODO CONVERT TO TREES
+    def to_strtree(self) -> Any:
+        name = f"cstr: {self.first.to_string()}"
+        return StrTree(name, [r.to_strtree() for r in self.rest])
 
     @classmethod
     def from_json(cls, json_data: Any) -> PatCstr:
@@ -246,14 +337,15 @@ class PatCstr:
 
 @typechecked
 class PatAtom:
-    def __init__(self, val: QualIdT):
+    def __init__(self, val: Optional[QualIdT]):
         self.val = val
 
     def to_json(self) -> Any:
-        return {"val": self.val.to_json()}
+        return {"val": self.val.to_json() if self.val else None}
 
     def to_strtree(self) -> StrTree:
-        return StrTree(f"Pat {self.val.to_string()}", [])
+        name = self.val.to_string() if self.val else "_"
+        return StrTree(f"Pat {name}", [])
 
     @classmethod
     def from_json(cls, json_data: Any) -> Any:
@@ -263,22 +355,21 @@ class PatAtom:
     def from_ast(cls, ast: Any) -> PatAtom:
         assert isinstance(ast, list)
         assert ast[0] == "CPatAtom"
-        qualid = QualIdT.from_ast_qual(ast[1])
+        qualid = QualIdT.from_ast_qual(ast[1]) if ast[1] else None
         return cls(qualid)
 
 
 @typechecked
 class PatPrim:
-    def __init__(self, val: NumberT) -> None:
+    def __init__(self, val: PrimT) -> None:
         self.val = val
 
     def to_strtree(self) -> StrTree:
-        return StrTree(f"Pat {self.val.num}-{self.val.exp}-{self.val.frac}", [])
+        val_strtree = self.val.to_strtree()
+        return StrTree(f"Pat {val_strtree.key}", [])
 
     def to_json(self) -> Any:
-        return {
-            "val": self.val.to_json(),
-        }
+        return {"val": prim_to_json(self.val)}
 
     @classmethod
     def from_json(cls, json_data: Any) -> PatPrim:
@@ -288,7 +379,13 @@ class PatPrim:
     def from_ast(cls, ast: Any) -> PatPrim:
         assert isinstance(ast, list)
         assert ast[0] == "CPatPrim"
-        return cls(NumberT.from_ast_num(ast[1]))
+        match ast[1][0]:
+            case "Number":
+                return cls(NumberT.from_ast(ast[1]))
+            case "String":
+                return cls(StringT.from_ast(ast[1]))
+            case _:
+                raise ValueError(f"Unrecognized prim: {ast[1]}")
 
 
 Pattern = PatCstr | PatAtom | PatPrim | PatCAlias
@@ -325,6 +422,9 @@ def pattern_from_ast(ast: Any) -> Pattern:
             return PatCAlias.from_ast(ast_list)
         case "CPatPrim":
             return PatPrim.from_ast(ast_list)
+        case "CPatDelimiters":
+            # %positive and %negative stuff
+            return pattern_from_ast(ast_list[2])
         case _:
             raise ValueError(f"Unknown pattern: {ast_list[0]}")
 
@@ -445,6 +545,48 @@ class MatchT:
         return cls(return_item, cases, branches)
 
 
+class CoFixDecl:
+    def __init__(
+        self, name: Name, binders: list[Binder], ret_type: Term, body: Term
+    ) -> None:
+        self.name = name
+        self.binders = binders
+        self.ret_type = ret_type
+        self.body = body
+
+    def to_strtree(self) -> StrTree:
+        return StrTree(
+            f"fix {self.name.id}",
+            [b.to_strtree() for b in self.binders]
+            + [self.ret_type.to_strtree(), self.body.to_strtree()],
+        )
+
+    def to_json(self) -> Any:
+        return {
+            "name": self.name.to_json(),
+            "binders": [b.to_json() for b in self.binders],
+            "ret_type": term_to_json(self.ret_type),
+            "body": term_to_json(self.body),
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> CoFixDecl:
+        name = Name.from_json(json_data["name"])
+        binders = [Binder.from_json(b) for b in json_data["binders"]]
+        ret_type = term_from_json(json_data["ret_type"])
+        body = term_from_json(json_data["body"])
+        return cls(name, binders, ret_type, body)
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> CoFixDecl:
+        assert isinstance(ast, list)
+        name = Name.from_id_ast(ast[0])
+        binders = [Binder.from_ast(b) for b in ast[1]]
+        ret_type = term_from_ast(ast[2])
+        body = term_from_ast(ast[3])
+        return cls(name, binders, ret_type, body)
+
+
 class FixDecl:
     def __init__(
         self, name: Name, binders: list[Binder], ret_type: Term, body: Term
@@ -510,6 +652,29 @@ class FixT:
         return cls(decls)
 
 
+class CoFixT:
+    def __init__(self, decls: list[CoFixDecl]) -> None:
+        self.decls = decls
+
+    def to_json(self) -> Any:
+        return {"decls": [d.to_json() for d in self.decls]}
+
+    def to_strtree(self) -> StrTree:
+        return StrTree("fix", [d.to_strtree() for d in self.decls])
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> CoFixT:
+        decls = [FixDecl.from_json(d) for d in json_data["decls"]]
+        return cls(decls)
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> CoFixT:
+        assert isinstance(ast, list)
+        assert ast[0] == "CCoFix"
+        decls = [CoFixDecl.from_ast(a) for a in ast[2]]
+        return cls(decls)
+
+
 class AppT:
     def __init__(self, fn: Term, args: list[Term]) -> None:
         self.fn = fn
@@ -541,7 +706,170 @@ class AppT:
         return cls(fn, args)
 
 
-Term = FunT | ProdT | QualIdT | NumberT | MatchT | FixT | AppT
+class LetTupleT:
+    def __init__(self, ids: list[Name], unpack: Term, body: Term) -> None:
+        self.ids = ids
+        self.unpack = unpack
+        self.body = body
+
+    def to_strtree(self) -> StrTree:
+        joined_names = ", ".join([n.id for n in self.ids])
+        return StrTree(
+            f"let tuple: {joined_names}",
+            [self.unpack.to_strtree(), self.body.to_strtree()],
+        )
+
+    def to_json(self) -> Any:
+        return {
+            "ids": [i.to_json() for i in self.ids],
+            "unpack": term_to_json(self.unpack),
+            "body": term_to_json(self.body),
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> LetTupleT:
+        ids = [Name.from_json(i) for i in json_data["ids"]]
+        unpack = term_from_json(json_data["unpack"])
+        body = term_from_json(json_data["body"])
+        return cls(ids, unpack, body)
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> LetTupleT:
+        assert isinstance(ast, list)
+        assert len(ast) == 5
+        assert ast[0] == "CLetTuple"
+        names = [Name.from_ast(n) for n in ast[1]]
+        unpack = term_from_ast(ast[3])
+        body = term_from_ast(ast[4])
+        return cls(names, unpack, body)
+
+
+class IfT:
+    def __init__(self, guard: Term, then_branch: Term, else_branch: Term) -> None:
+        self.guard = guard
+        self.then_branch = then_branch
+        self.else_branch = else_branch
+
+    def to_strtree(self) -> StrTree:
+        return StrTree(
+            "if",
+            [
+                self.guard.to_strtree(),
+                self.then_branch.to_strtree(),
+                self.else_branch.to_strtree(),
+            ],
+        )
+
+    def to_json(self) -> Any:
+        return {
+            "guard": term_to_json(self.guard),
+            "then_branch": term_to_json(self.then_branch),
+            "else_branch": term_to_json(self.else_branch),
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> IfT:
+        guard = term_from_json(json_data["guard"])
+        then_branch = term_from_json(json_data["then_branch"])
+        else_branch = term_from_json(json_data["else_branch"])
+        return cls(guard, then_branch, else_branch)
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> IfT:
+        assert isinstance(ast, list)
+        assert ast[0] == "CIf"
+        guard = term_from_ast(ast[1])
+        then_branch = term_from_ast(ast[3])
+        else_branch = term_from_ast(ast[4])
+        return cls(guard, then_branch, else_branch)
+
+
+@typechecked
+class SortT:
+    def __init__(self, sort_name: str) -> None:
+        self.sort_name = sort_name
+
+    def to_json(self) -> Any:
+        return {"sort_name": self.sort_name}
+
+    def to_strtree(self) -> StrTree:
+        return StrTree(f"sort: {self.sort_name}", [])
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> SortT:
+        return cls(json_data["sort_name"])
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> SortT:
+        assert isinstance(ast, list)
+        assert ast[0] == "CSort"
+        if ast[1][0] == "UNamed":
+            name = ast[1][1][1][0][0][0]
+            return cls(name)
+        elif ast[1][0] == "UAnonymous":
+            return cls("CType")
+        else:
+            raise ValueError(f"Unknown sort name: {ast[1][0]}")
+
+
+class RecordT:
+    def __init__(self, terms: list[list[Term]]) -> None:
+        self.terms = terms
+
+    def to_strtree(self) -> StrTree:
+        ts = [t for term_list in self.terms for t in term_list]
+        return StrTree("record", [t.to_strtree() for t in ts])
+
+    def to_json(self) -> Any:
+        return {
+            "terms": [[term_to_json(t) for t in term_list] for term_list in self.terms]
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> RecordT:
+        terms = [
+            [term_from_json(t) for t in term_list] for term_list in json_data["terms"]
+        ]
+        return cls(terms)
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> RecordT:
+        assert type(ast) == list
+        assert ast[0] == "CRecord"
+        term_nlist = [[term_from_ast(t) for t in term_list] for term_list in ast[1]]
+        return cls(term_nlist)
+
+
+class UnknownT:
+    def __init__(self) -> None:
+        pass
+
+    def to_json(self) -> Any:
+        return {}
+
+    def to_strtree(self) -> Any:
+        return StrTree("unknown", [])
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> UnknownT:
+        return cls()
+
+
+Term = (
+    FunT
+    | ProdT
+    | QualIdT
+    | PrimT
+    | MatchT
+    | FixT
+    | CoFixT
+    | AppT
+    | LetTupleT
+    | IfT
+    | SortT
+    | RecordT
+    | UnknownT
+)
 
 
 def term_from_ast(ast: Any) -> Term:
@@ -555,21 +883,68 @@ def term_from_ast(ast: Any) -> Term:
         case "CProdN":
             return ProdT.from_ast(term)
         case "CPrim":
-            return NumberT.from_ast(term)
+            return prim_from_ast(term)
         case "CCases":
             return MatchT.from_ast(term)
         case "CFix":
             return FixT.from_ast(term)
         case "CApp":
             return AppT.from_ast(term)
+        case "CLetTuple":
+            return LetTupleT.from_ast(term)
+        case "CIf":
+            return IfT.from_ast(term)
+        case "CSort":
+            return SortT.from_ast(term)
+        case "CRecord":
+            return RecordT.from_ast(term)
+        case "CDelimiters":
+            return term_from_ast(term[2])
+        case "CCoFix":
+            return CoFixT.from_ast(term)
+        # case "CNotation":
+        #     ipdb.set_trace()
         case _:
-            raise NotImplementedError(f"Unhandled Term Type: {term[0]}")
+            term_size = len(json.dumps(ast))
+            _logger.warning(
+                f"Unhandled Term Type: {term[0]} of size {term_size}. Inserting unknown tree."
+            )
+            return UnknownT()
 
 
 @dataclass
 class StrTree:
     key: str
     children: list[StrTree]
+
+    def __hash__(self) -> int:
+        child_hash = hash(tuple([hash(c) for c in self.children]))
+        return hash((f"cstr: {self.key}", child_hash))
+
+    def has_unknown(self) -> bool:
+        return self.key == "unknown" or any([c.has_unknown() for c in self.children])
+
+    def to_string(self, indent: str = "") -> str:
+        s = f"{indent}{self.key}\n"
+        child_str = ""
+        for child in self.children:
+            child_str += child.to_string(indent=indent + "  ")
+        return s + child_str
+
+    def to_json(self) -> Any:
+        return {
+            "key": self.key,
+            "children": [c.to_json() for c in self.children],
+        }
+
+    def size(self) -> int:
+        return 1 + sum([c.size() for c in self.children])
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> StrTree:
+        key = json_data["key"]
+        children = [cls.from_json(c) for c in json_data["children"]]
+        return cls(key, children)
 
 
 def term_to_json(t: Term) -> Any:
@@ -587,6 +962,22 @@ def term_from_json(json_data: Any) -> Term:
             return ProdT.from_json(json_data)
         case NumberT.__name__:
             return NumberT.from_json(json_data)
+        case StringT.__name__:
+            return StringT.from_json(json_data)
+        case MatchT.__name__:
+            return MatchT.from_json(json_data)
+        case FixT.__name__:
+            return FixT.from_json(json_data)
+        case CoFixT.__name__:
+            return CoFixT.from_json(json_data)
+        case AppT.__name__:
+            return AppT.from_json(json_data)
+        case IfT.__name__:
+            return IfT.from_json(json_data)
+        case RecordT.__name__:
+            return RecordT.from_json(json_data)
+        case SortT.__name__:
+            return SortT.from_json(json_data)
         case _:
             raise ValueError(f"Unrecognized term class {attempted_name}")
 
@@ -597,7 +988,3 @@ def get_body_from_definition(ast: Any) -> Any:
     assert body[0] == "DefineBody"
     expr = body[3]
     return expr
-
-
-def transform_ast(ast: Any) -> Term:
-    pass

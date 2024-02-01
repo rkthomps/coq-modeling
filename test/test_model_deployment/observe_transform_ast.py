@@ -18,4 +18,4 @@ ast_no_def = get_body_from_definition(ast)
 ipdb.set_trace()
 term = term_from_ast(ast_no_def)
 
-print(json.dumps(term.to_json(), indent=2))
+print(term.to_strtree().to_string())
