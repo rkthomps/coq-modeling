@@ -1,6 +1,6 @@
 import argparse
 import sys, os
-import pdb
+import ipdb
 import shutil
 from typing import Any, Optional
 
@@ -58,12 +58,33 @@ def get_datasets(
     return train_dataset, val_dataset
 
 
-class CustomTrainer(Trainer):
+class MSETrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         cuda_label = inputs["label"].to(model.device)
         outputs = model(**inputs)
         similarities = outputs["similarities"]
         loss = F.mse_loss(similarities, cuda_label)
+        if return_outputs:
+            return loss, outputs
+        return loss
+
+
+class CrossEntTrainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False):
+        temp = 0.1
+        cuda_label = inputs["label"].to(model.device)
+        outputs = model(**inputs)
+        similarities = outputs["similarities"]
+        cooled_dots = similarities / temp
+        pos_mask = -1e9 * (1 - cuda_label)
+        pos_weight = torch.logsumexp(cooled_dots + pos_mask, dim=1)
+        total_weight = torch.logsumexp(cooled_dots, dim=1)
+        diffs = pos_weight - total_weight
+        assert (diffs <= 0).all()
+        num_posities = cuda_label.sum(axis=1)
+        pos_avg = diffs / num_posities
+        batch_avg = pos_avg.mean()
+        loss = -1 * batch_avg
         if return_outputs:
             return loss, outputs
         return loss
@@ -86,14 +107,26 @@ def get_trainer(
     train_dataset, val_dataset = get_datasets(conf, tokenizer, max_seq_len)
 
     print("\n\nBuilding Trainer...")
-    return CustomTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=val_dataset,
-        data_collator=train_dataset.collate,
-        tokenizer=tokenizer,
-    )
+    loss_fn = get_optional_arg("loss_fn", conf, "mse")
+    print(f"\n\nUsing {loss_fn} loss")
+    if loss_fn == "cross-entropy":
+        return CrossEntTrainer(
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            data_collator=train_dataset.collate,
+            tokenizer=tokenizer,
+        )
+    else:
+        return MSETrainer(
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            data_collator=train_dataset.collate,
+            tokenizer=tokenizer,
+        )
 
 
 if __name__ == "__main__":

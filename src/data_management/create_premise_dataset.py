@@ -26,6 +26,7 @@ from data_management.splits import (
     split_file_path,
 )
 from data_management.jsonl_utils import shuffle, deduplicate
+from data_management.pos_premise_bank import PosPremiseBank
 from util.util import get_basic_logger
 from util.constants import PREMISE_DATA_CONF_NAME
 
@@ -45,6 +46,7 @@ class PremiseDataConfig:
         context_format_type: type[ContextFormat],
         premise_format_type: type[PremiseFormat],
         premise_filter: PremiseFilter,
+        pos_premise_bank: Optional[PosPremiseBank],
     ) -> None:
         self.data_split = data_split
         self.data_loc = data_loc
@@ -54,6 +56,7 @@ class PremiseDataConfig:
         self.context_format_type = context_format_type
         self.premise_format_type = premise_format_type
         self.premise_filter = premise_filter
+        self.pos_premise_bank = pos_premise_bank
 
     @classmethod
     def from_config(cls, config: Any) -> PremiseDataConfig:
@@ -69,6 +72,10 @@ class PremiseDataConfig:
         premise_format_alias = config["premise_format_alias"]
         premise_format_type = PREMISE_ALIASES[premise_format_alias]
         premise_filter = PremiseFilter.from_json(config["premise_filter"])
+        if "pos_premise_bank_loc" in config:
+            pos_premise_bank = PosPremiseBank.load(config["pos_premise_bank_loc"])
+        else:
+            pos_premise_bank = None
         return cls(
             data_split,
             data_loc,
@@ -78,11 +85,13 @@ class PremiseDataConfig:
             context_format_type,
             premise_format_type,
             premise_filter,
+            pos_premise_bank,
         )
 
 
 def get_examples_from_file(
     file_info: FileInfo,
+    split: Split,
     premise_conf: PremiseDataConfig,
     q: Queue[Optional[PremiseTrainingExample]],
 ) -> None:
@@ -102,13 +111,15 @@ def get_examples_from_file(
                 premise_conf.context_format_type,
                 premise_conf.premise_format_type,
                 premise_conf.premise_filter,
+                premise_conf.pos_premise_bank,
+                split,
             )
             for example in step_examples:
                 q.put(example)
 
 
 PremiseArgs = tuple[
-    FileInfo, PremiseDataConfig, Queue[Optional[PremiseTrainingExample]]
+    FileInfo, Split, PremiseDataConfig, Queue[Optional[PremiseTrainingExample]]
 ]
 
 
@@ -120,7 +131,7 @@ def get_dataset_args(
     argument_list: list[PremiseArgs] = []
     for project in premise_conf.data_split.get_project_list(split):
         for file in project.files:
-            argument_list.append((file, premise_conf, q))
+            argument_list.append((file, split, premise_conf, q))
     return argument_list
 
 

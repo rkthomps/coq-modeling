@@ -59,9 +59,12 @@ class Sentence:
 
     def __hash__(self) -> int:
         tup_module = tuple(self.module)
-        return hash(
-            (self.text, self.file_path, tup_module, self.sentence_type, self.line)
-        )
+        # return hash(
+        #     (self.text, self.file_path, tup_module, self.sentence_type, self.line)
+        # )
+        # The filepaths cause problems because they are different depending on where the
+        # data was collected
+        return hash((self.text, tup_module, self.sentence_type, self.line))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Sentence):
@@ -363,7 +366,7 @@ class DatasetFile:
 
     def __get_oof_avail_premises(self) -> list[Sentence]:
         """
-        Not a direct comparison of paths. 
+        Not a direct comparison of paths.
         Consider zyla-random-proofs-Interpreter.v where premises
         can have file path ../coq-dataset/... and the file context
         can have file path /coq-dataset/....
