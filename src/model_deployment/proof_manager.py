@@ -9,6 +9,11 @@ import ipdb
 from typeguard import typechecked
 
 from util.util import get_fresh_path
+from util.coqpyt_utils import (
+    replace_proof_with_admitted_stub,
+    restore_proof_file,
+    go_through_point,
+)
 from data_management.dataset_file import (
     DatasetFile,
     FileContext,
@@ -203,55 +208,14 @@ class ProofManager:
 
         self.__workspace_loc = os.path.join(self.data_loc, self.file_info.workspace)
         self.file_prefix = self.__get_file_prefix()
-        self.__proof_stored_steps = self.__replace_proof_with_admitted_stub()
+        self.__proof_stored_steps = replace_proof_with_admitted_stub(
+            self.proof_file, self.proof_point
+        )
 
     def __get_file_prefix(self) -> str:
         return "".join(
             [s.text for s in self.proof_file.steps[: (self.proof_point + 1)]]
         )
-
-    def __go_through_point(self, point: int) -> None:
-        while self.proof_file.steps_taken < point + 1:
-            self.proof_file.exec(1)
-        while point + 1 < self.proof_file.steps_taken:
-            self.proof_file.exec(-1)
-
-    def __go_to_point(self, point: int) -> None:
-        while self.proof_file.steps_taken < point:
-            self.proof_file.exec(1)
-        while point < self.proof_file.steps_taken:
-            self.proof_file.exec(-1)
-
-    def __get_whole_proof_delete_steps(self) -> tuple[list[int], list[str]]:
-        delete_indices: list[int] = []
-        delete_strs: list[str] = []
-        self.__go_through_point(self.proof_point)
-        assert self.proof_file.in_proof
-        while self.proof_file.in_proof and self.proof_file.steps_taken < len(
-            self.proof_file.steps
-        ):
-            delete_idx = self.proof_file.steps_taken
-            delete_strs.append(self.proof_file.steps[delete_idx].text)
-            delete_indices.append(delete_idx)
-            self.proof_file.exec(1)
-        return delete_indices, delete_strs
-
-    def __replace_proof_with_admitted_stub(self) -> list[str]:
-        delete_indices, delete_strs = self.__get_whole_proof_delete_steps()
-        delete_commands = [CoqDeleteStep(i) for i in reversed(delete_indices)]
-        self.__go_through_point(self.proof_point)
-        add_commands = [CoqAddStep("\nAdmitted.", self.proof_file.steps_taken - 1)]
-        self.proof_file.change_steps(delete_commands + add_commands)
-        return delete_strs
-
-    def __restore_proof_file(self) -> None:
-        delete_indices, _ = self.__get_whole_proof_delete_steps()
-        delete_steps = [CoqDeleteStep(i) for i in reversed(delete_indices)]
-        add_steps = [
-            CoqAddStep(s, self.proof_point + i)
-            for i, s in enumerate(self.__proof_stored_steps)
-        ]
-        self.proof_file.change_steps(delete_steps + add_steps)
 
     def __get_current_partial_proof(self) -> list[str]:
         start_idx = self.proof_point + 1
@@ -281,7 +245,7 @@ class ProofManager:
             for i, s in enumerate(steps[prefix_len:])
         ]
         self.proof_file.change_steps(delete_steps + add_steps)
-        self.__go_through_point(self.proof_point + len(steps))
+        go_through_point(self.proof_file, self.proof_point + len(steps))
         assert "Admitted." in self.proof_file.steps[self.proof_file.steps_taken].text
 
     def __update_aux_file(self, partial_proof: str) -> None:
@@ -426,4 +390,4 @@ class ProofManager:
         _logger.debug("Restoring proof file.")
         if os.path.exists(self.aux_file_path):
             os.remove(self.aux_file_path)
-        self.__restore_proof_file()
+        restore_proof_file(self.proof_file, self.proof_point, self.__proof_stored_steps)

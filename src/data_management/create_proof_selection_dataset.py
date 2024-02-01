@@ -79,7 +79,7 @@ def get_example_args(
     q: Queue[Optional[ProofSelectionExample]],
 ) -> list[ExampleFnArgs]:
     args: list[ExampleFnArgs] = []
-    for file in config.data_split.get_file_list(config.data_loc, split):
+    for file in config.data_split.get_file_list(split):
         args.append((config, file, q))
     return args
 

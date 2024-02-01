@@ -9,6 +9,7 @@ import datetime
 import random
 from data_management.splits import FileInfo, DataSplit, Split, str2split
 from util.util import get_basic_logger
+from util.coqpyt_utils import get_proof_indices, go_to_point
 
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
@@ -35,27 +36,9 @@ class ProofInfo:
         return [s.text for s in get_proof_steps(self.proof_file, self.idx)]
 
 
-def __eval_to(proof_file: ProofFile, i: int) -> None:
-    while proof_file.steps_taken < i:
-        proof_file.exec(1)
-    while i < proof_file.steps_taken:
-        proof_file.exec(-1)
-
-
-def get_proof_indices(proof_file: ProofFile) -> list[int]:
-    __eval_to(proof_file, 0)
-    cur_in_proof = proof_file.in_proof
-    indices: list[int] = []
-    while proof_file.steps_taken < len(proof_file.steps):
-        proof_file.exec(1)
-        if not cur_in_proof and proof_file.in_proof:
-            indices.append(proof_file.steps_taken - 1)
-        cur_in_proof = proof_file.in_proof
-    return indices
-
 
 def get_proof_steps(proof_file: ProofFile, i: int) -> list[Step]:
-    __eval_to(proof_file, i + 1)
+    go_to_point(proof_file, i + 1)
     assert proof_file.in_proof
     steps: list[Step] = []
     while proof_file.in_proof and proof_file.steps_taken < len(proof_file.steps):

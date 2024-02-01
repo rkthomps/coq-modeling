@@ -88,6 +88,11 @@ class SearchNode:
     def redundant_str(self) -> str:
         return f"{self.model_tactic} with score {self.score.compute()}"
 
+    def get_last_node_time(self) -> float:
+        my_creation_time = self.creation_time
+        subtree_max_creation_times = [c.get_last_node_time() for c in self.children]
+        return max([my_creation_time] + subtree_max_creation_times)
+
     def get_deepest_node(self, cur_depth: int = 0) -> tuple[SearchNode, int]:
         cur_max_depth = cur_depth
         cur_deepest_node = self

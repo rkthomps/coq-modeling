@@ -341,8 +341,6 @@ class FileContext:
 
 @typechecked
 class DatasetFile:
-    __warn_num = 0
-
     def __init__(self, file_context: FileContext, proofs: list[Proof]) -> None:
         # TODO: Turn into list of proofs.
         self.file_context = file_context

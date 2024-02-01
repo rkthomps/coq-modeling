@@ -74,9 +74,31 @@ class SuccessResult:
 class FailedResult:
     ALIAS = "failure"
 
+    def __init__(self, time_before_fail: float) -> None:
+        self.time_before_fail = time_before_fail
+
+    def to_json(self) -> Any:
+        return {
+            "time_before_fail": self.time_before_fail,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> FailedResult:
+        return cls(json_data["time_before_fail"])
+
 
 class ErrorResult:
     ALIAS = "error"
+
+    def __init__(self, time_before_error: float) -> None:
+        self.time_before_error = time_before_error
+
+    def to_json(self) -> Any:
+        return {"time_before_error": self.time_before_error}
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> ErrorResult:
+        return cls(json_data["time_before_error"])
 
 
 SmallSearchResult = SuccessResult | FailedResult | ErrorResult
@@ -89,11 +111,7 @@ class SmallResultNotFoundError(Exception):
 
 
 def small_result_to_json(small_search_result: SmallSearchResult) -> Any:
-    match small_search_result:
-        case SuccessResult():
-            return {"alias": small_search_result.ALIAS} | small_search_result.to_json()
-        case _:
-            return {"alias": small_search_result.ALIAS}
+    return {"alias": small_search_result.ALIAS} | small_search_result.to_json()
 
 
 def small_result_from_json(json_data: Any) -> SmallSearchResult:
@@ -102,9 +120,9 @@ def small_result_from_json(json_data: Any) -> SmallSearchResult:
         case SuccessResult.ALIAS:
             return SuccessResult.from_json(json_data)
         case FailedResult.ALIAS:
-            return FailedResult()
+            return FailedResult.from_json(json_data)
         case ErrorResult.ALIAS:
-            return ErrorResult()
+            return ErrorResult.from_json(json_data)
         case _:
             raise SmallResultNotFoundError(f"{attempted_alias}")
 
@@ -167,9 +185,14 @@ class SmallEvalResult:
                 expanded = path_to_qed[-2].expanded
                 small_search_result = SuccessResult(seconds, expanded)
             case FailedSearch():
-                small_search_result = FailedResult()
+                max_creation_time = (
+                    large_eval_result.search_result.search_tree.root.get_last_node_time()
+                )
+                small_search_result = FailedResult(max_creation_time)
             case ErroredSearch():
-                small_search_result = ErrorResult()
+                small_search_result = ErrorResult(
+                    large_eval_result.search_result.error_after
+                )
         return SmallEvalResult(
             small_search_result,
             len(large_eval_result.ground_truth_steps),
@@ -215,6 +238,16 @@ class EvalDict:
             match obj.small_search_result:
                 case SuccessResult():
                     times.append(obj.small_search_result.seconds)
+                case _:
+                    pass
+        return times
+
+    def get_failed_times(self) -> list[float]:
+        times: list[float] = []
+        for _, obj in self.eval_objs.items():
+            match obj.small_search_result:
+                case FailedResult():
+                    times.append(obj.small_search_result.time_before_fail / 1e9)
                 case _:
                     pass
         return times
@@ -275,12 +308,14 @@ class EvalDict:
             eval_objs[proof_name] = small_obj
         return cls(name, path, eval_objs)
 
+
 def num_proofs(eval_dicts: list[EvalDict]) -> int:
     assert len(eval_dicts) > 0
     tentative_num = len(eval_dicts[0].eval_objs)
     for eval_dict in eval_dicts:
         assert tentative_num == len(eval_dict.eval_objs)
     return tentative_num
+
 
 def filter_all_successful(
     shared_proofs: set[str], eval_dicts: list[EvalDict]
@@ -295,6 +330,21 @@ def filter_all_successful(
         if all_successful:
             success_keys.add(proof)
     return success_keys
+
+
+def filter_all_failure(shared_proofs: set[str], eval_dicts: list[EvalDict]) -> set[str]:
+    failure_keys: set[str] = set()
+    for proof in shared_proofs:
+        all_failed = True
+        for eval_dict in eval_dicts:
+            if not isinstance(
+                eval_dict.eval_objs[proof].small_search_result, FailedResult
+            ):
+                all_failed = False
+                break
+        if all_failed:
+            failure_keys.add(proof)
+    return failure_keys
 
 
 def filter_all_no_error(

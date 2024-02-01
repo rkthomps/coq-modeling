@@ -11,6 +11,7 @@ reports
 distances
 analysis
 banks
+proof-db
 
 # Temporary
 test_size.py
@@ -35,7 +36,7 @@ src/tactic_gen/confs/**
 !src/tactic_gen/confs/codellama_basic.yaml
 
 # - Eval
-evals-before-2024-01-17
+evals-before-2024-01-17*
 evals-small
 evals-bad-imports
 build-coq
@@ -46,6 +47,7 @@ shared-thms.json
 
 # scripts
 clean_search.sh
+refresh_evals.sh
 
 
 # Python files
@@ -67,6 +69,7 @@ __pycache__
 # Proof search files
 .proof-search
 proof-tree.json
+*goal_aux.v
 
 # Temporary/Throw-away python scripts
 src/throw_away
