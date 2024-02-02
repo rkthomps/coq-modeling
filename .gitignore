@@ -13,6 +13,7 @@ analysis
 banks
 proof-db
 step-evals
+eval_examples
 
 # Temporary
 test_size.py
