@@ -3,7 +3,7 @@
 split: val
 data_split_loc: splits/random-split.json
 data_loc: raw-data/coq-dataset
-n_recs: 1
+n_recs: 8
 save_loc: step-evals/basic-rnd-split-rnd-samp-8-pct
 model_wrapper:
   alias: local

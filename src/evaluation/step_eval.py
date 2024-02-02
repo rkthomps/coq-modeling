@@ -8,6 +8,7 @@ import sys, os
 import argparse
 import yaml
 import json
+import math
 
 from dataclasses import dataclass
 from data_management.splits import DataSplit, Split, FileInfo, str2split
@@ -16,6 +17,8 @@ from model_deployment.model_wrapper import ModelWrapper, wrapper_from_conf
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
+
+ATTEMPTS_NAME = "files"
 
 
 @dataclass
@@ -53,6 +56,11 @@ class StepStat:
     def compute(self) -> float:
         return self.correct_steps / self.attempted_steps
 
+    def margin(self) -> float:
+        return 1.96 * math.sqrt(
+            self.compute() * (1 - self.compute()) / self.attempted_steps
+        )
+
     def to_json(self) -> Any:
         return {
             "correct_steps": self.correct_steps,
@@ -69,61 +77,74 @@ class StepStat:
 
 
 @dataclass
-class StepStats:
-    stats_dict: dict[int, StepStat]
-    file_info: FileInfo
+class StepAttempt:
+    input: str
+    predictions: list[str]
+    ground_truth: list[str]
+    all_proof_steps: list[str]
 
-    def tick_correct_at(self, k: int) -> None:
-        if k not in self.stats_dict:
-            self.stats_dict[k] = StepStat.empty()
-        self.stats_dict[k].tick_correct()
+    def has_k(self, k: int) -> bool:
+        return 0 <= k < len(self.predictions)
 
-    def tick_incorrect_at(self, k: int) -> None:
-        if k not in self.stats_dict:
-            self.stats_dict[k] = StepStat.empty()
-        self.stats_dict[k].tick_incorrect()
-
-    def at(self, k: int) -> StepStat:
-        return self.stats_dict[k]
+    def is_correct_at_k(self, k: int) -> bool:
+        prediction_k = self.predictions[k]
+        split_prediction = prediction_k.split()
+        split_ground_truth = "".join(self.ground_truth).split()
+        return split_ground_truth[: (len(split_prediction))] == split_prediction
 
     def to_json(self) -> Any:
         return {
-            "stats_dict": dict([(k, v.to_json()) for k, v in self.stats_dict.items()]),
+            "input": self.input,
+            "predictions": self.predictions,
+            "ground_truth": self.ground_truth,
+            "all_proof_steps": self.all_proof_steps,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> StepAttempt:
+        input = json_data["input"]
+        predictions = json_data["predictions"]
+        ground_truth = json_data["ground_truth"]
+        ground_truth_context = json_data["all_proof_steps"]
+        return cls(input, predictions, ground_truth, ground_truth_context)
+
+
+@dataclass
+class FileEval:
+    file_info: FileInfo
+    step_attempts: list[StepAttempt]
+
+    def to_json(self) -> Any:
+        return {
             "file_info": self.file_info.to_json(),
+            "step_attempts": [a.to_json() for a in self.step_attempts],
         }
 
     def save(self, path: str) -> None:
-        path_dir = os.path.dirname(path)
-        os.makedirs(path_dir, exist_ok=True)
+        path_dirname = os.path.dirname(path)
+        os.makedirs(path_dirname, exist_ok=True)
         with open(path, "w") as fout:
-            fout.write(json.dumps(self.to_json()))
+            fout.write(json.dumps(self.to_json(), indent=2))
 
     @classmethod
-    def empty(cls, file_info: FileInfo) -> StepStats:
-        return cls({}, file_info)
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> StepStats:
-        stats_dict: dict[int, StepStat] = {}
-        for k, v in json_data["stats_dict"].items():
-            stats_dict[int(k)] = StepStat.from_json(v)
-        file_info = FileInfo.from_json(json_data["file_info"])
-        return cls(stats_dict, file_info)
-
-    @classmethod
-    def load(cls, path: str) -> StepStats:
+    def load(cls, path: str) -> FileEval:
         with open(path, "r") as fin:
             json_data = json.load(fin)
             return cls.from_json(json_data)
 
+    @classmethod
+    def from_json(cls, json_data: Any) -> FileEval:
+        file_info = FileInfo.from_json(json_data["file_info"])
+        step_attempts = [StepAttempt.from_json(s) for s in json_data["step_attempts"]]
+        return cls(file_info, step_attempts)
+
 
 def evaluate(conf: StringEvalConf) -> None:
     file_list = conf.data_split.get_file_list(conf.split)
-    num_files = 0
     for file_info in tqdm(file_list):
-        file_stats = StepStats.empty(file_info)
         try:
             dp_obj = file_info.get_dp(conf.data_loc)
+            attempts: list[StepAttempt] = []
             for proof in dp_obj.proofs:
                 ground_truth_steps = [s.step.text for s in proof.steps]
                 for i, step in enumerate(proof.steps):
@@ -137,25 +158,19 @@ def evaluate(conf: StringEvalConf) -> None:
                         ground_truth_steps,
                     )
                     model_result = conf.model_wrapper.get_recs(example, conf.n_recs)
-                    next_ground_truth = "".join(ground_truth_steps[i:])
-                    ground_truth_no_whitespace = next_ground_truth.split()
-                    for i, tactic in enumerate(
-                        model_result.next_tactic_list[: conf.n_recs]
-                    ):
-                        tac_no_whitespace = tactic.split()
-                        tac_list_len = len(tac_no_whitespace)
-                        if (
-                            ground_truth_no_whitespace[:tac_list_len]
-                            == tac_no_whitespace
-                        ):
-                            file_stats.tick_correct_at(i)
-                        else:
-                            file_stats.tick_incorrect_at(i)
-                    _logger.info(
-                        f"Proof rate {file_stats.at(0).compute()} after {file_stats.at(0).attempted_steps} steps."
+                    next_ground_truth = ground_truth_steps[i:]
+                    attempt = StepAttempt(
+                        example.input,
+                        model_result.next_tactic_list[: conf.n_recs],
+                        next_ground_truth,
+                        ground_truth_steps,
                     )
-            num_files += 1
-            file_stats.save(os.path.join(conf.save_loc, "files", file_info.dp_name))
+                    attempts.append(attempt)
+            if 0 < len(attempts):
+                file_eval = FileEval(file_info, attempts)
+                file_eval.save(
+                    os.path.join(conf.save_loc, ATTEMPTS_NAME, file_info.dp_name)
+                )
         except FileNotFoundError:
             _logger.warning(f"Could not find file: {file_info.file}")
 
