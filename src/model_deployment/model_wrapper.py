@@ -137,6 +137,9 @@ class CodeLLamaLocalWrapper:
             sample_result.tactics, sample_result.scores, sample_result.num_tokens
         )
 
+    def to_device(self, device: str) -> None:
+        self.model.to(device)
+
     @staticmethod
     def get_model_loc(checkpoint_loc: str) -> str:
         return os.path.dirname(checkpoint_loc)
@@ -348,3 +351,11 @@ def wrapper_from_conf(conf: Any) -> ModelWrapper:
             raise WrapperNotFoundError(
                 f"Could not find model wrapper: {attempted_alias}"
             )
+
+
+def wrapper_to_device(wrapper: ModelWrapper, device: str) -> None:
+    match wrapper:
+        case CodeLLamaLocalWrapper():
+            wrapper.to_device(device)
+        case _:
+            pass

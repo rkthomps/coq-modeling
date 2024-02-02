@@ -267,9 +267,13 @@ class Proof:
         self,
         stop_step: FocusedStep,
         include_proof: bool = False,
+        include_theorem: bool = True,
     ) -> str:
         """Print the tactics of the proof up to but not including the given step"""
-        proof = self.theorem.term.text
+        if include_theorem:
+            proof = self.theorem.term.text
+        else:
+            proof = ""
         if include_proof:
             proof += "\nProof."
         for step in self.steps:

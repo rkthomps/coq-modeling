@@ -95,7 +95,6 @@ def examples_to_queue(
     device_idx: int,
     q: Queue[Optional[LmExample]],
 ) -> None:
-    _logger.debug(f"Processing {file_info.file}")
     cuda_str = f"cuda:{device_idx}"
     move_fmt_to(lm_formatter, cuda_str)
     dp_obj = file_info.get_dp(example_sample.data_loc)
