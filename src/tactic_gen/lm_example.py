@@ -212,6 +212,121 @@ class OptimalPremiseFormatter:
         )
 
 
+class FixedPremiseFormatter:
+    ALIAS = "fixed-premise"
+
+    def __init__(
+        self,
+        premise_model_wrapper: PremiseModelWrapper,
+        tokenizer: CodeLlamaTokenizer,
+        state_num_tokens: int,
+        script_num_tokens: int,
+        statement_num_tokens: int,
+        premise_num_tokens: int,
+        n_step_sampler: NStepSampler,
+        direct_num_steps: bool,
+        conf: Any,
+    ) -> None:
+        self.premise_model_wrapper = premise_model_wrapper
+        self.tokenizer = tokenizer
+        self.state_num_tokens = state_num_tokens
+        self.script_num_tokens = script_num_tokens
+        self.statement_num_tokens = statement_num_tokens
+        self.premise_num_tokens = premise_num_tokens
+        self.n_step_sampler = n_step_sampler
+        self.direct_num_steps = direct_num_steps
+        self.conf = conf
+
+    def get_premise_str(
+        self,
+        step: FocusedStep,
+        proof: Proof,
+        dp_obj: DatasetFile,
+    ) -> str:
+        filtered_result = (
+            self.premise_model_wrapper.premise_filter.get_pos_and_avail_premises(
+                step, proof, dp_obj
+            )
+        )
+        ranked_premises = get_ranked_premise_generator(
+            self.premise_model_wrapper, step, proof, filtered_result.avail_premises
+        )
+        total_premise_tokens = 0
+        premises: list[str] = []
+        for premise in ranked_premises:
+            allowance = self.premise_num_tokens - total_premise_tokens
+            if allowance <= 0:
+                break
+            trunc_str, num_toks = allocate_tokens(
+                self.tokenizer, premise.text, allowance, truncate_front=False
+            )
+            premises.insert(0, trunc_str)
+            total_premise_tokens += num_toks
+        return "\n".join(premises)
+
+    def example_from_step(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
+        ground_truth_steps: Optional[list[str]],
+    ) -> LmExample:
+        step = proof.steps[step_idx]
+        premise_str = self.get_premise_str(step, proof, dp_obj)
+
+        statement, _ = allocate_tokens(
+            self.tokenizer,
+            proof.theorem.term.text,
+            self.statement_num_tokens,
+            truncate_front=False,
+        )
+
+        partial_proof_string = proof.proof_prefix_to_string(step, include_theorem=False)
+        proof_str, _ = allocate_tokens(
+            self.tokenizer, partial_proof_string, self.script_num_tokens
+        )
+
+        final_goal_string = fmt_goals(step.goals)
+        state_str, _ = allocate_tokens(
+            self.tokenizer, final_goal_string, self.state_num_tokens
+        )
+
+        input_prefix = f"{premise_str}{PREM_SEP}{statement}{STMT_SEP}{proof_str}{THM_SEP}{state_str}"
+        n_step_sample = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
+
+        if self.direct_num_steps:
+            input = f"{input_prefix}{N_TAC_TOK}{len(n_step_sample.steps)}"
+        else:
+            input = input_prefix
+        output = "".join([fs.step.text for fs in n_step_sample.steps])
+        return LmExample(input, output)
+
+    @classmethod
+    def from_conf(cls, conf: Any) -> FixedPremiseFormatter:
+        model_name = conf["model_name"]
+        tokenizer = CodeLlamaTokenizer.from_pretrained(model_name, use_fast=True)
+        premise_model_wrapper = premise_wrapper_from_conf(conf["premise_model_wrapper"])
+        state_num_tokens = conf["state_num_tokens"]
+        script_num_tokens = conf["script_num_tokens"]
+        statement_num_tokens = conf["statement_num_tokens"]
+        premise_num_tokens = conf["premise_num_tokens"]
+        tmp_basic_formatter = BasicFormatter.from_conf(conf)
+        return cls(
+            premise_model_wrapper,
+            tokenizer,
+            state_num_tokens,
+            script_num_tokens,
+            statement_num_tokens,
+            premise_num_tokens,
+            tmp_basic_formatter.n_step_sampler,
+            tmp_basic_formatter.direct_num_steps,
+            conf,
+        )
+
+
 class StatementPremiseFormatter:
     ALIAS = "thm-premise"
 
@@ -629,6 +744,7 @@ LmFormatter = (
     BasicFormatter
     | OptimalPremiseFormatter
     | StatementPremiseFormatter
+    | FixedPremiseFormatter
     | PremiseFormatter
     | GoalFormatter
     | ProofRetrievalOracleFormatter
@@ -654,7 +770,11 @@ def move_fmt_to(formatter: LmFormatter, device: str) -> None:
             | GPT4Formatter()
         ):
             pass
-        case PremiseFormatter() | BaseCodeLLamaPremiseLmFormatter():
+        case (
+            FixedPremiseFormatter()
+            | PremiseFormatter()
+            | BaseCodeLLamaPremiseLmFormatter()
+        ):
             move_prem_wrapper_to(formatter.premise_model_wrapper, device)
 
 
@@ -667,6 +787,8 @@ def fmt_from_conf(conf: Any) -> LmFormatter:
             return OptimalPremiseFormatter.from_conf(conf)
         case StatementPremiseFormatter.ALIAS:
             return StatementPremiseFormatter.from_conf(conf)
+        case FixedPremiseFormatter.ALIAS:
+            return FixedPremiseFormatter.from_conf(conf)
         case PremiseFormatter.ALIAS:
             return PremiseFormatter.from_conf(conf)
         case ProofRetrievalOracleFormatter.ALIAS:
@@ -691,6 +813,7 @@ def fmt_get_conf(formatter: LmFormatter) -> Any:
             BasicFormatter()
             | OptimalPremiseFormatter()
             | StatementPremiseFormatter()
+            | FixedPremiseFormatter()
             | PremiseFormatter()
             | GoalFormatter()
             | ProofRetrievalOracleFormatter()
