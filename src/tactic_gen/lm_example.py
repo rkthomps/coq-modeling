@@ -212,6 +212,96 @@ class OptimalPremiseFormatter:
         )
 
 
+class GroundTruthLeakFormatter:
+    ALIAS = "ground-truth"
+
+    def __init__(
+        self,
+        tokenizer: CodeLlamaTokenizer,
+        state_num_tokens: int,
+        script_num_tokens: int,
+        statement_num_tokens: int,
+        ground_truth_num_tokens: int,
+        n_step_sampler: NStepSampler,
+        direct_num_steps: bool,
+        conf: Any,
+    ) -> None:
+        self.tokenizer = tokenizer
+        self.state_num_tokens = state_num_tokens
+        self.script_num_tokens = script_num_tokens
+        self.statement_num_tokens = statement_num_tokens
+        self.ground_truth_num_tokens = ground_truth_num_tokens
+        self.n_step_sampler = n_step_sampler
+        self.direct_num_steps = direct_num_steps
+        self.conf = conf
+
+    def example_from_step(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
+        ground_truth_steps: Optional[list[str]],
+    ) -> LmExample:
+        assert ground_truth_steps is not None
+        step = proof.steps[step_idx]
+        ground_truth_str, _ = allocate_tokens(
+            self.tokenizer,
+            "".join(ground_truth_steps[step_idx:]),
+            self.ground_truth_num_tokens,
+            truncate_front=True,
+        )
+
+        statement, _ = allocate_tokens(
+            self.tokenizer,
+            proof.theorem.term.text,
+            self.statement_num_tokens,
+            truncate_front=False,
+        )
+
+        partial_proof_string = proof.proof_prefix_to_string(step, include_theorem=False)
+        proof_str, _ = allocate_tokens(
+            self.tokenizer, partial_proof_string, self.script_num_tokens
+        )
+
+        final_goal_string = fmt_goals(step.goals)
+        state_str, _ = allocate_tokens(
+            self.tokenizer, final_goal_string, self.state_num_tokens
+        )
+
+        input_prefix = f"{ground_truth_str}{PREM_SEP}{statement}{STMT_SEP}{proof_str}{THM_SEP}{state_str}"
+        n_step_sample = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
+
+        if self.direct_num_steps:
+            input = f"{input_prefix}{N_TAC_TOK}{len(n_step_sample.steps)}"
+        else:
+            input = input_prefix
+        output = "".join([fs.step.text for fs in n_step_sample.steps])
+        return LmExample(input, output)
+
+    @classmethod
+    def from_conf(cls, conf: Any) -> GroundTruthLeakFormatter:
+        model_name = conf["model_name"]
+        tokenizer = CodeLlamaTokenizer.from_pretrained(model_name, use_fast=True)
+        state_num_tokens = conf["state_num_tokens"]
+        script_num_tokens = conf["script_num_tokens"]
+        statement_num_tokens = conf["statement_num_tokens"]
+        ground_truth_num_tokens = conf["ground_truth_num_tokens"]
+        tmp_basic_formatter = BasicFormatter.from_conf(conf)
+        return cls(
+            tokenizer,
+            state_num_tokens,
+            script_num_tokens,
+            statement_num_tokens,
+            ground_truth_num_tokens,
+            tmp_basic_formatter.n_step_sampler,
+            tmp_basic_formatter.direct_num_steps,
+            conf,
+        )
+
+
 class FixedPremiseFormatter:
     ALIAS = "fixed-premise"
 
@@ -744,6 +834,7 @@ LmFormatter = (
     BasicFormatter
     | OptimalPremiseFormatter
     | StatementPremiseFormatter
+    | GroundTruthLeakFormatter
     | FixedPremiseFormatter
     | PremiseFormatter
     | GoalFormatter
@@ -762,6 +853,7 @@ def move_fmt_to(formatter: LmFormatter, device: str) -> None:
     match formatter:
         case (
             BasicFormatter()
+            | GroundTruthLeakFormatter()
             | StatementPremiseFormatter()
             | OptimalPremiseFormatter()
             | ProofRetrievalOracleFormatter()
@@ -785,6 +877,8 @@ def fmt_from_conf(conf: Any) -> LmFormatter:
             return BasicFormatter.from_conf(conf)
         case OptimalPremiseFormatter.ALIAS:
             return OptimalPremiseFormatter.from_conf(conf)
+        case GroundTruthLeakFormatter.ALIAS:
+            return GroundTruthLeakFormatter.from_conf(conf)
         case StatementPremiseFormatter.ALIAS:
             return StatementPremiseFormatter.from_conf(conf)
         case FixedPremiseFormatter.ALIAS:
@@ -812,6 +906,7 @@ def fmt_get_conf(formatter: LmFormatter) -> Any:
         case (
             BasicFormatter()
             | OptimalPremiseFormatter()
+            | GroundTruthLeakFormatter()
             | StatementPremiseFormatter()
             | FixedPremiseFormatter()
             | PremiseFormatter()

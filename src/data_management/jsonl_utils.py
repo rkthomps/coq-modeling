@@ -5,6 +5,7 @@ import jsonlines
 import json
 import random
 import os
+import shutil
 from tqdm import tqdm
 
 
@@ -44,7 +45,9 @@ def shuffle(in_file: str, out_file: str, buffer_size: int = 100000) -> None:
     if buffer_size < 1:
         raise ValueError("Buffer size cannot be less than one.")
     input_num_lines = count_lines(in_file)
-    assert input_num_lines > 0
+    if input_num_lines <= 0:
+        shutil.copy(in_file, out_file)
+        return
     # Can quickly go from input -> assignment
     # But I want to be able to go from assignment -> input
     assignment = list(range(input_num_lines))
@@ -97,7 +100,9 @@ def deduplicate(in_file: str, out_file: str, buffer_size: int = 100000) -> int:
     if buffer_size < 1:
         raise ValueError("Buffer size cannot be less than one.")
     input_num_lines = count_lines(in_file)
-    assert input_num_lines > 0
+    if input_num_lines <= 0:
+        shutil.copy(in_file, out_file)
+        return 0
     num_passes = math.ceil(input_num_lines / buffer_size)
     num_duplicates = 0
     for i in tqdm(range(num_passes)):

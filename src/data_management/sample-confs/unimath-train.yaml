@@ -1,0 +1,5 @@
+
+alias: CompleteSample
+data_split_loc: splits/unimath.json
+split: train
+data_loc: /data/benchmarks/coq-dataset
