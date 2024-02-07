@@ -11,9 +11,10 @@ reports
 distances
 analysis
 banks
-proof-db
+proof-goals
 step-evals
 eval_examples
+unimath-step-eval
 
 # Temporary
 test_size.py

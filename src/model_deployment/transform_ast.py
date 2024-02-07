@@ -914,6 +914,7 @@ def term_from_ast(ast: Any) -> Term:
         #     ipdb.set_trace()
         case _:
             term_size = len(json.dumps(ast))
+            raise ValueError(f"Unhandled Term Type: {term[0]} of size {term_size}")
             _logger.warning(
                 f"Unhandled Term Type: {term[0]} of size {term_size}. Inserting unknown tree."
             )

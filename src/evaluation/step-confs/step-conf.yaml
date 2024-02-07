@@ -1,10 +1,10 @@
 
 
 split: val
-data_split_loc: splits/random-split.json
+data_split_loc: splits/unimath.json
 data_loc: raw-data/coq-dataset
 n_recs: 8
-save_loc: step-evals/basic-rnd-split-rnd-samp-8-pct
+save_loc: unimath-step-eval/codellama-7b-basic
 model_wrapper:
   alias: local
-  pretrained-name: models/codellama-7b-basic-rnd-split-rnd-samp-pct-8/checkpoint-4114 
+  pretrained-name: models/codellama-7b-basic-rnd-split/checkpoint-41174
