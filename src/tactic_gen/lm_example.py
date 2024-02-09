@@ -19,6 +19,7 @@ from model_deployment.premise_model_wrapper import (
     get_ranked_premise_generator,
     premise_wrapper_from_conf,
 )
+from model_deployment.mine_goals import FileGoals, GoalRecord
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
@@ -103,6 +104,168 @@ def allocate_tokens(
     else:
         to_add = tokens[:allowance]
     return tokenizer.decode(to_add, skip_special_tokens=True), len(to_add)
+
+
+class ProofRetrievalFormatter:
+    ALIAS = "proof-ret"
+
+    def __init__(
+        self,
+        proof_bank_loc: str,
+        tokenizer: CodeLlamaTokenizer,
+        state_num_tokens: int,
+        script_num_tokens: int,
+        statement_num_tokens: int,
+        ret_proof_state_tokens: int,
+        ret_proof_script_tokens: int,
+        n_step_sampler: NStepSampler,
+        direct_num_steps: bool,
+        conf: Any,
+    ) -> None:
+        self.proof_bank_loc = proof_bank_loc
+        self.__proof_bank: dict[str, FileGoals] = {}
+        self.tokenizer = tokenizer
+        self.state_num_tokens = state_num_tokens
+        self.script_num_tokens = script_num_tokens
+        self.statement_num_tokens = statement_num_tokens
+        self.ret_proof_state_tokens = ret_proof_state_tokens
+        self.ret_proof_script_tokens = ret_proof_script_tokens
+        self.n_step_sampler = n_step_sampler
+        self.direct_num_steps = direct_num_steps
+        self.conf = conf
+
+    def __get_file_goals(self, key: str) -> Optional[FileGoals]:
+        if key in self.__proof_bank:
+            return self.__proof_bank[key]
+        goal_loc = os.path.join(self.proof_bank_loc, key)
+        if not os.path.exists(goal_loc):
+            return None
+        goals = FileGoals.load(goal_loc)
+        self.__proof_bank[key] = goals
+        return goals
+
+    def get_current_goal_similar_in_file_goal(
+        self, step_idx: int, proof: Proof, file_goals: FileGoals
+    ) -> Optional[tuple[GoalRecord, Optional[tuple[int, GoalRecord]]]]:
+        current_ground_truth = [s.step.text for s in proof.steps[step_idx:]]
+        complete_ground_truth = [s.step.text for s in proof.steps]
+        prefix_len = len(complete_ground_truth) - len(current_ground_truth)
+        record_idx: Optional[int] = None
+        for i, record in enumerate(file_goals.records):
+            if record.proof == current_ground_truth:
+                record_idx = i
+                break
+        if record_idx is None:
+            return None
+        current_record = file_goals.records[record_idx]
+        similar_candidate: Optional[tuple[int, GoalRecord]] = None
+        proof_start_idx = current_record.step_idx - prefix_len
+        for record in file_goals.records[:record_idx]:
+            if proof_start_idx <= record.step_idx: 
+                break
+            # # If you wanted to be able to retrieve from completed subgoals: 
+            # if current_record.step_idx <= record.step_idx + len(record.proof):
+            #     continue
+            if similar_candidate:
+                sim_dist, _ = similar_candidate
+                new_dist = current_record.term.distance(
+                    record.term, abort_at_distance=sim_dist
+                )
+                if new_dist < sim_dist:
+                    similar_candidate = new_dist, record
+            else:
+                new_dist = current_record.term.distance(record.term)
+                similar_candidate = new_dist, record
+        return current_record, similar_candidate
+
+    def get_similar_proof(
+        self, step_idx: int, proof: Proof, dp_obj: DatasetFile, file_info: FileInfo
+    ) -> Optional[tuple[str, list[str]]]:
+        """Returns most similar proof state and proof script"""
+        file_goals = self.__get_file_goals(file_info.dp_name)
+        if file_goals is None:
+            return None
+        record_and_best_in_file = self.get_current_goal_similar_in_file_goal(
+            step_idx, proof, file_goals
+        )
+        if record_and_best_in_file is None:
+            return None
+        current_record, similar_candidate = record_and_best_in_file
+        for dependency in dp_obj.dependencies:
+            dependency_goals = self.__get_file_goals(dependency)
+            if dependency_goals is None:
+                continue
+            for record in dependency_goals.records:
+                if similar_candidate:
+                    cur_dist, _ = similar_candidate
+                    new_dist = current_record.term.distance(
+                        record.term, abort_at_distance=cur_dist
+                    )
+                    if new_dist < cur_dist:
+                        similar_candidate = new_dist, record
+                else:
+                    new_dist = current_record.term.distance(record.term)
+                    similar_candidate = new_dist, record
+        if similar_candidate:
+            _, best_record = similar_candidate
+            return best_record.pretty_goal, best_record.proof
+        return None
+
+    def example_from_step(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        split: Split,
+        data_loc: str,
+        ground_truth_steps: Optional[list[str]],
+    ) -> LmExample:
+        step = proof.steps[step_idx]
+        similar_proof_result = self.get_similar_proof(
+            step_idx, proof, dp_obj, file_info
+        )
+        if similar_proof_result:
+            similar_proof_state, similar_proof_script = similar_proof_result
+            ret_state_str = allocate_tokens(
+                self.tokenizer, similar_proof_state, self.ret_proof_state_tokens
+            )
+            ret_script_str = allocate_tokens(
+                self.tokenizer,
+                "".join(similar_proof_script),
+                self.ret_proof_script_tokens,
+                truncate_front=False,
+            )
+        else:
+            ret_state_str = ""
+            ret_script_str = ""
+
+        statement, _ = allocate_tokens(
+            self.tokenizer,
+            proof.theorem.term.text,
+            self.statement_num_tokens,
+            truncate_front=False,
+        )
+
+        partial_proof_string = proof.proof_prefix_to_string(step, include_theorem=False)
+        proof_str, _ = allocate_tokens(
+            self.tokenizer, partial_proof_string, self.script_num_tokens
+        )
+
+        final_goal_string = fmt_goals(step.goals)
+        state_str, _ = allocate_tokens(
+            self.tokenizer, final_goal_string, self.state_num_tokens
+        )
+
+        input_prefix = f"{ret_state_str}{PROOF_RET_SEP}{ret_script_str}{PREM_SEP}{statement}{STMT_SEP}{proof_str}{THM_SEP}{state_str}"
+        n_step_sample = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
+
+        if self.direct_num_steps:
+            input = f"{input_prefix}{N_TAC_TOK}{len(n_step_sample.steps)}"
+        else:
+            input = input_prefix
+        output = "".join([fs.step.text for fs in n_step_sample.steps])
+        return LmExample(input, output)
 
 
 class OptimalPremiseFormatter:

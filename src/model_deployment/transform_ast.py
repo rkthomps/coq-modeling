@@ -5,6 +5,9 @@ from typeguard import typechecked
 import json
 import ipdb
 
+import numpy as np
+import numpy.typing as npt
+
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
@@ -279,7 +282,7 @@ class PatCAlias:
         self.name = name
 
     def to_strtree(self) -> StrTree:
-        name = f"alias {name}"
+        name = f"alias {self.name}"
         return StrTree(name, [self.pattern.to_strtree()])
 
     def to_json(self) -> Any:
@@ -848,6 +851,66 @@ class RecordT:
         return cls(terms)
 
 
+class EvarT:
+    def __init__(self, id: Name, terms: list[tuple[Name, Term]]) -> None:
+        self.id = id
+        self.terms = terms
+
+    def to_strtree(self) -> StrTree:
+        key = f"evar: {self.id.id}"
+        children: list[StrTree] = []
+        for name, term in self.terms:
+            children.append(name.to_strtree())
+            children.append(term.to_strtree())
+        return StrTree(key, children)
+
+    def to_json(self) -> Any:
+        return {
+            "id": self.id,
+            "terms": [{"name": n, "term": t} for n, t in self.terms],
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> EvarT:
+        id = json_data["id"]
+        terms = [(j["name"], j["term"]) for j in json_data["terms"]]
+        return cls(id, terms)
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> EvarT:
+        assert isinstance(ast, list)
+        assert ast[0] == "CEvar"
+        assert len(ast) == 3
+        id = Name.from_id_ast(ast[1])
+        terms: list[tuple[Name, Term]] = []
+        for t_list in ast[2]:
+            name = Name.from_id_ast(t_list[0])
+            term = term_from_ast(t_list[1])
+            terms.append((name, term))
+        return cls(id, terms)
+
+
+class HoleT:
+    def __init__(self) -> None:
+        pass
+
+    def to_strtree(self) -> StrTree:
+        return StrTree("hole", [])
+
+    def to_json(self) -> Any:
+        return {}
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> HoleT:
+        return cls()
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> HoleT:
+        assert isinstance(ast, list)
+        assert ast[0] == "CHole"
+        return cls()
+
+
 class UnknownT:
     def __init__(self) -> None:
         pass
@@ -876,6 +939,8 @@ Term = (
     | IfT
     | SortT
     | RecordT
+    | EvarT
+    | HoleT
     | UnknownT
 )
 
@@ -910,8 +975,10 @@ def term_from_ast(ast: Any) -> Term:
             return term_from_ast(term[2])
         case "CCoFix":
             return CoFixT.from_ast(term)
-        # case "CNotation":
-        #     ipdb.set_trace()
+        case "CEvar":
+            return EvarT.from_ast(term)
+        case "CHole":
+            return HoleT.from_ast(term)
         case _:
             term_size = len(json.dumps(ast))
             raise ValueError(f"Unhandled Term Type: {term[0]} of size {term_size}")
@@ -921,10 +988,12 @@ def term_from_ast(ast: Any) -> Term:
             return UnknownT()
 
 
-@dataclass
 class StrTree:
-    key: str
-    children: list[StrTree]
+    def __init__(self, key: str, children: list[StrTree]) -> None:
+        self.key = key
+        self.children = children
+        self.__cached_size: Optional[int] = None
+        self.__cached_dists: dict[StrTree, int] = {}
 
     def __hash__(self) -> int:
         child_hash = hash(tuple([hash(c) for c in self.children]))
@@ -940,6 +1009,114 @@ class StrTree:
             child_str += child.to_string(indent=indent + "  ")
         return s + child_str
 
+    def distance(
+        self,
+        other: StrTree,
+        incurred_distance: int = 0,
+        abort_at_distance: Optional[int] = None,
+    ) -> int:
+        if abort_at_distance:
+            if abort_at_distance <= incurred_distance:
+                return abort_at_distance
+        else:
+            abort_at_distance = self.size() + other.size()
+
+        if other in self.__cached_dists:
+            return self.__cached_dists[other]
+
+        root_penalty = 0 if self.key == other.key else 1
+        if len(self.children) == 0:
+            distance = other.size() - (1 - root_penalty)
+            self.__cached_dists[other] = distance
+            return distance
+        if len(other.children) == 0:
+            distance = self.size() - (1 - root_penalty)
+            self.__cached_dists[other] = distance
+            return distance
+
+        # Child Matching
+        num_rows = len(self.children)
+        num_cols = len(other.children)
+        if num_rows <= num_cols:
+            num_unmatched_rows = num_rows - num_cols
+            matching_lb_penalty = sum(
+                sorted([r.size() for r in self.children])[:num_unmatched_rows]
+            )
+        else:
+            num_unmatched_cols = num_cols - num_rows
+            matching_lb_penalty = sum(
+                sorted([r.size() for r in other.children])[:num_unmatched_cols]
+            )
+
+        distances: npt.NDArray[int] = np.full((num_rows, num_cols), 0)
+        for i, ci in enumerate(self.children):
+            for j, cj in enumerate(other.children):
+                distances[i][j] = ci.distance(
+                    cj,
+                    incurred_distance + matching_lb_penalty + root_penalty,
+                    abort_at_distance,
+                )
+
+        mask_val = self.size() + other.size()
+        num_mins = min(num_rows, num_cols)
+        matched_distance = 0
+        my_children_matched = [False for _ in self.children]
+        other_children_matched = [False for _ in other.children]
+        out_of_order = False
+        for _ in range(num_mins):
+            next_min_flat_idx = distances.argmin()
+            next_min_x, next_min_y = np.unravel_index(
+                next_min_flat_idx, distances.shape
+            )
+            matched_distance += int(distances[next_min_x, next_min_y])
+            distances[next_min_x, :] = mask_val
+            distances[:, next_min_y] = mask_val
+            my_children_matched[next_min_x] = True
+            other_children_matched[next_min_y] = True
+            if next_min_x != next_min_y:
+                out_of_order = True
+
+        my_unmatched_penalty = sum(
+            [c.size() for c, m in zip(self.children, my_children_matched) if not m]
+        )
+        other_unmatched_penalty = sum(
+            [c.size() for c, m in zip(other.children, other_children_matched) if not m]
+        )
+        out_of_order_penalty = 1 if out_of_order else 0
+        total_match_distance = (
+            root_penalty
+            + matched_distance
+            + out_of_order_penalty
+            + my_unmatched_penalty
+            + other_unmatched_penalty
+        )
+        abort_at_distance = min(total_match_distance, abort_at_distance)
+
+        # Pushing
+        self_push_other_dists: list[int] = []
+        for oc in other.children:
+            incurred = other.size() - oc.size()
+            dist = (
+                self.distance(oc, incurred_distance + incurred, abort_at_distance)
+                + incurred
+            )
+            self_push_other_dists.append(dist)
+            abort_at_distance = min(dist, abort_at_distance)
+
+        other_push_self_dists: list[int] = []
+        for c in self.children:
+            incurred = self.size() - c.size()
+            dist = (
+                c.distance(other, incurred_distance + incurred, abort_at_distance)
+                + incurred
+            )
+            other_push_self_dists.append(dist)
+            abort_at_distance = min(dist, abort_at_distance)
+
+        distance = abort_at_distance
+        self.__cached_dists[other] = distance
+        return distance
+
     def to_json(self) -> Any:
         return {
             "key": self.key,
@@ -947,7 +1124,11 @@ class StrTree:
         }
 
     def size(self) -> int:
-        return 1 + sum([c.size() for c in self.children])
+        if self.__cached_size:
+            return self.__cached_size
+        size = 1 + sum([c.size() for c in self.children])
+        self.__cached_size = size
+        return size
 
     @classmethod
     def from_json(cls, json_data: Any) -> StrTree:
@@ -987,6 +1168,10 @@ def term_from_json(json_data: Any) -> Term:
             return RecordT.from_json(json_data)
         case SortT.__name__:
             return SortT.from_json(json_data)
+        case EvarT.__name__:
+            return EvarT.from_json(json_data)
+        case HoleT.__name__:
+            return HoleT.from_json(json_data)
         case _:
             raise ValueError(f"Unrecognized term class {attempted_name}")
 

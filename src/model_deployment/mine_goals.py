@@ -35,11 +35,6 @@ from util.util import get_fresh_path, get_basic_logger
 
 _logger = get_basic_logger(__name__)
 
-file = os.path.abspath("test.v")
-file_dir = os.path.dirname(file)
-
-lsp_file = os.path.abspath("test1.v")
-
 
 def get_contents(file: str) -> str:
     with open(file, "r") as fin:
@@ -222,13 +217,13 @@ def get_file_goals(
         steps = coq_file.steps
     client_file = get_fresh_path(".", "goal_aux.v")
     uri = f"file://{client_file}"
-    client = CoqLspClient(uri)
+    client = CoqLspClient(uri, timeout=120)
     try:
         goal_bank: dict[int, Optional[GoalAnswer]] = {}
         version = 0
         version += 1
         records: list[GoalRecord] = []
-        client.didOpen(TextDocumentItem(uri, "coq", version, get_contents(file)))
+        client.didOpen(TextDocumentItem(uri, "coq", version, get_contents(file_abs)))
         for i in range(1, len(steps)):
             record, version = get_goal_record(
                 client,
@@ -270,7 +265,7 @@ def compute_file_goals(
     if ret_obj.file_goals:
         ret_obj.file_goals.save(save_name)
     else:
-        _logger.debug(f"Timeout or error when processing {file_info.dp_name}")
+        _logger.debug(f"Timeout or error when processing {file_info.file}")
 
 
 __ARG = tuple[str, FileInfo, str, int]

@@ -351,10 +351,21 @@ class DatasetFile:
         self.proofs = proofs
         self.out_of_file_avail_premises = self.__get_oof_avail_premises()
         self.in_file_avail_premises = self.__get_in_file_avail_premises()
+        self.dependencies = self.__get_dp_dependencies()
 
     def proofs_to_string(self) -> str:
         proof_strings = [p.proof_text_to_string() for p in self.proofs]
         return "\n\n".join(proof_strings)
+
+    def __get_dp_dependencies(self) -> list[str]:
+        dependencies: list[str] = []  # formatted as dp with / replaced with -
+        for premise in self.file_context.avail_premises:
+            repo_match = re.match(r"repos/(.*?\.v)", premise.file_path)
+            if repo_match:
+                (dp_unnorm_name,) = repo_match.groups()
+                dp_norm_name = dp_unnorm_name.replace("/", "-")
+                dependencies.append(dp_norm_name)
+        return dependencies
 
     @classmethod
     def fix_path(cls, path: str) -> str:
