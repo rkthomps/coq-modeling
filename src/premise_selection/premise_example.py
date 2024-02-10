@@ -19,6 +19,29 @@ from premise_selection.premise_filter import PremiseFilter
 
 
 @typechecked
+class ReRankExample:
+    def __init__(self, premise: str, context: str, label: bool) -> None:
+        self.premise = premise
+        self.context = context
+        self.label = label
+
+    def to_json(self) -> Any:
+        return {
+            "premise": self.premise,
+            "context": self.context,
+            "label": self.label,
+        }
+    
+    @classmethod
+    def from_json(cls, json_data: Any) -> ReRankExample:
+        premise = json_data["premise"]
+        context = json_data["context"]
+        label = json_data["label"]
+        return cls(premise, context, label)
+    
+
+
+@typechecked
 class PremiseTrainingExample:
     def __init__(
         self,

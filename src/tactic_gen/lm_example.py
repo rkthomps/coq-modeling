@@ -3,6 +3,7 @@ from typing import Any, Optional
 import time
 import datetime
 import os
+import ipdb
 
 from dataclasses import dataclass
 from typeguard import typechecked
@@ -151,19 +152,26 @@ class ProofRetrievalFormatter:
         complete_ground_truth = [s.step.text for s in proof.steps]
         prefix_len = len(complete_ground_truth) - len(current_ground_truth)
         record_idx: Optional[int] = None
+        cur_ground_truth_str = "".join(current_ground_truth)
+        pretty_proof_goal = proof.steps[step_idx].goals[0].to_string().strip()
         for i, record in enumerate(file_goals.records):
-            if record.proof == current_ground_truth:
+            record_proof_str = "".join(record.proof)
+            if record.pretty_goal.strip() == pretty_proof_goal and (
+                cur_ground_truth_str.startswith(record_proof_str)
+                or record_proof_str.startswith(cur_ground_truth_str)
+            ):
                 record_idx = i
                 break
+        ipdb.set_trace()
         if record_idx is None:
             return None
         current_record = file_goals.records[record_idx]
         similar_candidate: Optional[tuple[int, GoalRecord]] = None
         proof_start_idx = current_record.step_idx - prefix_len
         for record in file_goals.records[:record_idx]:
-            if proof_start_idx <= record.step_idx: 
+            if proof_start_idx <= record.step_idx:
                 break
-            # # If you wanted to be able to retrieve from completed subgoals: 
+            # # If you wanted to be able to retrieve from completed subgoals:
             # if current_record.step_idx <= record.step_idx + len(record.proof):
             #     continue
             if similar_candidate:
@@ -227,10 +235,10 @@ class ProofRetrievalFormatter:
         )
         if similar_proof_result:
             similar_proof_state, similar_proof_script = similar_proof_result
-            ret_state_str = allocate_tokens(
+            ret_state_str, _ = allocate_tokens(
                 self.tokenizer, similar_proof_state, self.ret_proof_state_tokens
             )
-            ret_script_str = allocate_tokens(
+            ret_script_str, _ = allocate_tokens(
                 self.tokenizer,
                 "".join(similar_proof_script),
                 self.ret_proof_script_tokens,
@@ -266,6 +274,30 @@ class ProofRetrievalFormatter:
             input = input_prefix
         output = "".join([fs.step.text for fs in n_step_sample.steps])
         return LmExample(input, output)
+
+    @classmethod
+    def from_conf(cls, conf: Any) -> ProofRetrievalFormatter:
+        proof_bank_loc = conf["proof_bank_loc"]
+        model_name = conf["model_name"]
+        tokenizer = CodeLlamaTokenizer.from_pretrained(model_name, use_fast=True)
+        state_num_tokens = conf["state_num_tokens"]
+        script_num_tokens = conf["script_num_tokens"]
+        statement_num_tokens = conf["statement_num_tokens"]
+        ret_proof_state_tokens = conf["ret_proof_state_tokens"]
+        ret_proof_script_tokens = conf["ret_proof_script_tokens"]
+        tmp_basic_formatter = BasicFormatter.from_conf(conf)
+        return cls(
+            proof_bank_loc,
+            tokenizer,
+            state_num_tokens,
+            script_num_tokens,
+            statement_num_tokens,
+            ret_proof_state_tokens,
+            ret_proof_script_tokens,
+            tmp_basic_formatter.n_step_sampler,
+            tmp_basic_formatter.direct_num_steps,
+            conf,
+        )
 
 
 class OptimalPremiseFormatter:
@@ -997,6 +1029,7 @@ LmFormatter = (
     BasicFormatter
     | OptimalPremiseFormatter
     | StatementPremiseFormatter
+    | ProofRetrievalFormatter
     | GroundTruthLeakFormatter
     | FixedPremiseFormatter
     | PremiseFormatter
@@ -1018,6 +1051,7 @@ def move_fmt_to(formatter: LmFormatter, device: str) -> None:
             BasicFormatter()
             | GroundTruthLeakFormatter()
             | StatementPremiseFormatter()
+            | ProofRetrievalFormatter()
             | OptimalPremiseFormatter()
             | ProofRetrievalOracleFormatter()
             | GoalFormatter()
@@ -1044,6 +1078,8 @@ def fmt_from_conf(conf: Any) -> LmFormatter:
             return GroundTruthLeakFormatter.from_conf(conf)
         case StatementPremiseFormatter.ALIAS:
             return StatementPremiseFormatter.from_conf(conf)
+        case ProofRetrievalFormatter.ALIAS:
+            return ProofRetrievalFormatter.from_conf(conf)
         case FixedPremiseFormatter.ALIAS:
             return FixedPremiseFormatter.from_conf(conf)
         case PremiseFormatter.ALIAS:
@@ -1075,6 +1111,7 @@ def fmt_get_conf(formatter: LmFormatter) -> Any:
             | PremiseFormatter()
             | GoalFormatter()
             | ProofRetrievalOracleFormatter()
+            | ProofRetrievalFormatter()
             | BaseCodeLLamaPremiseLmFormatter()
         ):
             return formatter.conf
