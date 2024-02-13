@@ -181,7 +181,7 @@ def get_goal_record(
     # Get Norm Tree
     all_hyps = get_generalize_targets(goals)
     steps_to_add: list[str] = (
-        ["Unset Printing Notations."]
+        ["Set Printing All.", "Unset Printing Notations."]
         + [f"generalize dependent {h}." for h in all_hyps]
         + ["cbn."]
     )
@@ -204,7 +204,10 @@ def get_goal_record(
     )
 
     new_ast = client.get_document(TextDocumentIdentifier(doc_uri))
-    term = term_from_ast(get_body_from_definition(new_ast.spans[-2].span))
+    try:
+        term = term_from_ast(get_body_from_definition(new_ast.spans[-2].span))
+    except ValueError:
+        ipdb.set_trace()
     return GoalRecord(step_idx, subproof, pretty_goal, term.to_strtree()), doc_version
 
 
@@ -215,19 +218,22 @@ def get_file_goals(
     workspace_abs = os.path.abspath(os.path.join(data_loc, file_info.workspace))
     with CoqFile(file_abs, workspace=workspace_abs) as coq_file:
         steps = coq_file.steps
-    client_file = get_fresh_path(".", "goal_aux.v")
-    uri = f"file://{client_file}"
-    client = CoqLspClient(uri, timeout=120)
+    tmp_file = get_fresh_path(".", "goal_aux.v")
+    client_uri = f"file://{workspace_abs}"
+    doc_uri = f"file://{tmp_file}"
+    client = CoqLspClient(client_uri, timeout=120)
     try:
         goal_bank: dict[int, Optional[GoalAnswer]] = {}
         version = 0
         version += 1
         records: list[GoalRecord] = []
-        client.didOpen(TextDocumentItem(uri, "coq", version, get_contents(file_abs)))
+        client.didOpen(
+            TextDocumentItem(doc_uri, "coq", version, get_contents(file_abs))
+        )
         for i in range(1, len(steps)):
             record, version = get_goal_record(
                 client,
-                uri,
+                doc_uri,
                 version,
                 steps[i].ast.range.end,
                 steps,
@@ -263,7 +269,10 @@ def compute_file_goals(
     goal_thread.start()
     goal_thread.join(timeout)
     if ret_obj.file_goals:
-        ret_obj.file_goals.save(save_name)
+        if len(ret_obj.file_goals.records) == 0:
+            _logger.debug(f"Empty set of records for file: {file_info.file}")
+        else:
+            ret_obj.file_goals.save(save_name)
     else:
         _logger.debug(f"Timeout or error when processing {file_info.file}")
 
@@ -303,6 +312,7 @@ if __name__ == "__main__":
     if args.num_procs:
         num_procs = args.num_procs
 
+    sys.setrecursionlimit(1500)
     data_split = DataSplit.load(args.data_split_loc)
     mining_args = get_args(args.data_loc, data_split, args.save_goals, args.timeout)
     with mp.Pool(num_procs) as pool:
