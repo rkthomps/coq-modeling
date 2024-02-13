@@ -7,6 +7,7 @@ from model_deployment.premise_model_wrapper import (
     PremiseModelWrapper,
     premise_wrapper_from_conf,
     get_ranked_premise_generator,
+    move_prem_wrapper_to,
 )
 
 
@@ -65,7 +66,11 @@ class ReRankFormatter:
             if self.consider_num <= i:
                 break
         return examples
+    
+    def move_to(self, cuda_device: str) -> None:
+        move_prem_wrapper_to(self.premise_wrapper, cuda_device)
 
+ 
     @classmethod
     def from_conf(cls, config: Any) -> ReRankFormatter:
         premise_wrapper = premise_wrapper_from_conf(config["premise_wrapper"])
