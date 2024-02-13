@@ -43,3 +43,9 @@ class TestTransformAst:
         )
         assert t1.distance(t2) == 2
         assert t2.distance(t1) == 2
+
+    def test8(self) -> None:
+        t = StrTree(
+            "0", [StrTree("2", []), StrTree("1", [StrTree("2", []), StrTree("3", [])])]
+        )
+        assert t.keyset() == ["0", "1", "2", "2", "3"]
