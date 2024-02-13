@@ -12,7 +12,7 @@ SPLIT_LOC = os.path.join("splits", "random-split.json")
 
 DATA_PREFIX = "/home/ubuntu/coq-modeling/raw-data/coq-dataset"
 
-TEST_FILE = "repos/UniMath-Schools/UniMath/sub/coq/theories/micromega/Tauto.v"
+TEST_FILE = "repos/yj-han-software-foundations/plf/Hoare2.v"
 
 TMP_LOC = "tmp.v"
 

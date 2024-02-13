@@ -701,6 +701,14 @@ class AppT:
         return cls(fn, args)
 
     @classmethod
+    def from_expl_ast(cls, ast: Any) -> AppT:
+        assert isinstance(ast, list)
+        assert ast[0] == "CAppExpl"
+        fn = QualIdT.from_ast_qual(ast[1][0])
+        args = [term_from_ast(a) for a in ast[2]]
+        return cls(fn, args)
+
+    @classmethod
     def from_ast(cls, ast: Any) -> AppT:
         assert isinstance(ast, list)
         assert ast[0] == "CApp"
@@ -890,6 +898,30 @@ class EvarT:
         return cls(id, terms)
 
 
+class NotationT:
+    def __init__(self, terms: list[Term]) -> None:
+        self.terms = terms
+
+    def to_strtree(self) -> StrTree:
+        return StrTree("notation", [t.to_strtree() for t in self.terms])
+
+    def to_json(self) -> Any:
+        return {"terms": [term_to_json(t) for t in self.terms]}
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> NotationT:
+        terms = [term_from_json(t) for t in json_data["terms"]]
+        return cls(terms)
+
+    @classmethod
+    def from_ast(cls, ast: Any) -> NotationT:
+        assert isinstance(ast, list)
+        assert len(ast) == 4
+        assert ast[0] == "CNotation"
+        terms = [term_from_ast(t) for t in ast[3][0]]
+        return cls(terms) 
+
+
 class HoleT:
     def __init__(self) -> None:
         pass
@@ -941,6 +973,7 @@ Term = (
     | RecordT
     | EvarT
     | HoleT
+    | NotationT
     | UnknownT
 )
 
@@ -979,6 +1012,10 @@ def term_from_ast(ast: Any) -> Term:
             return EvarT.from_ast(term)
         case "CHole":
             return HoleT.from_ast(term)
+        case "CNotation":
+            return NotationT.from_ast(term)
+        case "CAppExpl":
+            return AppT.from_expl_ast(term)
         case _:
             term_size = len(json.dumps(ast))
             raise ValueError(f"Unhandled Term Type: {term[0]} of size {term_size}")
@@ -1247,6 +1284,8 @@ def term_from_json(json_data: Any) -> Term:
             return EvarT.from_json(json_data)
         case HoleT.__name__:
             return HoleT.from_json(json_data)
+        case NotationT.__name__:
+            return NotationT.from_json(json_data)
         case _:
             raise ValueError(f"Unrecognized term class {attempted_name}")
 
