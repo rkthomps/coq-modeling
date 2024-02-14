@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any
 
+import enum
 import sys, os
 import ipdb
 import re
@@ -30,19 +31,33 @@ class PremiseRetrieverConfig(PretrainedConfig):
         super(PremiseRetrieverConfig, self).__init__(**kwargs)
 
 
+class EncodeType(enum.Enum):
+    PREMISE = 1
+    CONTEXT = 2
+
+
 class PremiseRetriever(PreTrainedModel):
     config_class = PremiseRetrieverConfig
 
     def __init__(self, config: PremiseRetrieverConfig) -> None:
         super(PremiseRetriever, self).__init__(config)
         self.config = config
-        self.encoder = T5EncoderModel.from_pretrained(config.model_name)
+        self.premise_encoder = T5EncoderModel.from_pretrained(config.model_name)
+        self.cxt_encoder = T5EncoderModel.from_pretrained(config.model_name)
 
-    def _encode(self, input_ids: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def _encode(
+        self, premise: EncodeType, input_ids: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
         ## TODO: COULD ADD SOME SORT OF "CPU CHECKPOINTING"
+        match premise:
+            case EncodeType.PREMISE:
+                encoder = self.premise_encoder
+            case EncodeType.CONTEXT:
+                encoder = self.cxt_encoder
+
         cuda_input_ids = input_ids.to(self.device)
         cuda_mask = mask.to(self.device)
-        hidden_states = self.encoder(
+        hidden_states = encoder(
             input_ids=cuda_input_ids,
             attention_mask=cuda_mask,
             return_dict=True,
@@ -61,25 +76,31 @@ class PremiseRetriever(PreTrainedModel):
         premise_mask: torch.Tensor,
         label: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        context_embs = self._encode(context_ids, context_mask)
-        premise_embs = self._encode(premise_ids, premise_mask)
+        context_embs = self._encode(EncodeType.CONTEXT, context_ids, context_mask)
+        premise_embs = self._encode(EncodeType.PREMISE, premise_ids, premise_mask)
         similarity = torch.mm(context_embs, premise_embs.t())
         epsilon = 1e-4
         assert (-1 - epsilon) <= similarity.min() <= similarity.max() <= (1 + epsilon)
         return {"similarities": similarity}
 
-    @classmethod
-    def fresh(cls, model_name: str) -> PremiseRetriever:
-        encoder = T5EncoderModel.from_pretrained(model_name)
-        return cls(encoder)
+    # @classmethod
+    # def fresh(cls, model_name: str) -> PremiseRetrieverSeparate:
+    #     encoder = T5EncoderModel.from_pretrained(model_name)
+    #     return cls(encoder)
 
     def encode_str(
-        self, to_encode: str, tokenizer: ByT5Tokenizer, max_seq_len: int
+        self,
+        enc_type: EncodeType,
+        to_encode: str,
+        tokenizer: ByT5Tokenizer,
+        max_seq_len: int,
     ) -> torch.Tensor:
         with torch.no_grad():
             tokens = tokenize_strings(tokenizer, [to_encode], max_seq_len)
             input_ids = tokens.input_ids
             input_masks = tokens.attention_mask
-            encoding = self._encode(input_ids, input_masks)  # shape should be 1 x h_dim
+            encoding = self._encode(
+                enc_type, input_ids, input_masks
+            )  # shape should be 1 x h_dim
             assert encoding.shape[0] == 1
             return encoding

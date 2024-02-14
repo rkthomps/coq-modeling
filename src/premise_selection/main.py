@@ -97,6 +97,10 @@ def get_trainer(
 
     print("\n\nBuilding Training Config...")
     training_args = get_training_args(conf, local_rank)
+    training_args.save_strategy = "steps"
+    assert training_args.eval_steps is not None
+    training_args.save_steps = training_args.eval_steps
+
     print("\n\nRetrieving Tokenizer...")
     tokenizer = get_tokenizer(conf)
 
