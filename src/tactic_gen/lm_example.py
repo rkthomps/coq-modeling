@@ -4,6 +4,7 @@ import time
 import datetime
 import os
 import ipdb
+import heapq
 
 from dataclasses import dataclass
 from typeguard import typechecked
@@ -145,14 +146,16 @@ class ProofRetrievalFormatter:
         self.__proof_bank[key] = goals
         return goals
 
-    def get_current_goal_similar_in_file_goal(
+    def get_current_goal_in_file_candidates(
         self, step_idx: int, proof: Proof, file_goals: FileGoals
-    ) -> Optional[tuple[GoalRecord, Optional[tuple[int, GoalRecord]]]]:
+    ) -> Optional[tuple[GoalRecord, list[GoalRecord]]]:
         current_ground_truth = [s.step.text for s in proof.steps[step_idx:]]
         complete_ground_truth = [s.step.text for s in proof.steps]
         prefix_len = len(complete_ground_truth) - len(current_ground_truth)
         record_idx: Optional[int] = None
         cur_ground_truth_str = "".join(current_ground_truth)
+        if len(proof.steps[step_idx].goals) <= 0:
+            return None
         pretty_proof_goal = proof.steps[step_idx].goals[0].to_string().strip()
         for i, record in enumerate(file_goals.records):
             record_proof_str = "".join(record.proof)
@@ -162,61 +165,85 @@ class ProofRetrievalFormatter:
             ):
                 record_idx = i
                 break
-        ipdb.set_trace()
         if record_idx is None:
             return None
+
         current_record = file_goals.records[record_idx]
-        similar_candidate: Optional[tuple[int, GoalRecord]] = None
         proof_start_idx = current_record.step_idx - prefix_len
+        candidate_records: list[GoalRecord] = []
         for record in file_goals.records[:record_idx]:
             if proof_start_idx <= record.step_idx:
                 break
-            # # If you wanted to be able to retrieve from completed subgoals:
-            # if current_record.step_idx <= record.step_idx + len(record.proof):
-            #     continue
-            if similar_candidate:
-                sim_dist, _ = similar_candidate
-                new_dist = current_record.term.distance(
-                    record.term, abort_at_distance=sim_dist
-                )
-                if new_dist < sim_dist:
-                    similar_candidate = new_dist, record
-            else:
-                new_dist = current_record.term.distance(record.term)
-                similar_candidate = new_dist, record
-        return current_record, similar_candidate
+            candidate_records.append(record)
+        return current_record, candidate_records
 
-    def get_similar_proof(
-        self, step_idx: int, proof: Proof, dp_obj: DatasetFile, file_info: FileInfo
-    ) -> Optional[tuple[str, list[str]]]:
-        """Returns most similar proof state and proof script"""
-        file_goals = self.__get_file_goals(file_info.dp_name)
-        if file_goals is None:
-            return None
-        record_and_best_in_file = self.get_current_goal_similar_in_file_goal(
-            step_idx, proof, file_goals
-        )
-        if record_and_best_in_file is None:
-            return None
-        current_record, similar_candidate = record_and_best_in_file
+    def get_out_of_file_candidates(self, dp_obj: DatasetFile):
+        candidates: list[GoalRecord] = []
         for dependency in dp_obj.dependencies:
             dependency_goals = self.__get_file_goals(dependency)
             if dependency_goals is None:
                 continue
             for record in dependency_goals.records:
-                if similar_candidate:
-                    cur_dist, _ = similar_candidate
-                    new_dist = current_record.term.distance(
-                        record.term, abort_at_distance=cur_dist
+                candidates.append(record)
+        return candidates
+
+    def get_similar_proof(
+        self, step_idx: int, proof: Proof, dp_obj: DatasetFile, file_info: FileInfo
+    ) -> Optional[tuple[str, list[str]]]:
+        file_goals = self.__get_file_goals(file_info.dp_name)
+        if file_goals is None:
+            return None
+        cur_record_and_candidates = self.get_current_goal_in_file_candidates(
+            step_idx, proof, file_goals
+        )
+        ipdb.set_trace()
+        if cur_record_and_candidates is None:
+            return None
+        cur_record, in_file_candidates = cur_record_and_candidates
+        out_of_file_candidates = self.get_out_of_file_candidates(dp_obj)
+        all_raw_candidates = in_file_candidates + out_of_file_candidates
+
+        all_candidates: list[tuple[int, float, GoalRecord]] = []
+        for record in all_raw_candidates:
+            heuristic_val = abs(cur_record.term.size() - record.term.size())
+            heapq.heappush(all_candidates, (heuristic_val, time.time(), record))
+
+        heuristic_idx = 0
+        global_best_candidate: Optional[tuple[int, GoalRecord]] = None
+        global_best_dist: Optional[int] = None
+        while 0 < len(all_candidates):
+            _, _, cur_best_record = heapq.heappop(all_candidates)
+            cur_best_distance = cur_record.term.distance(
+                cur_best_record.term, abort_at_distance=global_best_dist
+            )
+            if global_best_candidate is not None:
+                global_best_dist, _ = global_best_candidate
+                if cur_best_distance < global_best_dist:
+                    global_best_candidate = (cur_best_distance, cur_best_record)
+            else:
+                global_best_candidate = (cur_best_distance, cur_best_record)
+
+            global_best_dist, _ = global_best_candidate
+            next_round_candidates: list[tuple[int, float, GoalRecord]] = []
+            while 0 < len(all_candidates):
+                focused_candidate = heapq.heappop(all_candidates)
+                _, _, focused_record = focused_candidate
+                heuristic_val = cur_record.term.distance(
+                    focused_record.term,
+                    abort_at_distance=global_best_dist,
+                    heuristic_depth=heuristic_idx,
+                )
+                if heuristic_val < global_best_dist:
+                    heapq.heappush(
+                        next_round_candidates,
+                        (heuristic_val, time.time(), focused_record),
                     )
-                    if new_dist < cur_dist:
-                        similar_candidate = new_dist, record
-                else:
-                    new_dist = current_record.term.distance(record.term)
-                    similar_candidate = new_dist, record
-        if similar_candidate:
-            _, best_record = similar_candidate
-            return best_record.pretty_goal, best_record.proof
+            all_candidates = next_round_candidates
+            heuristic_idx += 1
+
+        if global_best_candidate is not None:
+            _, global_best_record = global_best_candidate
+            return global_best_record.pretty_goal, global_best_record.proof
         return None
 
     def example_from_step(

@@ -1029,12 +1029,18 @@ class StrTree:
     def __init__(self, key: str, children: list[StrTree]) -> None:
         self.key = key
         self.children = children
+        self.__cached_hash: Optional[int] = None
         self.__cached_size: Optional[int] = None
-        self.__cached_dists: dict[StrTree, int] = {}
+        self.__cached_dists: dict[tuple[StrTree, Optional[int]], tuple[int, int]] = {}
+        self.__cached_keyset: Optional[list[str]] = None
 
     def __hash__(self) -> int:
+        if self.__cached_hash:
+            return self.__cached_hash
         child_hash = hash(tuple([hash(c) for c in self.children]))
-        return hash((f"cstr: {self.key}", child_hash))
+        my_hash = hash((f"cstr: {self.key}", child_hash))
+        self.__cached_hash = my_hash
+        return my_hash
 
     def has_unknown(self) -> bool:
         return self.key == "unknown" or any([c.has_unknown() for c in self.children])
@@ -1051,24 +1057,44 @@ class StrTree:
         other: StrTree,
         incurred_distance: int = 0,
         abort_at_distance: Optional[int] = None,
+        heuristic_depth: Optional[int] = None,
     ) -> int:
-        if abort_at_distance:
-            if abort_at_distance <= incurred_distance:
+        if heuristic_depth == 0:
+            return self.keyset_compare(other, abort_at_distance=abort_at_distance)
+        if abort_at_distance is not None:
+            heuristic1 = abs(self.size() - other.size())
+            if abort_at_distance <= (incurred_distance + heuristic1):
                 return abort_at_distance
+            heuristic2 = self.keyset_compare(other, abort_at_distance)
+            if abort_at_distance <= (incurred_distance + heuristic2):
+                return abort_at_distance
+            # if abort_at_distance <= self.keyset_compare(other, abort_at_distance):
+            #     return abort_at_distance
+            # if abort_at_distance <= abs(self.size() - other.size()):
+            #     return abort_at_distance
         else:
             abort_at_distance = self.size() + other.size()
 
-        if other in self.__cached_dists:
-            return self.__cached_dists[other]
+        next_heuristic_depth = (
+            heuristic_depth - 1 if heuristic_depth is not None else None
+        )
+
+        orig_abort_dist = abort_at_distance
+        if (other, heuristic_depth) in self.__cached_dists:
+            cached_dist, cached_abort_dist = self.__cached_dists[
+                (other, heuristic_depth)
+            ]
+            if abort_at_distance <= cached_abort_dist:
+                return cached_dist
 
         root_penalty = 0 if self.key == other.key else 1
         if len(self.children) == 0:
             distance = other.size() - (1 - root_penalty)
-            self.__cached_dists[other] = distance
+            self.__cached_dists[(other, heuristic_depth)] = distance, orig_abort_dist
             return distance
         if len(other.children) == 0:
             distance = self.size() - (1 - root_penalty)
-            self.__cached_dists[other] = distance
+            self.__cached_dists[(other, heuristic_depth)] = distance, orig_abort_dist
             return distance
 
         # Child Matching
@@ -1092,6 +1118,7 @@ class StrTree:
                     cj,
                     incurred_distance + matching_lb_penalty + root_penalty,
                     abort_at_distance,
+                    next_heuristic_depth,
                 )
 
         mask_val = self.size() + other.size()
@@ -1134,7 +1161,12 @@ class StrTree:
         for oc in other.children:
             incurred = other.size() - oc.size()
             dist = (
-                self.distance(oc, incurred_distance + incurred, abort_at_distance)
+                self.distance(
+                    oc,
+                    incurred_distance + incurred,
+                    abort_at_distance,
+                    next_heuristic_depth,
+                )
                 + incurred
             )
             self_push_other_dists.append(dist)
@@ -1144,14 +1176,19 @@ class StrTree:
         for c in self.children:
             incurred = self.size() - c.size()
             dist = (
-                c.distance(other, incurred_distance + incurred, abort_at_distance)
+                c.distance(
+                    other,
+                    incurred_distance + incurred,
+                    abort_at_distance,
+                    next_heuristic_depth,
+                )
                 + incurred
             )
             other_push_self_dists.append(dist)
             abort_at_distance = min(dist, abort_at_distance)
 
         distance = abort_at_distance
-        self.__cached_dists[other] = distance
+        self.__cached_dists[(other, heuristic_depth)] = distance, orig_abort_dist
         return distance
 
     def to_json(self) -> Any:
@@ -1161,11 +1198,49 @@ class StrTree:
         }
 
     def size(self) -> int:
-        if self.__cached_size:
+        if self.__cached_size is not None:
             return self.__cached_size
         size = 1 + sum([c.size() for c in self.children])
         self.__cached_size = size
         return size
+
+    def keyset_compare(
+        self, other: StrTree, abort_at_distance: Optional[int] = None
+    ) -> int:
+        # Underapproximation of tree edit distance
+        my_keyset = self.keyset()
+        other_keyset = other.keyset()
+        my_ptr = 0
+        other_ptr = 0
+        distance = 0
+        while my_ptr < len(my_keyset) and other_ptr < len(other_keyset):
+            if my_keyset[my_ptr] == other_keyset[other_ptr]:
+                my_ptr += 1
+                other_ptr += 1
+            elif my_keyset[my_ptr] < other_keyset[other_ptr]:
+                my_ptr += 1
+                distance += 1
+                if abort_at_distance and abort_at_distance <= distance:
+                    return abort_at_distance
+            else:
+                other_ptr += 1
+                distance += 1
+                if abort_at_distance and abort_at_distance <= distance:
+                    return abort_at_distance
+        return distance + (len(my_keyset) - my_ptr) + (len(other_keyset) - other_ptr)
+
+    def keyset(self) -> list[str]:
+        if self.__cached_keyset is not None:
+            return self.__cached_keyset
+        else:
+            keyset: list[str] = []
+            # Room for optimization
+            for c in self.children:
+                keyset.extend(c.keyset())
+            keyset.append(self.key)
+            keyset.sort()
+            self.__cached_keyset = keyset
+            return keyset
 
     @classmethod
     def from_json(cls, json_data: Any) -> StrTree:

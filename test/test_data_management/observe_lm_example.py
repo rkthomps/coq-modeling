@@ -1,4 +1,6 @@
 import sys, os
+import ipdb
+from tqdm import tqdm
 from typing import Optional
 from data_management.splits import DataSplit, Split, FileInfo, file_from_split
 from data_management.dataset_file import DatasetFile
@@ -46,7 +48,6 @@ def one_file(
             examples.append(example)
     return examples
 
-
 proof_bank_loc = "/home/kthompson/coq-modeling/proof-goals"
 
 formatter_conf = {
@@ -63,8 +64,6 @@ formatter_conf = {
     },
     "direct_num_steps": False,
 }
-
-data_loc = "raw-data/coq-dataset"
 
 data_split = DataSplit.load("splits/random-split.json")
 
