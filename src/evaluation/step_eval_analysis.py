@@ -4,6 +4,7 @@ import sys, os
 import argparse
 import json
 import multiprocessing
+import math
 
 from data_management.splits import FileInfo
 from evaluation.step_eval import FileEval, StepAttempt, ATTEMPTS_NAME
@@ -23,6 +24,21 @@ class SmallAttempt:
         self.predictions = predictions
         self.ground_truth = ground_truth
         self.ground_truth_has_premise = ground_truth_has_premise
+
+    def has_k(self, k: int) -> bool:
+        return 0 <= k < len(self.predictions)
+
+    def is_correct_at_k(self, k: int) -> bool:
+        if k < 0:
+            return False
+        if len(self.predictions) <= k:
+            return self.is_correct_at_k(k - 1)
+        prediction_k = self.predictions[k]
+        split_prediction = prediction_k.split()
+        split_ground_truth = "".join(self.ground_truth).split()
+        return (
+            split_ground_truth[: (len(split_prediction))] == split_prediction
+        ) or self.is_correct_at_k(k - 1)
 
     def to_json(self) -> Any:
         return {
@@ -59,6 +75,16 @@ class FileEvalSmall:
     def __init__(self, file_info: FileInfo, attempts: list[SmallAttempt]) -> None:
         self.file_info = file_info
         self.attempts = attempts
+
+    def correct_at(self, k: int) -> float:
+        num_correct = 0
+        for attempt in self.attempts:
+            num_correct += attempt.is_correct_at_k(k)
+        return num_correct / len(self.attempts)
+
+    def correct_at_margin(self, k: int) -> float:
+        correct_at = self.correct_at(k)
+        return 1.96 * math.sqrt(correct_at * (1 - correct_at) / len(self.attempts))
 
     def to_json(self) -> Any:
         return {
