@@ -299,6 +299,7 @@ class SearchTreeManager:
         assert leaf_subtree.proof is not None
         dset_file = DatasetFile(self.search_tree.file_context, [leaf_subtree.proof])
         example = self.proof_manager.get_example(dset_file)
+        leaf_subtree.set_model_input(example.input)
         start_time = time.time_ns()
         result = self.model_wrapper.get_recs(example, self.max_branch)
         end_time = time.time_ns()

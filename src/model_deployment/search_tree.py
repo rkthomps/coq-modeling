@@ -58,6 +58,7 @@ class SearchNode:
         creation_time: int,
         proof: Optional[Proof],
         expanded: Optional[int] = None,
+        model_input: Optional[str] = None,
         children: Optional[list[SearchNode]] = None,
         redundant_to_str: Optional[str] = None,
     ) -> None:
@@ -70,6 +71,7 @@ class SearchNode:
         self.creation_time = creation_time
         self.proof = proof
         self.expanded = expanded
+        self.model_input = model_input
         self.redundant_to_str = redundant_to_str
         if children is None:
             self.children = []
@@ -84,6 +86,9 @@ class SearchNode:
 
     def set_expanded_num(self, expanded_num: int) -> None:
         self.expanded = expanded_num
+
+    def set_model_input(self, model_input: str) -> None:
+        self.model_input = model_input
 
     def redundant_str(self) -> str:
         return f"{self.model_tactic} with score {self.score.compute()}"
@@ -168,6 +173,7 @@ class SearchNode:
             "creation_time": self.creation_time,
             "proof": self.proof.to_json() if self.proof else self.proof,
             "expanded": self.expanded,
+            "model_input": self.model_input,
             "redundant_to_str": self.redundant_to_str,
             "children": [c.to_json() for c in self.children],
         }
@@ -187,6 +193,7 @@ class SearchNode:
         else:
             proof = None
         expanded = json_data["expanded"]
+        model_input = json_data["model_input"] if "model_input" in json_data else None
         children = [SearchNode.from_json(c) for c in json_data["children"]]
         redundant_to_str = json_data["redundant_to_str"]
         return cls(
@@ -199,6 +206,7 @@ class SearchNode:
             creation_time,
             proof,
             expanded,
+            model_input,
             children,
             redundant_to_str,
         )
