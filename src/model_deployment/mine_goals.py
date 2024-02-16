@@ -3,6 +3,7 @@ from typing import Generator, Optional, Any
 import multiprocessing as mp
 from threading import Thread
 from dataclasses import dataclass
+import random
 import sys
 import os
 import ipdb
@@ -204,15 +205,12 @@ def get_goal_record(
     )
 
     new_ast = client.get_document(TextDocumentIdentifier(doc_uri))
-    try:
-        term = term_from_ast(get_body_from_definition(new_ast.spans[-2].span))
-    except ValueError:
-        ipdb.set_trace()
+    term = term_from_ast(get_body_from_definition(new_ast.spans[-2].span))
     return GoalRecord(step_idx, subproof, pretty_goal, term.to_strtree()), doc_version
 
 
 def get_file_goals(
-    data_loc: str, file_info: FileInfo, thread_result: GoalThreadReturn
+    data_loc: str, file_info: FileInfo, thread_result: GoalThreadReturn, timeout: int
 ) -> None:
     file_abs = os.path.abspath(os.path.join(data_loc, file_info.file))
     workspace_abs = os.path.abspath(os.path.join(data_loc, file_info.workspace))
@@ -221,7 +219,7 @@ def get_file_goals(
     tmp_file = get_fresh_path(".", "goal_aux.v")
     client_uri = f"file://{workspace_abs}"
     doc_uri = f"file://{tmp_file}"
-    client = CoqLspClient(client_uri, timeout=120)
+    client = CoqLspClient(client_uri, timeout=timeout)
     try:
         goal_bank: dict[int, Optional[GoalAnswer]] = {}
         version = 0
@@ -265,7 +263,9 @@ def compute_file_goals(
     _logger.info(f"Processing {file_info.dp_name}")
 
     ret_obj = GoalThreadReturn(None)
-    goal_thread = Thread(target=get_file_goals, args=(data_loc, file_info, ret_obj))
+    goal_thread = Thread(
+        target=get_file_goals, args=(data_loc, file_info, ret_obj, timeout)
+    )
     goal_thread.start()
     goal_thread.join(timeout)
     if ret_obj.file_goals:
