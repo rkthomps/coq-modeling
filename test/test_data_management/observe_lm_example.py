@@ -36,7 +36,7 @@ def all_files(data_split: DataSplit, formatter: LmFormatter):
 
 def one_file(
     file: str, data_split: DataSplit, data_loc: str, formatter: LmFormatter
-) -> None:
+) -> list[LmExample]:
     file_info, split = file_from_split(file, data_split)
     file_dp = file_info.get_dp(data_loc)
     examples: list[LmExample] = []
@@ -47,6 +47,7 @@ def one_file(
             )
             examples.append(example)
     return examples
+
 
 proof_bank_loc = "/home/kthompson/coq-modeling/proof-goals"
 
@@ -66,6 +67,8 @@ formatter_conf = {
 }
 
 data_split = DataSplit.load("splits/random-split.json")
+
+data_loc = "raw-data/coq-dataset"
 
 one_file_name = "repos/snu-sf-paco/src/paco13.v"
 

@@ -1,0 +1,16 @@
+
+# Path to sample configs
+train_sample_loc: /home/kthompson/coq-modeling/samples/rnd-pct-8/random-train.json
+val_sample_loc: /home/kthompson/coq-modeling/samples/rnd-pct-8/random-val.json
+test_sample_loc: /home/kthompson/coq-modeling/samples/rnd-pct-8/random-test.json
+
+# Path to output
+output_dataset_loc: /home/kthompson/coq-modeling/data/premise-rnd-split-rnd-samp-pct-8
+
+# Format Config
+rerank_formatter:
+  alias: basic 
+  premise_model_wrapper:
+    alias: local 
+    checkpoint_loc: /home/kthompson/coq-modeling/models/prem-select/checkpoint-13683
+  consider_num: 32

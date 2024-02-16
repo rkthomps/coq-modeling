@@ -24,6 +24,8 @@ from model_deployment.premise_model_wrapper import (
 from model_deployment.mine_goals import FileGoals, GoalRecord
 from util.util import get_basic_logger
 
+from coqpyt.coq.structs import TermType
+
 _logger = get_basic_logger(__name__)
 
 GOAL_SEP = "<G>"
@@ -188,7 +190,13 @@ class ProofRetrievalFormatter:
         return candidates
 
     def get_similar_proof(
-        self, step_idx: int, proof: Proof, dp_obj: DatasetFile, file_info: FileInfo
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        timeout: int = 10,
+        max_depth: int = 3,
     ) -> Optional[tuple[str, list[str]]]:
         file_goals = self.__get_file_goals(file_info.dp_name)
         if file_goals is None:
@@ -196,7 +204,7 @@ class ProofRetrievalFormatter:
         cur_record_and_candidates = self.get_current_goal_in_file_candidates(
             step_idx, proof, file_goals
         )
-        ipdb.set_trace()
+
         if cur_record_and_candidates is None:
             return None
         cur_record, in_file_candidates = cur_record_and_candidates
@@ -211,11 +219,20 @@ class ProofRetrievalFormatter:
         heuristic_idx = 0
         global_best_candidate: Optional[tuple[int, GoalRecord]] = None
         global_best_dist: Optional[int] = None
+        start_time = time.time()
         while 0 < len(all_candidates):
+            cur_time = time.time()
+            if 0 < heuristic_idx and timeout < cur_time - start_time:
+                _logger.debug(
+                    f"Returing similar proof from {heuristic_idx} heristic iterations. File: {file_info.file}"
+                )
             _, _, cur_best_record = heapq.heappop(all_candidates)
             cur_best_distance = cur_record.term.distance(
-                cur_best_record.term, abort_at_distance=global_best_dist
+                cur_best_record.term,
+                abort_at_distance=global_best_dist,
+                heuristic_depth=max_depth,
             )
+
             if global_best_candidate is not None:
                 global_best_dist, _ = global_best_candidate
                 if cur_best_distance < global_best_dist:
@@ -227,7 +244,9 @@ class ProofRetrievalFormatter:
             next_round_candidates: list[tuple[int, float, GoalRecord]] = []
             while 0 < len(all_candidates):
                 focused_candidate = heapq.heappop(all_candidates)
-                _, _, focused_record = focused_candidate
+                focused_dist, _, focused_record = focused_candidate
+                if global_best_dist <= focused_dist:
+                    break
                 heuristic_val = cur_record.term.distance(
                     focused_record.term,
                     abort_at_distance=global_best_dist,
@@ -340,6 +359,8 @@ class OptimalPremiseFormatter:
         n_step_sampler: NStepSampler,
         direct_num_steps: bool,
         conf: Any,
+        thms_only: bool,
+        no_coq: bool,
     ) -> None:
         self.tokenizer = tokenizer
         self.state_num_tokens = state_num_tokens
@@ -349,13 +370,29 @@ class OptimalPremiseFormatter:
         self.n_step_sampler = n_step_sampler
         self.direct_num_steps = direct_num_steps
         self.conf = conf
+        self.thms_only = thms_only
+        self.no_coq = no_coq
 
     def _sort_premises(self, premises: list[Sentence]) -> list[Sentence]:
         coq_premises: list[Sentence] = []
         non_coq_premises: list[Sentence] = []
         coq_lib_str = os.path.join("lib", "coq", "theories") + "/"
         for premise in premises:
-            if coq_lib_str in premise.file_path:
+            is_thm_premise = (
+                premise.sentence_type == TermType.THEOREM
+                or premise.sentence_type == TermType.LEMMA
+                or premise.sentence_type == TermType.FACT
+                or premise.sentence_type == TermType.REMARK
+                or premise.sentence_type == TermType.COROLLARY
+                or premise.sentence_type == TermType.PROPOSITION
+                or premise.sentence_type == TermType.PROPERTY
+            )
+            is_coq_premise = coq_lib_str in premise.file_path
+            if self.thms_only and not is_thm_premise:
+                continue
+            if self.no_coq and is_coq_premise:
+                continue
+            if is_coq_premise:
                 coq_premises.append(premise)
             else:
                 non_coq_premises.append(premise)
@@ -421,6 +458,8 @@ class OptimalPremiseFormatter:
         script_num_tokens = conf["script_num_tokens"]
         statement_num_tokens = conf["statement_num_tokens"]
         premise_num_tokens = conf["premise_num_tokens"]
+        thms_only = conf["thms_only"] if "thms_only" in conf else False
+        no_coq = conf["no_coq"] if "no_coq" in conf else False
         tmp_basic_formatter = BasicFormatter.from_conf(conf)
         return cls(
             tokenizer,
@@ -431,6 +470,8 @@ class OptimalPremiseFormatter:
             tmp_basic_formatter.n_step_sampler,
             tmp_basic_formatter.direct_num_steps,
             conf,
+            thms_only,
+            no_coq,
         )
 
 

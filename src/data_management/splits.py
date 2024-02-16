@@ -221,7 +221,7 @@ def file_from_split(file: str, data_split: DataSplit) -> tuple[FileInfo, Split]:
     for split in Split:
         for file_info in data_split.get_file_list(split):
             if file == file_info.file:
-                return file_info
+                return file_info, split
     raise ValueError(f"Could not find file {file} in split.")
 
 
