@@ -142,6 +142,7 @@ class SearchTreeManager:
             initial_score,
             creation_time,
             initial_check_result.dataset_file.proofs[-1],
+            initial_check_result.goal_record,
         )
         self.search_tree = SearchTree(
             initial_check_result.dataset_file.file_context, self.root
@@ -192,6 +193,7 @@ class SearchTreeManager:
             parent_node.score.agg(score),
             creation_time,
             proof,
+            proof_check_result.goal_record,
         )
         return complete_node
 
@@ -219,6 +221,7 @@ class SearchTreeManager:
             parent_node.score.agg(score),
             creation_time,
             proof,
+            proof_check_result.goal_record,
         )
         return invalid_node
 
@@ -260,6 +263,7 @@ class SearchTreeManager:
             parent_node.score.agg(score),
             creation_time,
             proof,
+            proof_check_result.goal_record,
             redundant_to_str=redundant_to_str,
         )
         return new_leaf
@@ -298,7 +302,7 @@ class SearchTreeManager:
         leaf_subtree.set_expanded_num(step_num)
         assert leaf_subtree.proof is not None
         dset_file = DatasetFile(self.search_tree.file_context, [leaf_subtree.proof])
-        example = self.proof_manager.get_example(dset_file)
+        example = self.proof_manager.get_example(dset_file, leaf_subtree.goal_record)
         leaf_subtree.set_model_input(example.input)
         start_time = time.time_ns()
         result = self.model_wrapper.get_recs(example, self.max_branch)

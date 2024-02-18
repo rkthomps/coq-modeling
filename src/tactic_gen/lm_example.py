@@ -148,12 +148,11 @@ class ProofRetrievalFormatter:
         self.__proof_bank[key] = goals
         return goals
 
-    def get_current_goal_in_file_candidates(
+    def get_record_and_cutoff_index(
         self, step_idx: int, proof: Proof, file_goals: FileGoals
-    ) -> Optional[tuple[GoalRecord, list[GoalRecord]]]:
+    ) -> Optional[tuple[int, int]]:
         current_ground_truth = [s.step.text for s in proof.steps[step_idx:]]
         complete_ground_truth = [s.step.text for s in proof.steps]
-        prefix_len = len(complete_ground_truth) - len(current_ground_truth)
         record_idx: Optional[int] = None
         cur_ground_truth_str = "".join(current_ground_truth)
         if len(proof.steps[step_idx].goals) <= 0:
@@ -170,14 +169,22 @@ class ProofRetrievalFormatter:
         if record_idx is None:
             return None
 
+        prefix_len = len(complete_ground_truth) - len(current_ground_truth)
         current_record = file_goals.records[record_idx]
         proof_start_idx = current_record.step_idx - prefix_len
+        return record_idx, proof_start_idx
+
+    def get_in_file_candidates(
+        self, cutoff_idx: int, file_goals: Optional[FileGoals]
+    ) -> list[GoalRecord]:
+        if file_goals is None:
+            return []
         candidate_records: list[GoalRecord] = []
-        for record in file_goals.records[:record_idx]:
-            if proof_start_idx <= record.step_idx:
+        for record in file_goals.records:
+            if cutoff_idx <= record.step_idx:
                 break
             candidate_records.append(record)
-        return current_record, candidate_records
+        return candidate_records
 
     def get_out_of_file_candidates(self, dp_obj: DatasetFile):
         candidates: list[GoalRecord] = []
@@ -195,25 +202,33 @@ class ProofRetrievalFormatter:
         proof: Proof,
         dp_obj: DatasetFile,
         file_info: FileInfo,
+        key_record: Optional[GoalRecord] = None,
+        cutoff_idx: Optional[int] = None,
         timeout: int = 10,
         max_depth: int = 3,
     ) -> Optional[tuple[str, list[str]]]:
         file_goals = self.__get_file_goals(file_info.dp_name)
-        if file_goals is None:
+        if key_record is None and cutoff_idx is None:
+            if file_goals is None:
+                return None
+            record_result = self.get_record_and_cutoff_index(
+                step_idx, proof, file_goals
+            )
+            if record_result is None:
+                return None
+            record_idx, cutoff_idx = record_result
+            key_record = file_goals.records[record_idx]
+        elif key_record is None or cutoff_idx is None:
             return None
-        cur_record_and_candidates = self.get_current_goal_in_file_candidates(
-            step_idx, proof, file_goals
-        )
 
-        if cur_record_and_candidates is None:
-            return None
-        cur_record, in_file_candidates = cur_record_and_candidates
+        in_file_candidates = self.get_in_file_candidates(cutoff_idx, file_goals)
+
         out_of_file_candidates = self.get_out_of_file_candidates(dp_obj)
         all_raw_candidates = in_file_candidates + out_of_file_candidates
 
         all_candidates: list[tuple[int, float, GoalRecord]] = []
         for record in all_raw_candidates:
-            heuristic_val = abs(cur_record.term.size() - record.term.size())
+            heuristic_val = abs(key_record.term.size() - record.term.size())
             heapq.heappush(all_candidates, (heuristic_val, time.time(), record))
 
         heuristic_idx = 0
@@ -227,7 +242,7 @@ class ProofRetrievalFormatter:
                     f"Returing similar proof from {heuristic_idx} heristic iterations. File: {file_info.file}"
                 )
             _, _, cur_best_record = heapq.heappop(all_candidates)
-            cur_best_distance = cur_record.term.distance(
+            cur_best_distance = key_record.term.distance(
                 cur_best_record.term,
                 abort_at_distance=global_best_dist,
                 heuristic_depth=max_depth,
@@ -247,7 +262,7 @@ class ProofRetrievalFormatter:
                 focused_dist, _, focused_record = focused_candidate
                 if global_best_dist <= focused_dist:
                     break
-                heuristic_val = cur_record.term.distance(
+                heuristic_val = key_record.term.distance(
                     focused_record.term,
                     abort_at_distance=global_best_dist,
                     heuristic_depth=heuristic_idx,
@@ -274,10 +289,12 @@ class ProofRetrievalFormatter:
         split: Split,
         data_loc: str,
         ground_truth_steps: Optional[list[str]],
+        key_record: Optional[GoalRecord] = None,
+        cutoff_idx: Optional[int] = None,
     ) -> LmExample:
         step = proof.steps[step_idx]
         similar_proof_result = self.get_similar_proof(
-            step_idx, proof, dp_obj, file_info
+            step_idx, proof, dp_obj, file_info, key_record, cutoff_idx
         )
         if similar_proof_result:
             similar_proof_state, similar_proof_script = similar_proof_result

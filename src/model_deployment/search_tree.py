@@ -8,6 +8,7 @@ from typeguard import typechecked
 
 from data_management.dataset_file import FileContext, Proof
 from model_deployment.node_score import NodeScore
+from model_deployment.mine_goals import GoalRecord
 from termcolor import colored
 
 
@@ -57,6 +58,7 @@ class SearchNode:
         score: NodeScore,
         creation_time: int,
         proof: Optional[Proof],
+        goal_record: Optional[GoalRecord],
         expanded: Optional[int] = None,
         model_input: Optional[str] = None,
         children: Optional[list[SearchNode]] = None,
@@ -70,6 +72,7 @@ class SearchNode:
         self.score = score
         self.creation_time = creation_time
         self.proof = proof
+        self.goal_record = goal_record
         self.expanded = expanded
         self.model_input = model_input
         self.redundant_to_str = redundant_to_str
@@ -172,6 +175,7 @@ class SearchNode:
             "score": self.score.to_json(),
             "creation_time": self.creation_time,
             "proof": self.proof.to_json() if self.proof else self.proof,
+            "goal_record": self.goal_record.to_json() if self.goal_record else None,
             "expanded": self.expanded,
             "model_input": self.model_input,
             "redundant_to_str": self.redundant_to_str,
@@ -192,6 +196,12 @@ class SearchNode:
             proof = Proof.from_json(proof_data) if proof_data else proof_data
         else:
             proof = None
+
+        if "goal_record" in json_data and json_data["goal_record"] is not None:
+            goal_record = GoalRecord.from_json(json_data["goal_record"])
+        else:
+            goal_record = None
+
         expanded = json_data["expanded"]
         model_input = json_data["model_input"] if "model_input" in json_data else None
         children = [SearchNode.from_json(c) for c in json_data["children"]]
@@ -205,6 +215,7 @@ class SearchNode:
             score,
             creation_time,
             proof,
+            goal_record,
             expanded,
             model_input,
             children,

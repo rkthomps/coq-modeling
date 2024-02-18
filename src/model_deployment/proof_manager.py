@@ -20,16 +20,18 @@ from data_management.dataset_file import (
 )
 from data_management.splits import Split, FileInfo
 
-from tactic_gen.lm_example import LmExample, LmFormatter
+from tactic_gen.lm_example import LmExample, LmFormatter, ProofRetrievalFormatter
 from model_deployment.goal_comparer import (
     ParsedObligations,
     ParsedObligation,
     ParsedHyp,
     extract_body_from_step,
 )
+from model_deployment.mine_goals import get_goal_record, GoalRecord
 from util.util import get_basic_logger
 from util.coqpyt_utils import get_all_goals
 
+from coqpyt.coq.lsp.client import TextDocumentIdentifier, TextDocumentItem, CoqLspClient
 from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
 from coqpyt.coq.structs import ProofTerm, Term
 from coqpyt.coq.lsp.structs import Goal, GoalAnswer
@@ -54,24 +56,28 @@ class ProofCheckResult:
         attempted_steps: list[str],
         current_goals: Optional[GoalAnswer],
         parsed_current_goals: Optional[ParsedObligations],
+        goal_record: Optional[GoalRecord],
         new_dataset_file: Optional[DatasetFile],
     ) -> None:
         self.tactic_result = tactic_result
         self.attempted_steps = attempted_steps
         self.current_goals = current_goals
         self.parsed_current_goals = parsed_current_goals
+        self.goal_record = goal_record
         self.dataset_file = new_dataset_file
 
     @classmethod
     def get_invalid(cls) -> ProofCheckResult:
         current_goals = None
         parsed_current_goals = None
+        goal_record = None
         new_dataset_file = None
         return cls(
             TacticResult.INVALID,
             [],
             current_goals,
             parsed_current_goals,
+            goal_record,
             new_dataset_file,
         )
 
@@ -212,6 +218,17 @@ class ProofManager:
             self.proof_file, self.proof_point
         )
 
+        self.goal_file_path = get_fresh_path(file_dir, "aux_goals.v")
+        self.goal_file_uri = f"file://{self.goal_file_path}"
+        self.goal_client_root_uri = f"file://{self.__workspace_loc}"
+        self.aux_client = CoqLspClient(self.goal_client_root_uri, timeout=120)
+        self.goal_file_version = 1
+        self.aux_client.didOpen(
+            TextDocumentItem(
+                self.goal_file_uri, "coq", self.goal_file_version, self.file_prefix
+            )
+        )
+
     def __get_file_prefix(self) -> str:
         return "".join(
             [s.text for s in self.proof_file.steps[: (self.proof_point + 1)]]
@@ -270,6 +287,24 @@ class ProofManager:
         ast_def_body = extract_body_from_step(coq_file.steps[read_idx])
         return ast_def_body, def_text, num_read + 1
 
+    def get_goal_record(self, steps: list[str]) -> Optional[GoalRecord]:
+        if not isinstance(self.lm_formatter, ProofRetrievalFormatter):
+            return None
+        new_step_idx = self.proof_point + len(steps)
+        end_pos = self.proof_file.steps[new_step_idx].ast.range.end
+        goal_dict: dict[int, Optional[GoalAnswer]] = {}
+        record, version = get_goal_record(
+            self.aux_client,
+            self.goal_file_uri,
+            self.goal_file_version,
+            end_pos,
+            self.proof_file.steps,
+            new_step_idx,
+            goal_dict,
+        )
+        self.goal_file_version = version
+        return record
+
     def get_parsed_goals(
         self, partial_proof: str, current_goals: GoalAnswer
     ) -> ParsedObligations:
@@ -326,26 +361,32 @@ class ProofManager:
             return ProofCheckResult.get_invalid()
         if self.proof_file.can_close_proof:
             parsed_obligations = None
+            goal_record = None
             dset_file = None
             return ProofCheckResult(
                 TacticResult.COMPLETE,
                 partial_steps,
                 current_goals,
                 parsed_obligations,
+                goal_record,
                 dset_file,
             )
         dset_file = self.get_dataset_file()
         assert current_goals is not None
         parsed_obligations = self.get_parsed_goals(partial_proof, current_goals)
+        goal_record = self.get_goal_record(partial_steps)
         return ProofCheckResult(
             TacticResult.VALID,
             partial_steps,
             self.proof_file.current_goals,
             parsed_obligations,
+            goal_record,
             dset_file,
         )
 
-    def get_example(self, dset_file: DatasetFile) -> LmExample:
+    def get_example(
+        self, dset_file: DatasetFile, goal_record: Optional[GoalRecord]
+    ) -> LmExample:
         proof = dset_file.proofs[-1]
         last_step_idx = len(proof.steps) - 1
         example = self.lm_formatter.example_from_step(
@@ -356,6 +397,8 @@ class ProofManager:
             self.split,
             self.data_loc,
             self.__proof_stored_steps,
+            key_record=goal_record,
+            cutoff_idx=self.proof_point,
         )
         return example
 
@@ -390,4 +433,6 @@ class ProofManager:
         _logger.debug("Restoring proof file.")
         if os.path.exists(self.aux_file_path):
             os.remove(self.aux_file_path)
+        self.aux_client.shutdown()
+        self.aux_client.exit()
         restore_proof_file(self.proof_file, self.proof_point, self.__proof_stored_steps)

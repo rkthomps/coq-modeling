@@ -20,7 +20,8 @@ _logger = get_basic_logger(__name__)
 
 # PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-tpe-1k-rnd-split-rnd-samp-pct-8/checkpoint-4133"
 # PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-prf-oracle-rnd-split-rnd-samp-pct-8/checkpoint-4139"
-PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-premise-no-coq-rnd-split-rnd-samp-pct-8/checkpoint-4306"
+# PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-premise-no-coq-rnd-split-rnd-samp-pct-8/checkpoint-4306"
+PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-proof-ret-rnd-split-rnd-samp-pct-8/checkpoint-4171"
 local_conf = {
     "alias": CodeLLamaLocalWrapper.ALIAS,
     "pretrained-name": PRETRAINED_NAME,
