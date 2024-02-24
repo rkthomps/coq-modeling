@@ -250,6 +250,15 @@ class FocusedStep:
         steps: list[Step] = []
         return cls(term, step, n_step, goals, steps)
 
+    @classmethod
+    def from_step_and_goals(cls, theorem_stmt: str, step_text: str, goals: list[Goal]) -> FocusedStep:
+        term = Term.from_text(theorem_stmt, TermType.THEOREM)
+        step = Step.from_text(step_text, TermType.TACTIC)
+        n_step = 0
+        goals = goals
+        steps: list[Step] = []
+        return cls(term, step, n_step, goals, steps)
+
 
 @typechecked
 class Proof:
