@@ -23,6 +23,7 @@ from model_deployment.premise_model_wrapper import (
     PremiseServerModelWrapper,
     LocalPremiseModelWrapper,
     get_ranked_premise_generator,
+    move_prem_wrapper_to,
 )
 
 from util.util import get_basic_logger
@@ -118,7 +119,7 @@ class Evaluator:
         """Note that |eval_results| = # steps requiring at least one premise."""
         num_steps = 0
         eval_results: list[EvalResult] = []
-        for file_info in tqdm(self.data_split.get_file_list(self.data_loc, self.split)):
+        for file_info in tqdm(self.data_split.get_file_list(self.split)):
             file_loc = os.path.join(self.data_loc, DATA_POINTS_NAME, file_info.dp_name)
             try:
                 parsed_dataset_file = DatasetFile.from_directory(file_loc)
@@ -183,6 +184,7 @@ if __name__ == "__main__":
 
     # model_wrapper = PremiseServerModelWrapper.from_url("http://127.0.0.1:5000")
     model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
+    move_prem_wrapper_to(model_wrapper, "cuda")
     data_split = DataSplit.load(args.data_split_loc)
 
     evaluator = Evaluator(model_wrapper, args.data_loc, data_split, Split.VAL)
