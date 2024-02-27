@@ -3,7 +3,7 @@ from typing import Any, Optional
 import jsonlines
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
-from transformers import AutoTokenizer, ByT5Tokenizer
+from transformers import AutoTokenizer, GPT2Tokenizer
 from torch.utils.data import Dataset, DataLoader
 import torch
 
@@ -17,7 +17,7 @@ from premise_selection.rerank_example import RerankExample
 
 
 def tokenize_strings(
-    tokenizer: ByT5Tokenizer, strings: list[str], max_seq_len: int
+    tokenizer: GPT2Tokenizer, strings: list[str], max_seq_len: int
 ) -> Any:
     return tokenizer(
         strings,
@@ -29,7 +29,7 @@ def tokenize_strings(
 
 
 def allocate_tokens(
-    tokenizer: ByT5Tokenizer, s: str, allowance: int, truncate_front: bool = True
+    tokenizer: GPT2Tokenizer, s: str, allowance: int, truncate_front: bool = True
 ) -> tuple[str, int]:
     tokens = tokenizer.encode(s)
     if truncate_front:
@@ -41,7 +41,7 @@ def allocate_tokens(
 
 def collate_examples(
     examples: list[RerankExample],
-    tokenizer: ByT5Tokenizer,
+    tokenizer: GPT2Tokenizer,
     max_seq_len: int,
 ) -> Any:
     input_strs: list[str] = []
@@ -75,7 +75,7 @@ class RerankDataset(Dataset):
     def __init__(
         self,
         rerank_file_path: str,
-        tokenizer: ByT5Tokenizer,
+        tokenizer: GPT2Tokenizer,
         max_seq_len: int,
         max_num_examples: Optional[int] = None,
     ) -> None:

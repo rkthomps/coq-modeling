@@ -9,7 +9,7 @@ import ipdb
 
 from tqdm import tqdm
 import torch
-from transformers import ByT5Tokenizer
+from transformers import GPT2Tokenizer, ByT5Tokenizer
 from yaml import load, Loader
 from typeguard import typechecked
 
@@ -77,9 +77,9 @@ class LocalRerankModelWrapper:
         self,
         reranker: PremiseReranker,
         base_wrapper: PremiseModelWrapper,
-        tokenizer: ByT5Tokenizer,
+        tokenizer: GPT2Tokenizer,
         max_seq_len: int,
-        batch_size: int = 16,
+        batch_size: int = 32,
         rerank_k: int = 256,
     ) -> None:
         self.reranker = reranker
@@ -90,6 +90,7 @@ class LocalRerankModelWrapper:
         self.rerank_k = rerank_k
         self.premise_format = self.base_wrapper.premise_format
         self.context_format = self.base_wrapper.context_format
+        self.premise_filter = self.base_wrapper.premise_filter
 
     def batch_examples(self, examples: list[Any]) -> list[list[Any]]:
         batches: list[list[Any]] = []
@@ -118,19 +119,20 @@ class LocalRerankModelWrapper:
             formatted_premise = self.base_wrapper.premise_format.format(s)
             formatted_context = self.base_wrapper.context_format.format(step, proof)
             rerank_example = RerankExample(formatted_premise, formatted_context, False)
-            print("Input: ", rerank_example.premise, rerank_example.context)
             rerank_examples.append(rerank_example)
         assert len(top_k) == len(rerank_examples)
 
         rerank_batches = self.batch_examples(rerank_examples)
         probs: list[float] = []
-        for batch in rerank_batches:
-            collated_batch = collate_examples(batch, self.tokenizer, self.max_seq_len)
-            ipdb.set_trace()
-            batch_outputs = self.reranker(**collated_batch)
-            batch_logits = batch_outputs["logits"]
-            batch_probs = torch.sigmoid(batch_logits)
-            probs.extend(batch_probs.tolist())
+        with torch.no_grad():
+            for batch in rerank_batches:
+                collated_batch = collate_examples(
+                    batch, self.tokenizer, self.max_seq_len
+                )
+                batch_outputs = self.reranker(**collated_batch)
+                batch_logits = batch_outputs["logits"]
+                batch_probs = torch.sigmoid(batch_logits)
+                probs.extend(batch_probs.tolist())
         assert len(probs) == len(rerank_examples)
 
         num_premises = len(rerank_examples)
@@ -154,7 +156,7 @@ class LocalRerankModelWrapper:
         with open(model_conf_loc, "r") as fin:
             model_conf = load(fin, Loader=Loader)
         max_seq_len = get_required_arg("max_seq_len", model_conf)
-        tokenizer = ByT5Tokenizer.from_pretrained(model_conf["model_name"])
+        tokenizer = GPT2Tokenizer.from_pretrained(model_conf["model_name"])
         base_wrapper = premise_wrapper_from_conf(
             rerank_conf["rerank_formatter"]["premise_wrapper"]
         )
@@ -201,7 +203,7 @@ class BM25Okapi:
         query = self.tokenizer(context_str)
         doc_freqs = self.compute_doc_freqs(docs)
         avg_doc_len = sum([len(d) for d in docs]) / len(docs)
-        doc_term_freqs = [self.compute_term_freqs(doc) for doc in docs] 
+        doc_term_freqs = [self.compute_term_freqs(doc) for doc in docs]
 
         similarities: list[float] = []
         for doc, doc_term_dict in zip(docs, doc_term_freqs):
@@ -508,6 +510,9 @@ def move_prem_wrapper_to(
     match premise_model_wrapper:
         case LocalPremiseModelWrapper():
             premise_model_wrapper.retriever = premise_model_wrapper.retriever.to(device)
+        case LocalRerankModelWrapper():
+            premise_model_wrapper.reranker.to(device)
+            move_prem_wrapper_to(premise_model_wrapper.base_wrapper, device)
         case _:
             pass
 

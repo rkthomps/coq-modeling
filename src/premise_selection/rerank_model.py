@@ -18,14 +18,14 @@ from yaml import load, Loader
 
 from typeguard import typechecked
 
-from transformers import PreTrainedModel, PretrainedConfig
+from transformers import OPTModel, GPT2Tokenizer, PreTrainedModel, PretrainedConfig
 from premise_selection.training_types import PremiseBatch
 from premise_selection.datamodule import tokenize_strings
 
 
 class PremiseRerankerConfig(PretrainedConfig):
-    model_type = "premise-retriever"
-    model_name = "google/byt5-small"
+    model_type = "premise-reranker"
+    model_name = "facebook/opt-125m"
 
     def __init__(self, **kwargs) -> None:
         super(PremiseRerankerConfig, self).__init__(**kwargs)
@@ -37,14 +37,14 @@ class PremiseReranker(PreTrainedModel):
     def __init__(self, config: PremiseRerankerConfig) -> None:
         super(PremiseReranker, self).__init__(config)
         self.config = config
-        self.encoder = T5EncoderModel.from_pretrained(config.model_name)
+        self.decoder = OPTModel.from_pretrained(config.model_name)
         self.d_model = self.__get_d_model()
         self.final_projection = nn.Linear(self.d_model, 1, device=self.device)
 
     def __get_d_model(self) -> int:
         return int(
-            self.encoder(
-                self.encoder.dummy_inputs["input_ids"]
+            self.decoder(
+                self.decoder.dummy_inputs["input_ids"]
             ).last_hidden_state.shape[-1]
         )
 
@@ -56,7 +56,7 @@ class PremiseReranker(PreTrainedModel):
     ) -> dict[str, torch.Tensor]:
         cuda_input_ids = input_ids.to(self.device)
         cuda_mask = mask.to(self.device)
-        hidden_states = self.encoder(
+        hidden_states = self.decoder(
             input_ids=cuda_input_ids,
             attention_mask=cuda_mask,
             return_dict=True,
@@ -68,8 +68,3 @@ class PremiseReranker(PreTrainedModel):
         # final_probs = torch.sigmoid(self.final_projection(averaged_states))[:, 0]
         final_logits = self.final_projection(averaged_states)[:, 0]
         return {"logits": final_logits}
-
-    @classmethod
-    def fresh(cls, model_name: str) -> PremiseReranker:
-        encoder = T5EncoderModel.from_pretrained(model_name)
-        return cls(encoder)
