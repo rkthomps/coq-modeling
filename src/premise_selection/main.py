@@ -19,15 +19,15 @@ from util.train_utils import (
 )
 
 import transformers
-from transformers import TrainingArguments, Trainer, ByT5Tokenizer
+from transformers import TrainingArguments, Trainer, GPT2Tokenizer
 from torch.utils.data import Dataset, DataLoader
 import torch
 import torch.nn.functional as F
 
 
-def get_tokenizer(conf: dict[str, Any]) -> ByT5Tokenizer:
+def get_tokenizer(conf: dict[str, Any]) -> GPT2Tokenizer:
     model_name = get_required_arg("model_name", conf)
-    tokenizer = ByT5Tokenizer.from_pretrained(model_name)
+    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     return tokenizer
 
 
@@ -44,15 +44,13 @@ def get_model(conf: dict[str, Any]) -> PremiseRetriever:
 
 def get_datasets(
     conf: dict[str, Any],
-    tokenizer: ByT5Tokenizer,
+    tokenizer: GPT2Tokenizer,
     max_seq_len: int,
 ) -> tuple[PremiseSelectionDataset, PremiseSelectionDataset]:
     data_path = get_required_arg("data_path", conf)
     # num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
     train_path = split_file_path(data_path, Split.TRAIN)
-    train_dataset = PremiseSelectionDataset(
-        train_path, tokenizer, max_seq_len, max_num_examples=10000
-    )
+    train_dataset = PremiseSelectionDataset(train_path, tokenizer, max_seq_len)
     val_path = split_file_path(data_path, Split.VAL)
     val_dataset = PremiseSelectionDataset(
         val_path, tokenizer, max_seq_len, max_num_examples=10000

@@ -4,10 +4,12 @@ from typing import Any
 import sys, os
 import ipdb
 import re
+from enum import Enum
+
 from pytorch_lightning.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from transformers import (
-    ByT5Tokenizer,
-    T5EncoderModel,
+    GPT2Tokenizer,
+    OPTModel,
     get_cosine_schedule_with_warmup,
     T5ForConditionalGeneration,
 )
@@ -24,10 +26,15 @@ from premise_selection.datamodule import tokenize_strings
 
 class PremiseRetrieverConfig(PretrainedConfig):
     model_type = "premise-retriever"
-    model_name = "google/byt5-small"
+    model_name = "facebook/opt-125m"
 
     def __init__(self, **kwargs) -> None:
         super(PremiseRetrieverConfig, self).__init__(**kwargs)
+
+
+class EncodeType(Enum):
+    PREMISE = 1
+    CONTEXT = 2
 
 
 class PremiseRetriever(PreTrainedModel):
@@ -36,13 +43,28 @@ class PremiseRetriever(PreTrainedModel):
     def __init__(self, config: PremiseRetrieverConfig) -> None:
         super(PremiseRetriever, self).__init__(config)
         self.config = config
-        self.encoder = T5EncoderModel.from_pretrained(config.model_name)
+        self.decoder = OPTModel.from_pretrained(config.model_name)
+        self.d_model = self.__get_d_model()
+        self.premise_projection = torch.nn.Linear(
+            self.d_model, self.d_model, device=self.device
+        )
+        self.context_projection = torch.nn.Linear(
+            self.d_model, self.d_model, device=self.device
+        )
 
-    def _encode(self, input_ids: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        ## TODO: COULD ADD SOME SORT OF "CPU CHECKPOINTING"
+    def __get_d_model(self) -> int:
+        return int(
+            self.decoder(
+                self.decoder.dummy_inputs["input_ids"]
+            ).last_hidden_state.shape[-1]
+        )
+
+    def _get_avg_embedding(
+        self, input_ids: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
         cuda_input_ids = input_ids.to(self.device)
         cuda_mask = mask.to(self.device)
-        hidden_states = self.encoder(
+        hidden_states = self.decoder(
             input_ids=cuda_input_ids,
             attention_mask=cuda_mask,
             return_dict=True,
@@ -51,7 +73,21 @@ class PremiseRetriever(PreTrainedModel):
         masked_hidden_states = hidden_states * cuda_mask[:, :, None]
         summed_hidden_states = masked_hidden_states.sum(axis=1)
         averaged_states = summed_hidden_states / per_batch_counts[:, None]
-        return F.normalize(averaged_states, dim=1)
+        return averaged_states
+
+    def encode_premise(
+        self, input_ids: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
+        avg_embedding = self._get_avg_embedding(input_ids, mask)
+        proj_embedding = self.premise_projection(avg_embedding)
+        return F.normalize(proj_embedding, dim=1)
+
+    def encode_context(
+        self, input_ids: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
+        avg_embedding = self._get_avg_embedding(input_ids, mask)
+        proj_embedding = self.context_projection(avg_embedding)
+        return F.normalize(proj_embedding, dim=1)
 
     def forward(
         self,
@@ -61,25 +97,9 @@ class PremiseRetriever(PreTrainedModel):
         premise_mask: torch.Tensor,
         label: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        context_embs = self._encode(context_ids, context_mask)
-        premise_embs = self._encode(premise_ids, premise_mask)
+        context_embs = self.encode_context(context_ids, context_mask)
+        premise_embs = self.encode_premise(premise_ids, premise_mask)
         similarity = torch.mm(context_embs, premise_embs.t())
         epsilon = 1e-4
         assert (-1 - epsilon) <= similarity.min() <= similarity.max() <= (1 + epsilon)
         return {"similarities": similarity}
-
-    @classmethod
-    def fresh(cls, model_name: str) -> PremiseRetriever:
-        encoder = T5EncoderModel.from_pretrained(model_name)
-        return cls(encoder)
-
-    def encode_str(
-        self, to_encode: str, tokenizer: ByT5Tokenizer, max_seq_len: int
-    ) -> torch.Tensor:
-        with torch.no_grad():
-            tokens = tokenize_strings(tokenizer, [to_encode], max_seq_len)
-            input_ids = tokens.input_ids
-            input_masks = tokens.attention_mask
-            encoding = self._encode(input_ids, input_masks)  # shape should be 1 x h_dim
-            assert encoding.shape[0] == 1
-            return encoding

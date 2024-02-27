@@ -13,18 +13,18 @@ from coqpyt.coq.structs import TermType
 
 # pmw = TFIdf()
 # pmw = BM25Okapi()
-pmw = LocalRerankModelWrapper.from_checkpoint(
-    "/home/kthompson/coq-modeling/models/rerank-15-pos-opt/checkpoint-500"
-)
+# pmw = LocalRerankModelWrapper.from_checkpoint(
+#     "/home/kthompson/coq-modeling/models/rerank-15-pos-opt/checkpoint-500"
+# )
 # pmw = LocalRerankModelWrapper.from_checkpoint(
 #     "/home/kthompson/coq-modeling/models/rerank-15-pos-all/checkpoint-500"
 # )
 # pmw = LocalRerankModelWrapper.from_checkpoint(
 #     "/home/kthompson/coq-modeling/models/rerank-15-all/checkpoint-11500"
 # )
-# pmw = LocalPremiseModelWrapper.from_checkpoint(
-#     "/home/kthompson/coq-modeling/models/prem-select/checkpoint-13683"
-# )
+pmw = LocalPremiseModelWrapper.from_checkpoint(
+    "/home/kthompson/coq-modeling/models/prem-select-opt/checkpoint-2200"
+)
 
 
 thm_statement = "Theorem add_comm: forall (n m : nat), n + m = m + n."
@@ -67,24 +67,24 @@ premise_3 = Sentence.from_text(
     TermType.THEOREM,
 )
 
-premises, probs = pmw.rerank(step_3, current_proof, [premise_1, premise_2, premise_3])
-for premise, prob in zip(premises, probs):
-    print(premise.text, prob)
+# premises, probs = pmw.rerank(step_3, current_proof, [premise_1, premise_2, premise_3])
+# for premise, prob in zip(premises, probs):
+#     print(premise.text, prob)
 
-ipdb.set_trace()
+# ipdb.set_trace()
 
 
-# # Some models only retr
-# premise_generator = get_ranked_premise_generator(
-#     pmw, step_1, current_proof, [premise_1, premise_2, premise_3]
-# )
+# Some models only retr
+premise_generator = get_ranked_premise_generator(
+    pmw, step_1, current_proof, [premise_1, premise_2, premise_3]
+)
 
-# for i, premise in enumerate(premise_generator):
-#     print(f"Premise {i + 1}: {premise.text}")
+for i, premise in enumerate(premise_generator):
+    print(f"Premise {i + 1}: {premise.text}")
 
-# # To see the scores:
-# formatted_ctxt = pmw.context_format.format(step_1, current_proof)
-# formatted_premises = [
-#     pmw.premise_format.format(p) for p in [premise_1, premise_2, premise_3]
-# ]
-# print(pmw.get_premise_scores_from_strings(formatted_ctxt, formatted_premises))
+# To see the scores:
+formatted_ctxt = pmw.context_format.format(step_1, current_proof)
+formatted_premises = [
+    pmw.premise_format.format(p) for p in [premise_1, premise_2, premise_3]
+]
+print(pmw.get_premise_scores_from_strings(formatted_ctxt, formatted_premises))

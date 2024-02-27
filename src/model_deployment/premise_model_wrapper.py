@@ -9,7 +9,7 @@ import ipdb
 
 from tqdm import tqdm
 import torch
-from transformers import GPT2Tokenizer, ByT5Tokenizer
+from transformers import GPT2Tokenizer
 from yaml import load, Loader
 from typeguard import typechecked
 
@@ -26,6 +26,7 @@ from premise_selection.premise_formatter import (
 from premise_selection.model import PremiseRetriever
 from premise_selection.premise_filter import PremiseFilter
 from premise_selection.rerank_model import PremiseReranker
+from premise_selection.datamodule import tokenize_strings
 from premise_selection.rerank_datamodule import collate_examples
 from premise_selection.rerank_example import RerankExample
 from model_deployment.serve_prem_utils import (
@@ -313,7 +314,7 @@ class LocalPremiseModelWrapper:
         self,
         retriever: PremiseRetriever,
         max_seq_len: int,
-        tokenizer: ByT5Tokenizer,
+        tokenizer: GPT2Tokenizer,
         context_format: type[ContextFormat],
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
@@ -330,15 +331,21 @@ class LocalPremiseModelWrapper:
         self.hits = 0
         self.misses = 0
 
-    def __encode_str(self, to_encode: str) -> torch.Tensor:
-        if self.encoding_cache.contains(to_encode):
+    def get_input(self, s: str) -> Any:
+        inputs = tokenize_strings(self.tokenizer, [s], self.max_seq_len)
+        return inputs
+
+    def encode_premise(self, premise: str) -> torch.Tensor:
+        if self.encoding_cache.contains(premise):
             self.hits += 1
-            return self.encoding_cache.get(to_encode)
+            return self.encoding_cache.get(premise)
         self.misses += 1
-        encoding = self.retriever.encode_str(
-            to_encode, self.tokenizer, self.max_seq_len
-        )
-        self.encoding_cache.add(to_encode, encoding)
+        inputs = self.get_input(premise)
+        with torch.no_grad():
+            encoding = self.retriever.encode_premise(
+                inputs.input_ids, inputs.attention_mask
+            ).to("cpu")
+        self.encoding_cache.add(premise, encoding)
         return encoding
 
     def reset_hit_rate(self) -> None:
@@ -356,13 +363,21 @@ class LocalPremiseModelWrapper:
         if len(premise_strs) == 0:
             return []
         device = self.retriever.device
-        encoded_context = self.__encode_str(context_str).to(device)
-        premise_encodings: list[torch.Tensor] = []
+        context_inputs = self.get_input(context_str)
+        with torch.no_grad():
+            context_encoding = self.retriever.encode_context(
+                context_inputs.input_ids, context_inputs.attention_mask
+            ).to(device)
+        similarities: list[float] = []
         for premise_str in premise_strs:
-            encoded_premise = self.__encode_str(premise_str).to(device)
-            premise_encodings.append(encoded_premise)
+            encoded_premise = self.encode_premise(premise_str).to(device)
+            similarities.append(
+                float((context_encoding @ encoded_premise.t()).squeeze())
+            )
+        return similarities
+        premise_encodings.append(encoded_premise)
         premise_matrix = torch.cat(premise_encodings)
-        similarities = torch.mm(encoded_context, premise_matrix.t())
+        similarities = torch.mm(context_encoding, premise_matrix.t())
         assert similarities.shape[0] == 1
         return similarities[0].tolist()
 
@@ -384,7 +399,7 @@ class LocalPremiseModelWrapper:
         with open(model_conf_loc, "r") as fin:
             model_conf = load(fin, Loader=Loader)
         max_seq_len = get_required_arg("max_seq_len", model_conf)
-        tokenizer = ByT5Tokenizer.from_pretrained(model_conf["model_name"])
+        tokenizer = GPT2Tokenizer.from_pretrained(model_conf["model_name"])
         premise_format_alias = premise_conf["premise_format_alias"]
         context_format_alias = premise_conf["context_format_alias"]
         premise_format = PREMISE_ALIASES[premise_format_alias]
