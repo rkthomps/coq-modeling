@@ -24,6 +24,9 @@ from model_deployment.premise_model_wrapper import (
     LocalPremiseModelWrapper,
     get_ranked_premise_generator,
     move_prem_wrapper_to,
+    premise_wrapper_from_conf,
+    TFIdf,
+    BM25Okapi,
 )
 
 from util.util import get_basic_logger
@@ -182,8 +185,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args(sys.argv[1:])
 
-    # model_wrapper = PremiseServerModelWrapper.from_url("http://127.0.0.1:5000")
-    model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
+    if args.checkpoint_loc == TFIdf.ALIAS or args.checkpoint_loc == BM25Okapi.ALIAS:
+        model_wrapper = premise_wrapper_from_conf({"alias": args.checkpoint_loc})
+    else:
+        model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
+
     move_prem_wrapper_to(model_wrapper, "cuda")
     data_split = DataSplit.load(args.data_split_loc)
 
