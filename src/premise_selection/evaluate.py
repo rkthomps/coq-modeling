@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Type, Iterable, Any
+from typing import Type, Iterable, Any, Optional
 
 
 import sys, os
@@ -22,8 +22,12 @@ from model_deployment.premise_model_wrapper import (
     PremiseModelWrapper,
     PremiseServerModelWrapper,
     LocalPremiseModelWrapper,
+    LocalRerankModelWrapper,
     get_ranked_premise_generator,
     move_prem_wrapper_to,
+    premise_wrapper_from_conf,
+    TFIdf,
+    BM25Okapi,
 )
 
 from util.util import get_basic_logger
@@ -33,21 +37,32 @@ _logger = get_basic_logger(__name__)
 
 @typechecked
 class EvalResult:
-    def __init__(self, num_avail_premises: int, hits_on: list[int]) -> None:
+    def __init__(
+        self,
+        num_avail_premises: int,
+        hits_on: list[int],
+        num_positive_premises: int,
+    ) -> None:
         self.num_avail_premises = num_avail_premises
         self.hits_on = hits_on
+        self.num_positive_premises = num_positive_premises
 
     def to_json(self) -> Any:
         return {
             "num_avail_premises": self.num_avail_premises,
             "hits_on": self.hits_on,
+            "num_positive_premises": self.num_positive_premises,
         }
 
     @classmethod
     def from_json(cls, json_data: Any) -> EvalResult:
         num_avail_premises = json_data["num_avail_premises"]
         hits_on = json_data["hits_on"]
-        return cls(num_avail_premises, hits_on)
+        if "num_positive_premises" in json_data:
+            num_positive_premises = json_data["num_positive_premises"]
+        else:
+            num_positive_premises = len(hits_on)
+        return cls(num_avail_premises, hits_on, num_positive_premises)
 
 
 @typechecked
@@ -70,7 +85,7 @@ class EvalData:
         for eval_result in self.eval_result_list:
             hits_below_k = [h for h in eval_result.hits_on if h <= k]
             num_prems_hit += len(hits_below_k)
-            num_prems += len(eval_result.hits_on)
+            num_prems += eval_result.num_positive_premises
         return num_prems_hit / num_prems
 
     def to_json(self) -> Any:
@@ -149,15 +164,13 @@ class Evaluator:
                             hits_on.append(i + 1)
                             if len(premises_to_cover) == 0:
                                 break
-                    try:
-                        assert len(premises_to_cover) == 0
-                    except AssertionError:
-                        pdb.set_trace()
-                    try:
-                        assert len(hits_on) == num_positive_premises
-                    except AssertionError:
-                        pdb.set_trace()
-                    eval_results.append(EvalResult(num_avail_premises, hits_on))
+                    eval_results.append(
+                        EvalResult(num_avail_premises, hits_on, num_positive_premises)
+                    )
+            tmp_data = EvalData(num_steps, eval_results)
+            _logger.info(
+                f"Recalls: @1: {tmp_data.recall_at(1)}; @10: {tmp_data.recall_at(10)}; @100: {tmp_data.recall_at(100)}"
+            )
         return EvalData(num_steps, eval_results)
 
     @staticmethod
@@ -182,8 +195,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args(sys.argv[1:])
 
-    # model_wrapper = PremiseServerModelWrapper.from_url("http://127.0.0.1:5000")
-    model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
+    if args.checkpoint_loc == TFIdf.ALIAS or args.checkpoint_loc == BM25Okapi.ALIAS:
+        model_wrapper = premise_wrapper_from_conf({"alias": args.checkpoint_loc})
+    elif "rerank" in args.checkpoint_loc.lower():
+        model_wrapper = LocalRerankModelWrapper.from_checkpoint(args.checkpoint_loc)
+    else:
+        model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
+
     move_prem_wrapper_to(model_wrapper, "cuda")
     data_split = DataSplit.load(args.data_split_loc)
 

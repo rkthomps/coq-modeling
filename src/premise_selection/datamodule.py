@@ -3,7 +3,7 @@ from typing import Any, Optional
 import jsonlines
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
-from transformers import AutoTokenizer, ByT5Tokenizer
+from transformers import AutoTokenizer, GPT2Tokenizer 
 from torch.utils.data import Dataset, DataLoader
 import torch
 
@@ -18,7 +18,7 @@ from premise_selection.training_types import PremiseBatch
 
 
 def tokenize_strings(
-    tokenizer: ByT5Tokenizer, strings: list[str], max_seq_len: int
+    tokenizer: GPT2Tokenizer, strings: list[str], max_seq_len: int
 ) -> Any:
     return tokenizer(
         strings,
@@ -34,7 +34,7 @@ class PremiseSelectionDataset(Dataset):
     def __init__(
         self,
         premise_file_path: str,
-        tokenizer: ByT5Tokenizer,
+        tokenizer: GPT2Tokenizer,
         max_seq_len: int,
         max_num_examples: Optional[int] = None,
     ) -> None:

@@ -12,6 +12,7 @@ from transformers import TrainingArguments
 from util.constants import (
     DATA_CONF_NAME,
     PREMISE_DATA_CONF_NAME,
+    RERANK_DATA_CONF_NAME,
     REQS_NAME,
     GIT_NAME,
     TRAINING_CONF_NAME,
@@ -32,9 +33,12 @@ def copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
     if os.path.exists(os.path.join(data_path, DATA_CONF_NAME)):
         data_conf_loc = os.path.join(data_path, DATA_CONF_NAME)
         shutil.copy(data_conf_loc, os.path.join(output_dir, DATA_CONF_NAME))
-    else:
+    elif os.path.exists(os.path.join(data_path, PREMISE_DATA_CONF_NAME)):
         data_conf_loc = os.path.join(data_path, PREMISE_DATA_CONF_NAME)
         shutil.copy(data_conf_loc, os.path.join(output_dir, PREMISE_DATA_CONF_NAME))
+    else:
+        data_conf_loc = os.path.join(data_path, RERANK_DATA_CONF_NAME)
+        shutil.copy(data_conf_loc, os.path.join(output_dir, RERANK_DATA_CONF_NAME))
 
     shutil.copy(conf_path, os.path.join(output_dir, TRAINING_CONF_NAME))
     reqs = subprocess.check_output([sys.executable, "-m", "pip", "freeze"])
@@ -50,7 +54,7 @@ def make_output_dir(conf: dict[str, Any]) -> None:
     if os.path.exists(output_dir):
         time_since_created = time.time() - os.path.getctime(output_dir)
         three_mins = 180
-        if time_since_created > three_mins:
+        if three_mins < time_since_created:
             print(f"{output_dir} already exists.")
             exit(1)
     else:
@@ -87,12 +91,14 @@ def get_training_args(
         logging_steps=get_required_arg("logging_steps", conf),
         num_train_epochs=get_required_arg("num_train_epochs", conf),
         max_steps=get_optional_arg("max_steps", conf, -1),
-        save_strategy="epoch",
+        save_strategy="steps",
+        save_steps=get_required_arg("save_steps", conf),
         save_total_limit=get_required_arg("save_total_limit", conf),
         evaluation_strategy="steps",
         eval_steps=get_required_arg("eval_steps", conf),
         per_device_eval_batch_size=get_required_arg("per_device_eval_batch_size", conf),
         eval_accumulation_steps=get_optional_arg("eval_accumulation_steps", conf, 1),
+        load_best_model_at_end=True,
         # deepspeed=__get_required_arg("deepspeed", conf),
         local_rank=(local_rank if local_rank else -1),
         ddp_find_unused_parameters=False,
