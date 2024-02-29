@@ -38,14 +38,12 @@ class ReRankExampleConfig:
         test_sample: ExampleSample,
         output_dataset_loc: str,
         rerank_formatter: RerankFormatter,
-        skip_no_premise_steps: bool,
     ) -> None:
         self.train_sample = train_sample
         self.val_sample = val_sample
         self.test_sample = test_sample
         self.output_dataset_loc = output_dataset_loc
         self.rerank_formatter = rerank_formatter
-        self.skip_no_premise_steps = skip_no_premise_steps
 
     @classmethod
     def from_config(cls, config: Any) -> ReRankExampleConfig:
@@ -57,14 +55,12 @@ class ReRankExampleConfig:
         test_sample = load_sample(test_sample_loc)
         output_dataset_loc = config["output_dataset_loc"]
         rerank_formatter = RerankFormatter.from_conf(config["rerank_formatter"])
-        skip_no_premise_steps = config["skip_no_premise_steps"]
         return cls(
             train_sample,
             val_sample,
             test_sample,
             output_dataset_loc,
             rerank_formatter,
-            skip_no_premise_steps,
         )
 
     @classmethod
@@ -92,7 +88,6 @@ def writer(q: Queue[Optional[RerankExample]], out_file: str) -> None:
 def examples_to_queue(
     example_sample: ExampleSample,
     rerank_formatter: RerankFormatter,
-    skip_no_premise_steps: bool,
     file_info: FileInfo,
     selected_steps: SelectedSteps,
     device_idx: int,
@@ -107,7 +102,9 @@ def examples_to_queue(
                 for i in range(len(proof.steps)):
                     step = proof.steps[i]
                     examples = rerank_formatter.examples_from_step(
-                        step, proof, dp_obj, skip_no_premise_steps
+                        step,
+                        proof,
+                        dp_obj,
                     )
                     for example in examples:
                         q.put(example)
@@ -119,7 +116,6 @@ def examples_to_queue(
                     step,
                     proof,
                     dp_obj,
-                    skip_no_premise_steps,
                 )
                 for example in examples:
                     q.put(example)
@@ -128,7 +124,6 @@ def examples_to_queue(
 __ArgTuple = tuple[
     ExampleSample,
     RerankFormatter,
-    bool,
     FileInfo,
     SelectedSteps,
     int,
@@ -139,7 +134,6 @@ __ArgTuple = tuple[
 def __get_split_transformation_args(
     example_sampler: ExampleSample,
     formatter: RerankFormatter,
-    skip_no_premise_steps: bool,
     q: Queue[RerankExample | None],
 ) -> list[__ArgTuple]:
     num_devices = torch.cuda.device_count()
@@ -150,7 +144,6 @@ def __get_split_transformation_args(
             (
                 example_sampler,
                 formatter,
-                skip_no_premise_steps,
                 file,
                 selected_steps,
                 device_idx,
@@ -170,21 +163,18 @@ def get_split_transformation_args(
             return __get_split_transformation_args(
                 example_config.train_sample,
                 example_config.rerank_formatter,
-                example_config.skip_no_premise_steps,
                 q,
             )
         case Split.VAL:
             return __get_split_transformation_args(
                 example_config.val_sample,
                 example_config.rerank_formatter,
-                example_config.skip_no_premise_steps,
                 q,
             )
         case Split.TEST:
             return __get_split_transformation_args(
                 example_config.test_sample,
                 example_config.rerank_formatter,
-                example_config.skip_no_premise_steps,
                 q,
             )
 
