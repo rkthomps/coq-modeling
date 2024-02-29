@@ -38,19 +38,22 @@ N_TAC_TOK = "<N>"
 
 
 class LmExample:
-    def __init__(self, input: str, output: str) -> None:
+    def __init__(self, input: str, output: str, passages: Optional[list[str]]=None) -> None:
         self.input = input
         self.output = output
+        self.passages = passages
 
     def to_json(self) -> Any:
         return {
             "input": self.input,
             "output": self.output,
+            "passages": self.passages,
         }
 
     @classmethod
     def from_json(cls, json_data: Any) -> LmExample:
-        return cls(json_data["input"], json_data["output"])
+        passages = json_data["passages"] if "passages" in json_data else None
+        return cls(json_data["input"], json_data["output"], passages)
 
 
 def fmt_goals(goals: list[Goal]) -> str:
