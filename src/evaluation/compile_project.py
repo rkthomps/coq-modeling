@@ -7,7 +7,7 @@ import json
 from data_management.splits import REPOS_NAME
 from util import util
 
-_logger = util.get_basic_logger(__name__, logging.WARN)
+_logger = util.get_basic_logger(__name__)
 
 COQ_CRAWLER_LOC = "coq-crawler"
 if not COQ_CRAWLER_LOC in sys.path:
