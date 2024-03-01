@@ -410,9 +410,8 @@ class FidPremiseFormatter:
 
         premise_strs: list[str] = []
         for i, premise in enumerate(top_premises):
-            premise_strs.append(f"{premise.text}")
+            premise_strs.append(premise.text)
 
-        premise_strs.reverse()
         return premise_strs
 
     def example_from_step(
