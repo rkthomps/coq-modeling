@@ -7,6 +7,7 @@
 import types
 import torch
 import transformers
+from transformers.modeling_outputs import BaseModelOutput
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -34,7 +35,7 @@ class FiDT5(transformers.T5ForConditionalGeneration):
     # because the T5 forward method uses the input tensors to infer
     # dimensions used in the decoder.
     # EncoderWrapper resizes the inputs as (B * N) x L.
-    def forward(self, input_ids=None, attention_mask=None, **kwargs):
+    def forward(self, input_ids=None, attention_mask=None, labels=None, **kwargs):
         if input_ids != None:
             # inputs might have already be resized in the generate method
             if input_ids.dim() == 3:
@@ -43,16 +44,17 @@ class FiDT5(transformers.T5ForConditionalGeneration):
         if attention_mask != None:
             attention_mask = attention_mask.view(attention_mask.size(0), -1)
         return super().forward(
-            input_ids=input_ids, attention_mask=attention_mask, **kwargs
+            input_ids=input_ids, attention_mask=attention_mask, labels=labels, **kwargs
         )
 
     # We need to resize the inputs here, as the generate method expect 2D tensors
-    def generate(self, input_ids, attention_mask, max_length):
+    def generate(self, input_ids, attention_mask, max_length, **kwargs):
         self.encoder.n_passages = input_ids.size(1)
         return super().generate(
             input_ids=input_ids.view(input_ids.size(0), -1),
             attention_mask=attention_mask.view(attention_mask.size(0), -1),
             max_length=max_length,
+            **kwargs,
         )
 
     def wrap_encoder(self, use_checkpoint=False):
@@ -137,6 +139,8 @@ class EncoderWrapper(torch.nn.Module):
         super().__init__()
 
         self.encoder = encoder
+        self.embed_tokens = self.encoder.embed_tokens  # for loading
+        self.main_input_name = self.encoder.main_input_name
         apply_checkpoint_wrapper(self.encoder, use_checkpoint)
 
     def forward(
@@ -151,10 +155,15 @@ class EncoderWrapper(torch.nn.Module):
         input_ids = input_ids.view(bsz * self.n_passages, passage_length)
         attention_mask = attention_mask.view(bsz * self.n_passages, passage_length)
         outputs = self.encoder(input_ids, attention_mask, **kwargs)
-        outputs = (
-            outputs[0].view(bsz, self.n_passages * passage_length, -1),
-        ) + outputs[1:]
+        new_last_hidden_state = outputs.last_hidden_state.view(
+            bsz, self.n_passages * passage_length, -1
+        )
+        outputs.last_hidden_state = new_last_hidden_state
         return outputs
+        # outputs = (
+        #     outputs[0].view(bsz, self.n_passages * passage_length, -1),
+        # ) + outputs[1:]
+        # return outputs
 
 
 class CheckpointWrapper(torch.nn.Module):

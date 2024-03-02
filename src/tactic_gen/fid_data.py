@@ -18,7 +18,7 @@ from tactic_gen.lm_example import LmExample
 class FidDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        data_path: str,
+        data_path: Optional[str],
         tokenizer: T5Tokenizer,
         max_encode_len: int,
         max_decode_len: int,
@@ -32,21 +32,20 @@ class FidDataset(torch.utils.data.Dataset):
         self.tokenizer = tokenizer
 
         self.raw_examples: list[LmExample] = []
-        with jsonlines.open(data_path) as fin:
-            for i, obj in enumerate(fin):
-                print(f"\rLoading example: {i}", end="")
-                self.raw_examples.append(LmExample.from_json(obj))
-                if max_n_examples and len(self.raw_examples) >= max_n_examples:
-                    break
+        if data_path is not None:
+            with jsonlines.open(data_path) as fin:
+                for i, obj in enumerate(fin):
+                    if i % 10000 == 0:
+                        print(f"\rLoading example: {i}", end="")
+                    self.raw_examples.append(LmExample.from_json(obj))
+                    if max_n_examples and len(self.raw_examples) >= max_n_examples:
+                        break
 
     def __len__(self) -> int:
         return len(self.raw_examples)
 
     def __getitem__(self, idx: int) -> LmExample:
         return self.raw_examples[idx]
-
-    def __fmt_target(self, s: str) -> str:
-        return s + " </s>"
 
     def get_example_inputs(self, example: LmExample) -> list[str]:
         if (
@@ -60,11 +59,11 @@ class FidDataset(torch.utils.data.Dataset):
         ]
 
     def collate(self, examples: list[LmExample]) -> Any:
-        targets = [self.__fmt_target(e.output) for e in examples]
+        targets = [e.output for e in examples]
         target_batch = self.tokenizer.batch_encode_plus(
             targets,
             max_length=self.max_decode_len,
-            pad_to_max_length=True,
+            padding="max_length",
             return_tensors="pt",
             truncation=True,
         )
@@ -80,7 +79,7 @@ class FidDataset(torch.utils.data.Dataset):
             encoded_inputs = self.tokenizer.batch_encode_plus(
                 inputs,
                 max_length=self.max_encode_len,
-                pad_to_max_length=True,
+                padding="max_length",
                 return_tensors="pt",
                 truncation=True,
             )
@@ -93,4 +92,5 @@ class FidDataset(torch.utils.data.Dataset):
             "input_ids": input_ids,
             "attention_mask": input_masks.bool(),
             "labels": target_ids,
+            "return_dict": False,  # Or else get error for encoder_outputs being a tuple
         }

@@ -14,8 +14,12 @@ from util.coqpyt_utils import (
     restore_proof_file,
     go_through_point,
 )
+from data_management import dataset_file
 from data_management.dataset_file import (
     DatasetFile,
+    Proof,
+    FocusedStep,
+    Step,
     FileContext,
 )
 from data_management.splits import Split, FileInfo
@@ -31,9 +35,14 @@ from model_deployment.mine_goals import get_goal_record, GoalRecord
 from util.util import get_basic_logger
 from util.coqpyt_utils import get_all_goals
 
-from coqpyt.coq.lsp.client import TextDocumentIdentifier, TextDocumentItem, CoqLspClient
+from coqpyt.coq.lsp.client import (
+    TextDocumentIdentifier,
+    TextDocumentItem,
+    CoqLspClient,
+    Position,
+)
 from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
-from coqpyt.coq.structs import ProofTerm, Term
+from coqpyt.coq.structs import ProofTerm, Term, TermType
 from coqpyt.coq.lsp.structs import Goal, GoalAnswer
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
@@ -57,14 +66,14 @@ class ProofCheckResult:
         current_goals: Optional[GoalAnswer],
         parsed_current_goals: Optional[ParsedObligations],
         goal_record: Optional[GoalRecord],
-        new_dataset_file: Optional[DatasetFile],
+        new_proof: Optional[Proof],
     ) -> None:
         self.tactic_result = tactic_result
         self.attempted_steps = attempted_steps
         self.current_goals = current_goals
         self.parsed_current_goals = parsed_current_goals
         self.goal_record = goal_record
-        self.dataset_file = new_dataset_file
+        self.new_proof = new_proof
 
     @classmethod
     def get_invalid(cls) -> ProofCheckResult:
@@ -334,7 +343,62 @@ class ProofManager:
                 parsed_goals.append(parsed_goal)
         return ParsedObligations(parsed_goals)
 
-    def check_proof(self, partial_proof: str) -> ProofCheckResult:
+    def get_proof_shell(
+        self, cur_steps: list[str], cur_goals: GoalAnswer, theorem: dataset_file.Term
+    ) -> Proof:
+        focused_steps: list[FocusedStep] = []
+        for i, step in enumerate(cur_steps):
+            focused_steps.append(
+                FocusedStep(theorem, Step.from_text(step, TermType.TACTIC), i, [], [])
+            )
+
+        goals = [dataset_file.Goal.from_json(repr(g)) for g in cur_goals.goals.goals]
+        focused_steps.append(
+            FocusedStep(
+                theorem,
+                Step.from_text("\nAdmitted.", TermType.TACTIC),
+                len(cur_steps),
+                goals,
+                [],
+            )
+        )
+        proof = Proof(theorem, focused_steps)
+        return proof
+
+    def __can_close_proof(self, goals: Optional[GoalAnswer]):
+        def empty_stack(stack: list[tuple[list[Goal], list[Goal]]]):
+            # e.g. [([], [])]
+            for tuple in stack:
+                if len(tuple[0]) > 0 or len(tuple[1]) > 0:
+                    return False
+            return True
+
+        if goals is None:
+            return False
+
+        inner_goals = goals.goals
+        if inner_goals is None:
+            return False
+
+        return (
+            len(inner_goals.goals) == 0
+            and empty_stack(inner_goals.stack)
+            and len(inner_goals.shelf) == 0
+            and inner_goals.bullet is None
+        )
+
+    def get_initial_context(self) -> Optional[DatasetFile]:
+        try:
+            self.set_proof_file([])
+        except InvalidChangeException:
+            return None
+        dset_file = self.get_dataset_file()
+        return dset_file
+
+    def check_proof(
+        self, partial_proof: str, theorem: dataset_file.Term
+    ) -> ProofCheckResult:
+        # TODO: NEED TO CATCH SIMPL IN *
         # partial_steps = separate_steps(partial_proof)
         if (
             ("Admitted." in partial_proof)
@@ -347,32 +411,37 @@ class ProofManager:
             if not coq_file.is_valid:
                 return ProofCheckResult.get_invalid()
             partial_steps = [s.text for s in coq_file.steps[(self.proof_point + 1) :]]
-            try:
-                assert "".join(partial_steps) == partial_proof
-            except AssertionError:
-                ipdb.set_trace()
-            if len(partial_steps) > 0 and "Qed." in partial_steps[-1]:
-                # We detect qed ourselves.
-                partial_steps = partial_steps[:-1]
+            end_pos = coq_file.steps[-1].ast.range.end
+            farther_end = Position(end_pos.line + 1, 0)
+            uri = f"file://{self.aux_file_path}"
+            current_goals = coq_file.coq_lsp_client.proof_goals(
+                TextDocumentIdentifier(uri), farther_end
+            )
+            if current_goals is None:
+                return ProofCheckResult.get_invalid()
         try:
-            self.set_proof_file(partial_steps)
-            current_goals = self.proof_file.current_goals
-        except InvalidChangeException:
-            return ProofCheckResult.get_invalid()
-        if self.proof_file.can_close_proof:
+            assert "".join(partial_steps) == partial_proof
+        except AssertionError:
+            ipdb.set_trace()
+
+        if len(partial_steps) > 0 and "Qed." in partial_steps[-1]:
+            # We detect qed ourselves.
+            partial_steps = partial_steps[:-1]
+
+        if self.__can_close_proof(current_goals):
             parsed_obligations = None
             goal_record = None
-            dset_file = None
+            proof = None
             return ProofCheckResult(
                 TacticResult.COMPLETE,
                 partial_steps,
                 current_goals,
                 parsed_obligations,
                 goal_record,
-                dset_file,
+                proof,
             )
-        dset_file = self.get_dataset_file()
-        assert current_goals is not None
+
+        new_proof = self.get_proof_shell(partial_steps, current_goals, theorem)
         parsed_obligations = self.get_parsed_goals(partial_proof, current_goals)
         goal_record = self.get_goal_record(partial_steps)
         return ProofCheckResult(
@@ -381,7 +450,7 @@ class ProofManager:
             self.proof_file.current_goals,
             parsed_obligations,
             goal_record,
-            dset_file,
+            new_proof,
         )
 
     def get_example(
@@ -392,11 +461,11 @@ class ProofManager:
         example = self.lm_formatter.example_from_step(
             last_step_idx,
             proof,
-            dset_file,
-            self.file_info,
-            self.split,
-            self.data_loc,
-            self.__proof_stored_steps,
+            dp_obj=dset_file,
+            file_info=self.file_info,
+            split=self.split,
+            data_loc=self.data_loc,
+            ground_truth_steps=self.__proof_stored_steps,
             key_record=goal_record,
             cutoff_idx=self.proof_point,
         )

@@ -78,13 +78,8 @@ class BasicFormatter:
         self,
         step_idx: int,
         proof: Proof,
-        dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
-        ground_truth_steps = None
         step = proof.steps[step_idx]
         partial_proof_string = proof.proof_prefix_to_string(step)
         final_goal_string = fmt_goals(step.goals)
@@ -291,11 +286,9 @@ class ProofRetrievalFormatter:
         proof: Proof,
         dp_obj: DatasetFile,
         file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
         key_record: Optional[GoalRecord] = None,
         cutoff_idx: Optional[int] = None,
+        **kwargs: Any,
     ) -> LmExample:
         step = proof.steps[step_idx]
         similar_proof_result = self.get_similar_proof(
@@ -410,7 +403,7 @@ class FidPremiseFormatter:
 
         premise_strs: list[str] = []
         for i, premise in enumerate(top_premises):
-            premise_strs.append(premise.text)
+            premise_strs.append(f"{premise.text}")
 
         return premise_strs
 
@@ -419,16 +412,12 @@ class FidPremiseFormatter:
         step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
-        ground_truth_steps = None
         step = proof.steps[step_idx]
         premise_strs = self.get_premises(step, proof, dp_obj)
         basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj, file_info, split, data_loc, ground_truth_steps
+            step_idx, proof
         )
         return LmExample(basic_lm_example.input, basic_lm_example.output, premise_strs)
 
@@ -500,11 +489,7 @@ class OptimalPremiseFormatter:
         self,
         step_idx: int,
         proof: Proof,
-        dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
         step = proof.steps[step_idx]
         step_premises = step.step.context
@@ -600,11 +585,8 @@ class GroundTruthLeakFormatter:
         self,
         step_idx: int,
         proof: Proof,
-        dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
         ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
         assert ground_truth_steps is not None
         step = proof.steps[step_idx]
@@ -720,10 +702,7 @@ class FixedPremiseFormatter:
         step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
         step = proof.steps[step_idx]
         premise_str = self.get_premise_str(step, proof, dp_obj)
@@ -816,11 +795,7 @@ class StatementPremiseFormatter:
         self,
         step_idx: int,
         proof: Proof,
-        dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
         step = proof.steps[step_idx]
         thm_context = proof.theorem.term_context
@@ -937,16 +912,12 @@ class PremiseFormatter:
         step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
-        ground_truth_steps = None
         step = proof.steps[step_idx]
         premise_str = self.get_premise_str(step, proof, dp_obj)
         basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj, file_info, split, data_loc, ground_truth_steps
+            step_idx, proof,
         )
         input = f"{premise_str}{PREM_SEP}{basic_lm_example.input}"
         return LmExample(input, basic_lm_example.output)
@@ -989,16 +960,16 @@ class ProofRetrievalOracleFormatter:
         self,
         step_idx: int,
         proof: Proof,
-        dp_obj: DatasetFile,
         file_info: FileInfo,
         split: Split,
         data_loc: str,
         ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
         """TODO: MAY NEED TO PASS IN FILEINFO OR SOMETHING TO THIS"""
         assert ground_truth_steps is not None
         basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj, file_info, split, data_loc, ground_truth_steps
+            step_idx, proof
         )
         if file_info in self.__cached_times:
             creation_time = self.__cached_times[file_info]
@@ -1065,15 +1036,10 @@ class GoalFormatter:
         self,
         step_idx: int,
         proof: Proof,
-        dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
-        ground_truth_steps = None
         basic_example = self.__basic_formatter.example_from_step(
-            step_idx, proof, dp_obj, file_info, split, data_loc, ground_truth_steps
+            step_idx, proof
         )
         n_step_result = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
         output = (
@@ -1099,13 +1065,8 @@ class BaseCodeLLamaLmFormatter:
         self,
         step_idx: int,
         proof: Proof,
-        dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
-        ground_truth_steps = None
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):
@@ -1133,12 +1094,8 @@ class BaseCodeLLamaPremiseLmFormatter:
         step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any,
     ) -> LmExample:
-        ground_truth_steps = None
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):
@@ -1173,13 +1130,8 @@ class GPT4Formatter:
         self,
         step_idx: int,
         proof: Proof,
-        dp_obj: DatasetFile,
-        file_info: FileInfo,
-        split: Split,
-        data_loc: str,
-        ground_truth_steps: Optional[list[str]],
+        **kwargs: Any
     ) -> LmExample:
-        ground_truth_steps = None
         step = proof.steps[step_idx]
         goal_strings: list[str] = []
         for i, goal in enumerate(step.goals):
@@ -1280,6 +1232,7 @@ def fmt_get_conf(formatter: LmFormatter) -> Any:
             | FixedPremiseFormatter()
             | PremiseFormatter()
             | GoalFormatter()
+            | FidPremiseFormatter()
             | ProofRetrievalOracleFormatter()
             | ProofRetrievalFormatter()
             | BaseCodeLLamaPremiseLmFormatter()
