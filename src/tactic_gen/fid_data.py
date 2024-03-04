@@ -92,5 +92,5 @@ class FidDataset(torch.utils.data.Dataset):
             "input_ids": input_ids,
             "attention_mask": input_masks.bool(),
             "labels": target_ids,
-            "return_dict": False,  # Or else get error for encoder_outputs being a tuple
+            # "return_dict": False,  # Or else get error for encoder_outputs being a tuple
         }

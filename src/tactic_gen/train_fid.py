@@ -31,7 +31,11 @@ def get_datasets(
 
     train_path = split_file_path(data_path, Split.TRAIN)
     train_dataset = FidDataset(
-        train_path, tokenizer, max_encode_len, max_decode_len, max_num_passages
+        train_path,
+        tokenizer,
+        max_encode_len,
+        max_decode_len,
+        max_num_passages,
     )
     val_path = split_file_path(data_path, Split.VAL)
     val_dataset = FidDataset(

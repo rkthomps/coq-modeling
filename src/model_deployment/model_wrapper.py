@@ -170,7 +170,7 @@ class FidT5LocalWrapper:
 
     @classmethod
     def from_conf(cls, json_data: Any) -> ModelWrapper:
-        name = json_data["pretrained_name"]
+        name = json_data["pretrained-name"]
         return cls.from_checkpoint(name)
 
 

@@ -416,9 +416,7 @@ class FidPremiseFormatter:
     ) -> LmExample:
         step = proof.steps[step_idx]
         premise_strs = self.get_premises(step, proof, dp_obj)
-        basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof
-        )
+        basic_lm_example = self.__basic_formatter.example_from_step(step_idx, proof)
         return LmExample(basic_lm_example.input, basic_lm_example.output, premise_strs)
 
     @classmethod
@@ -917,7 +915,8 @@ class PremiseFormatter:
         step = proof.steps[step_idx]
         premise_str = self.get_premise_str(step, proof, dp_obj)
         basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof,
+            step_idx,
+            proof,
         )
         input = f"{premise_str}{PREM_SEP}{basic_lm_example.input}"
         return LmExample(input, basic_lm_example.output)
@@ -968,9 +967,7 @@ class ProofRetrievalOracleFormatter:
     ) -> LmExample:
         """TODO: MAY NEED TO PASS IN FILEINFO OR SOMETHING TO THIS"""
         assert ground_truth_steps is not None
-        basic_lm_example = self.__basic_formatter.example_from_step(
-            step_idx, proof
-        )
+        basic_lm_example = self.__basic_formatter.example_from_step(step_idx, proof)
         if file_info in self.__cached_times:
             creation_time = self.__cached_times[file_info]
         else:
@@ -1038,9 +1035,7 @@ class GoalFormatter:
         proof: Proof,
         **kwargs: Any,
     ) -> LmExample:
-        basic_example = self.__basic_formatter.example_from_step(
-            step_idx, proof
-        )
+        basic_example = self.__basic_formatter.example_from_step(step_idx, proof)
         n_step_result = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
         output = (
             f"{basic_example.output}{END_TOK}{fmt_goals(n_step_result.resulting_goals)}"
@@ -1127,10 +1122,7 @@ class GPT4Formatter:
     )
 
     def example_from_step(
-        self,
-        step_idx: int,
-        proof: Proof,
-        **kwargs: Any
+        self, step_idx: int, proof: Proof, **kwargs: Any
     ) -> LmExample:
         step = proof.steps[step_idx]
         goal_strings: list[str] = []

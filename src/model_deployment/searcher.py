@@ -385,4 +385,7 @@ class SearchTreeManager:
 
     @staticmethod
     def __is_bullet(tactic: str) -> bool:
-        return re.search(r"\s+[-+*]+", tactic) is not None
+        bullet_in_tactic = re.search(r"\s+[-+*]+", tactic) is not None
+        if "in *" in tactic:
+            return False
+        return bullet_in_tactic

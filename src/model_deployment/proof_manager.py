@@ -422,7 +422,10 @@ class ProofManager:
         try:
             assert "".join(partial_steps) == partial_proof
         except AssertionError:
-            ipdb.set_trace()
+            act = "".join(partial_steps)
+            exp = partial_proof
+            _logger.warning(f"Partial proof mismatch: expected '{exp}' got '{act}'")
+            # ipdb.set_trace()
 
         if len(partial_steps) > 0 and "Qed." in partial_steps[-1]:
             # We detect qed ourselves.

@@ -47,6 +47,48 @@ class NodeScore:
 
 
 @typechecked
+class TokenSumScore(NodeScore):
+    def __init__(self, sequence_score: int | float):
+        self.sequence_score = sequence_score
+
+    def compute(self) -> float:
+        return self.sequence_score
+
+    def agg(self, other: NodeScore) -> NodeScore:
+        if not isinstance(other, TokenSumScore):
+            raise ValueError(f"Other nodescore must be {self.get_alias()}")
+        new_sequence_score = self.sequence_score + other.sequence_score
+        return TokenSumScore(new_sequence_score)
+
+    def to_json(self) -> Any:
+        parent_json = super(TokenSumScore, self).to_json()
+        self_json = {
+            "sequence_score": self.sequence_score,
+        }
+        return parent_json | self_json
+
+    @classmethod
+    def from_unit_score(
+        cls, unit_score: float, num_tokens: int, max_branch: int
+    ) -> NodeScore:
+        return cls(unit_score)
+
+    @classmethod
+    def get_initial_score(cls, branching_factor: int) -> NodeScore:
+        score = 0
+        return cls(score)
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> TokenSumScore:
+        sequence_score = json_data["sequence_score"]
+        return cls(sequence_score)
+
+    @staticmethod
+    def get_alias() -> str:
+        return "token-sum-score"
+
+
+@typechecked
 class TokenLengthNormalizedScore(NodeScore):
     def __init__(self, sequence_score: int | float, proof_num_tokens: int):
         self.sequence_score = sequence_score
@@ -312,6 +354,7 @@ class BranchNormalizedScore(NodeScore):
 NODE_SCORE_ALIASES: dict[str, type[NodeScore]] = {
     BranchNormalizedScore.get_alias(): BranchNormalizedScore,
     TokenLengthNormalizedScore.get_alias(): TokenLengthNormalizedScore,
+    TokenSumScore.get_alias(): TokenSumScore,
     LastTacGreedyScore.get_alias(): LastTacGreedyScore,
     BreadthFirstScore.get_alias(): BreadthFirstScore,
     DepthFirstScore.get_alias(): DepthFirstScore,
