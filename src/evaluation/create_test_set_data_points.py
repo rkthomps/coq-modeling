@@ -6,6 +6,7 @@ import traceback
 import csv
 import json
 import ipdb
+from tqdm import tqdm
 
 from dataclasses import dataclass
 
@@ -19,36 +20,19 @@ from coqpyt.coq.structs import ProofTerm
 _logger = get_basic_logger(__name__)
 
 
-def get_proof_steps(
-    repos_dir: str, project_name: str, file: ValidFile
-) -> tuple[FileContext, list[ProofTerm]]:
-    """Copied from coqpyt-crawler. ProofFile might throw an error."""
-    with ProofFile(
-        file.get_full_path(repos_dir, project_name),
-        timeout=60,
-        workspace=file.full_workspace,
-    ) as proof_file:
-        proof_file.run()
-        context = proof_file.context
-        proofs = proof_file.proofs
-
-    # Decrease storage required
-    for term in context.terms.values():
-        term.ast.span = None
-    for proof in proofs:
-        for step in proof.steps:
-            step.ast.span = None
-            for term in step.context:
-                term.ast.span = None
-    return context, proofs
 
 
 def proc_file_path(
-    file_path: str, orig_repos_dir: str, transplant_repos_dir: str
+    file_path: str, orig_repos_dir: str, transplant_repos_dir: str, orig_opam_dir: str, transplant_opam_dir: str
 ) -> str:
-    assert file_path.startswith(orig_repos_dir)
-    orig_relpath = os.path.relpath(file_path, orig_repos_dir)
-    return os.path.join(transplant_repos_dir, orig_relpath)
+    if file_path.startswith(orig_repos_dir):
+        orig_relpath = os.path.relpath(file_path, orig_repos_dir)
+        return os.path.join(transplant_repos_dir, orig_relpath)
+    elif file_path.startswith(orig_opam_dir):
+        orig_relpath = os.path.relpath(file_path, orig_opam_dir)
+        return os.path.join(transplant_opam_dir, orig_relpath)
+    else:
+        raise ValueError(f"{file_path} neither starts with {orig_repos_dir} nor {orig_opam_dir}")
 
 
 def get_context(
@@ -82,13 +66,18 @@ def save_data_point(
     if len(proofs) == 0:
         return
 
+    file_name = os.path.join(project_name, valid_file.relpath).replace("/", "-")
     file_folder = os.path.join(
-        dp_dir, project_name, valid_file.relpath.replace("/", "-")
+        dp_dir, file_name
     )
     _logger.info(f"Saving to folder: {file_folder}")
 
     if not os.path.exists(file_folder):
-        os.mkdir(file_folder)
+        os.makedirs(file_folder)
+    else:
+        _logger.warning(f"{file_folder} already exists. Continuing.")
+        return
+
     open(os.path.join(file_folder, "steps.jsonl"), "w").close()
 
     for proof in proofs:
@@ -135,30 +124,30 @@ def save_data_point(
             with open(os.path.join(file_folder, "steps.jsonl"), "a") as f:
                 f.write(json.dumps(data_point) + "\n")
 
-        orig_project_loc = os.path.join(repos_dir, project_name)
-        with open(os.path.join(file_folder, "file_context.jsonl"), "w") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "file": os.path.abspath(
-                            proc_file_path(
-                                proofs[0].file_path, repos_dir, transplant_repos_dir
-                            )
-                        ),
-                        "workspace": proc_file_path(
-                            valid_file.full_workspace, repos_dir, transplant_repos_dir
-                        ),
-                        "repository": proc_file_path(
-                            orig_project_loc, repos_dir, transplant_repos_dir
-                        ),
-                        "context": get_context(
-                            list(context.terms.values()),
-                            repos_dir,
-                            transplant_repos_dir,
-                        ),
-                    }
-                )
+    orig_project_loc = os.path.join(repos_dir, project_name)
+    with open(os.path.join(file_folder, "file_context.jsonl"), "w") as f:
+        f.write(
+            json.dumps(
+                {
+                    "file": os.path.abspath(
+                        proc_file_path(
+                            proofs[0].file_path, repos_dir, transplant_repos_dir
+                        )
+                    ),
+                    "workspace": proc_file_path(
+                        valid_file.full_workspace, repos_dir, transplant_repos_dir
+                    ),
+                    "repository": proc_file_path(
+                        orig_project_loc, repos_dir, transplant_repos_dir
+                    ),
+                    "context": get_context(
+                        list(context.terms.values()),
+                        repos_dir,
+                        transplant_repos_dir,
+                    ),
+                }
             )
+        )
 
 
 @dataclass
@@ -178,13 +167,18 @@ def could_have_proof(repos_dir: str, project_name: str, valid_file: ValidFile) -
     file_path = os.path.join(repos_dir, project_name, valid_file.relpath)
     with open(file_path, "r") as fin:
         contents = fin.read()
-
+    # All the possible ways to name a proof
     if (
         "Theorem" in contents
         or "Lemma" in contents
-        # TODO
+        or "Fact" in contents
+        or "Remark" in contents
+        or "Corollary" in contents
+        or "Proposition" in contents
+        or "Property" in contents
     ):
-        pass
+        return True
+    return False
 
 
 def get_valid_files(repos_dir: str, project_name: str) -> list[ValidFile]:
@@ -200,18 +194,38 @@ def get_valid_files(repos_dir: str, project_name: str) -> list[ValidFile]:
 
 TRANSPLANT_DIR = os.path.join("/coq-dataset", "repos")
 
+def process_file(repos_dir: str, project_name: str, dp_dir: str, file: ValidFile) -> None:
+    _logger.info(f"Processing {file.relpath}")
+    if not could_have_proof(repos_dir, project_name, file):
+        _logger.info(f"{file.relpath} could not possibly have proofs. Continuing.")
+        return 
+
+    with ProofFile(
+        file.get_full_path(repos_dir, project_name),
+        timeout=60,
+        workspace=file.full_workspace,
+    ) as proof_file:
+        for _ in tqdm(range(len(proof_file.steps))):
+            proof_file.exec()
+        context = proof_file.context
+        proofs = proof_file.proofs
+
+        # TODO: ADD ERROR HANDLING
+        _logger.info(f"Saving {len(proofs)} proofs")
+        save_data_point(
+            context, proofs, repos_dir, TRANSPLANT_DIR, project_name, file, dp_dir
+        )
+
 
 def save_project_data_points(repos_dir: str, project_name: str, dp_dir: str) -> None:
     project_valid_files = get_valid_files(repos_dir, project_name)
     _logger.info(f"Found {len(project_valid_files)} valid files.")
     for valid_file in project_valid_files:
-        _logger.info(f"Processing {valid_file.relpath}")
-        context, proofs = get_proof_steps(repos_dir, project_name, valid_file)
-        # TODO: ADD ERROR HANDLING
-        _logger.info(f"Saving {len(proofs)} proofs")
-        save_data_point(
-            context, proofs, repos_dir, TRANSPLANT_DIR, project_name, valid_file, dp_dir
-        )
+        try:
+            process_file(repos_dir, project_name, dp_dir, valid_file)
+        except:
+            ipdb.set_trace()
+    
 
 
 if __name__ == "__main__":
