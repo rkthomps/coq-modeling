@@ -236,6 +236,33 @@ projects = {
     "atbr": TestProject("coq-community", "atbr", [["make"]]),
     "reduction-effects": TestProject("coq-community", "reduction-effects", [["make"]]),
     "coqeal": TestProject("coq-community", "coqeal", [["make"]]),
+
+    # Coqgym
+    "weak-up-to": TestProject("coq-contribs", "weak-up-to", [["make"]]),
+    "buchberger": TestProject("coq-community", "buchberger", [["make"]]),
+    "jordan-curve-theorem": TestProject("coq-contribs", "jordan-curve-theorem", [["make"]]),
+    "dblib": TestProject("coq-community", "dblib", [["make"]]),
+    "disel": TestProject("DistributedComponents", "disel", [["make"]]),
+    "zchinese": TestProject("coq-contribs", "zchinese", [["make"]]),
+    "zfc": TestProject("coq-contribs", "zfc", [["make"]]),
+    "dep-map": TestProject("coq-contribs", "dep-map", [["make"]]),
+    "chinese": TestProject("coq-contribs", "chinese", [["make"]]),
+    "unifysl": TestProject("QinxiangCao", "UnifySL", [["make"]]),
+    "hoare-tut": TestProject("coq-community", "hoare-tut", [["make"]]),
+    "poltac": TestProject("thery", "PolTac", [["make", "all"]]),
+    "angles": TestProject("coq-contribs", "angles", [["make"]]),
+    "coq-procrastination": TestProject("Armael", "coq-procrastination", [["make"]]),
+    "tree-automata": TestProject("coq-contribs", "tree-automata", [["make"]]),
+    "coquelicot": TestProject("thery", "coquelicot", [["./configure"], ["make", "-f", "Remakefile"]]),
+    "fermat4": TestProject("coq-contribs", "fermat4", [["make"]]),
+    "coqoban": TestProject("coq-community", "coqoban", [["make"]]),
+    "goedel": TestProject("coq-community", "goedel", [["make"]]),
+    "verdi-raft": TestProject("uwplse", "verdi-raft", [["make"]]),
+    "verdi": TestProject("uwplse", "verdi", [["make"]]),
+    "zorns-lemma": TestProject("coq-community", "zorns-lemma", [["make"]]),
+    "coqrel": TestProject("CertiKOS", "coqrel", [["./configure"], ["make"]]),
+    "fundamental-arithmetics": TestProject("coq-contribs", "fundamental-arithmetics", [["make"]]),
+
 }
 
 

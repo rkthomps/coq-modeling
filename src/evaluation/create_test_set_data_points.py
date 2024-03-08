@@ -1,11 +1,13 @@
 from __future__ import annotations
 from typing import Any
 import sys, os
+import shutil
 import argparse
 import traceback
 import csv
 import json
 import ipdb
+import multiprocessing as mp
 from tqdm import tqdm
 
 from dataclasses import dataclass
@@ -15,37 +17,20 @@ from util.util import get_basic_logger
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.context import FileContext
-from coqpyt.coq.structs import ProofTerm
+from coqpyt.coq.structs import ProofTerm, Term
 
 _logger = get_basic_logger(__name__)
 
 
-
-
-def proc_file_path(
-    file_path: str, orig_repos_dir: str, transplant_repos_dir: str, orig_opam_dir: str, transplant_opam_dir: str
-) -> str:
-    if file_path.startswith(orig_repos_dir):
-        orig_relpath = os.path.relpath(file_path, orig_repos_dir)
-        return os.path.join(transplant_repos_dir, orig_relpath)
-    elif file_path.startswith(orig_opam_dir):
-        orig_relpath = os.path.relpath(file_path, orig_opam_dir)
-        return os.path.join(transplant_opam_dir, orig_relpath)
-    else:
-        raise ValueError(f"{file_path} neither starts with {orig_repos_dir} nor {orig_opam_dir}")
-
-
 def get_context(
-    context: list[ProofTerm], orig_repos_dir: str, transplant_repos_dir: str
+    context: list[Term], pm: PathManager 
 ) -> Any:
     res: list[Any] = []
     for term in context:
         res.append(
             {
                 "text": term.text,
-                "file_path": proc_file_path(
-                    term.file_path, orig_repos_dir, transplant_repos_dir
-                ),
+                "file_path": pm.translate_path(term.file_path),
                 "module": term.module,
                 "type": str(term.type),
                 "line": term.ast.range.start.line,
@@ -53,12 +38,15 @@ def get_context(
         )
     return res
 
+def get_data_point_loc(project_name: str, valid_file: ValidFile, dp_dir) -> str:
+    file_name = os.path.join(project_name, valid_file.relpath).replace("/", "-")
+    return os.path.join(dp_dir, file_name)
 
 def save_data_point(
     context: FileContext,
     proofs: list[ProofTerm],
+    pm: PathManager,
     repos_dir: str,
-    transplant_repos_dir: str,  # So that the prefix aligns with previously created ones
     project_name: str,
     valid_file: ValidFile,
     dp_dir: str,
@@ -66,17 +54,10 @@ def save_data_point(
     if len(proofs) == 0:
         return
 
-    file_name = os.path.join(project_name, valid_file.relpath).replace("/", "-")
-    file_folder = os.path.join(
-        dp_dir, file_name
-    )
+    file_folder = get_data_point_loc(project_name, valid_file, dp_dir)
     _logger.info(f"Saving to folder: {file_folder}")
+    os.makedirs(file_folder, exist_ok=True)
 
-    if not os.path.exists(file_folder):
-        os.makedirs(file_folder)
-    else:
-        _logger.warning(f"{file_folder} already exists. Continuing.")
-        return
 
     open(os.path.join(file_folder, "steps.jsonl"), "w").close()
 
@@ -91,20 +72,18 @@ def save_data_point(
             data_point = {
                 "term": {
                     "text": proof.text,
-                    "file_path": proc_file_path(
-                        proof.file_path, repos_dir, transplant_repos_dir
-                    ),
+                    "file_path": pm.translate_path(proof.file_path),
                     "module": proof.module,
                     "type": str(proof.type),
                     "line": proof.ast.range.start.line,
                     "context": get_context(
-                        proof.context, repos_dir, transplant_repos_dir
+                        proof.context, pm 
                     ),
                 },
                 "step": {
                     "text": step.text,
                     "context": get_context(
-                        step.context, repos_dir, transplant_repos_dir
+                        step.context, pm 
                     ),
                 },
                 "n_step": i + 1,
@@ -116,7 +95,7 @@ def save_data_point(
                     {
                         "text": next_step.text,
                         "context": get_context(
-                            next_step.context, repos_dir, transplant_repos_dir
+                            next_step.context, pm 
                         ),
                     }
                 )
@@ -129,21 +108,12 @@ def save_data_point(
         f.write(
             json.dumps(
                 {
-                    "file": os.path.abspath(
-                        proc_file_path(
-                            proofs[0].file_path, repos_dir, transplant_repos_dir
-                        )
-                    ),
-                    "workspace": proc_file_path(
-                        valid_file.full_workspace, repos_dir, transplant_repos_dir
-                    ),
-                    "repository": proc_file_path(
-                        orig_project_loc, repos_dir, transplant_repos_dir
-                    ),
+                    "file": pm.translate_path(proofs[0].file_path),
+                    "workspace": pm.translate_path(valid_file.full_workspace),
+                    "repository": pm.translate_path(orig_project_loc),
                     "context": get_context(
                         list(context.terms.values()),
-                        repos_dir,
-                        transplant_repos_dir,
+                        pm,
                     ),
                 }
             )
@@ -158,6 +128,21 @@ class ValidFile:
 
     def get_full_path(self, repos_dir: str, project_name: str) -> str:
         return os.path.join(repos_dir, project_name, self.relpath)
+
+@dataclass
+class PathManager:
+    path_prefix_translations: dict[str, str]
+
+    def list_prefixes(self) -> list[str]:
+        return list(self.path_prefix_translations.keys())
+
+    def translate_path(self, file: str) -> str:
+        for orig_prefix, target_prefix in self.path_prefix_translations.items():
+            if file.startswith(orig_prefix):
+                orig_relpath = os.path.relpath(file, orig_prefix)
+                return os.path.join(target_prefix, orig_relpath)
+        raise ValueError(f"{file} does not match with any available prefixes {self.list_prefixes()}")
+
 
 
 VALID_FILE_NAME = "valid_files.csv"
@@ -192,20 +177,23 @@ def get_valid_files(repos_dir: str, project_name: str) -> list[ValidFile]:
     return valid_files
 
 
-TRANSPLANT_DIR = os.path.join("/coq-dataset", "repos")
 
-def process_file(repos_dir: str, project_name: str, dp_dir: str, file: ValidFile) -> None:
+def process_file(repos_dir: str, project_name: str, dp_dir: str, file: ValidFile, pm: PathManager) -> None:
     _logger.info(f"Processing {file.relpath}")
     if not could_have_proof(repos_dir, project_name, file):
         _logger.info(f"{file.relpath} could not possibly have proofs. Continuing.")
         return 
+    file_folder = get_data_point_loc(project_name, file, dp_dir)
+    if os.path.exists(file_folder):
+        _logger.warning(f"{file_folder} exists. Continuing.")
+        return
 
     with ProofFile(
         file.get_full_path(repos_dir, project_name),
-        timeout=60,
+        timeout=120,
         workspace=file.full_workspace,
     ) as proof_file:
-        for _ in tqdm(range(len(proof_file.steps))):
+        for _ in range(len(proof_file.steps)):
             proof_file.exec()
         context = proof_file.context
         proofs = proof_file.proofs
@@ -213,27 +201,63 @@ def process_file(repos_dir: str, project_name: str, dp_dir: str, file: ValidFile
         # TODO: ADD ERROR HANDLING
         _logger.info(f"Saving {len(proofs)} proofs")
         save_data_point(
-            context, proofs, repos_dir, TRANSPLANT_DIR, project_name, file, dp_dir
+            context, proofs, pm, repos_dir, project_name, file, dp_dir
         )
 
+def tolerant_process_file(repos_dir: str, project_name: str, dp_dir: str, file: ValidFile, pm: PathManager) -> None:
+    try:
+        process_file(repos_dir, project_name, dp_dir, file, pm)
+    except:
+        traceback.print_exc()
+        file_folder = get_data_point_loc(project_name, file, dp_dir)
+        if os.path.exists(file_folder):
+            shutil.rmtree(file_folder)
+        _logger.error(f"Trouble processing {file.relpath}")
 
-def save_project_data_points(repos_dir: str, project_name: str, dp_dir: str) -> None:
+
+
+def save_project_data_points(repos_dir: str, project_name: str, dp_dir: str, pm: PathManager) -> None:
     project_valid_files = get_valid_files(repos_dir, project_name)
     _logger.info(f"Found {len(project_valid_files)} valid files.")
     for valid_file in project_valid_files:
-        try:
-            process_file(repos_dir, project_name, dp_dir, valid_file)
-        except:
-            ipdb.set_trace()
+        tolerant_process_file(repos_dir, project_name, dp_dir, valid_file, pm)
+
+
+_FILE_PROC_ARG = tuple[str, str, str, ValidFile, PathManager]
+def get_project_multiprocessing_args(repos_dir: str, project_name: str, dp_dir: str, pm: PathManager) -> list[_FILE_PROC_ARG]:
+    proc_args: list[_FILE_PROC_ARG] = []
+    project_valid_files = get_valid_files(repos_dir, project_name)
+    for valid_file in project_valid_files:
+        proc_args.append((repos_dir, project_name, dp_dir, valid_file, pm))
+    return proc_args
     
+
+TRANSPLANT_REPOS_DIR = os.path.join("/coq-dataset", "repos")
+TRANSPLANT_OPAM_DIR = os.path.join("/root", ".opam")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Get Data Points for a given project")
     parser.add_argument("repos_dir", help="Location where repositories are downloaded.")
+    parser.add_argument("opam_dir", help="Location of local opam switch.")
     parser.add_argument("project_name", help="Project for which you want data points.")
     parser.add_argument("dp_dir", help="Location to save the data point files.")
+    parser.add_argument("--n_procs", "-n", type=int, help="Number of processes to use for the project.")
 
     args = parser.parse_args(sys.argv[1:])
     abs_repos = os.path.abspath(args.repos_dir)
-    save_project_data_points(abs_repos, args.project_name, args.dp_dir)
+    abs_opam = os.path.abspath(args.opam_dir)
+    pm = PathManager({
+        abs_repos: TRANSPLANT_REPOS_DIR,
+        abs_opam: TRANSPLANT_OPAM_DIR,
+    })
+
+    if args.n_procs is None:
+        _logger.info("Processing with a single process.")
+        save_project_data_points(abs_repos, args.project_name, args.dp_dir, pm)
+    else:
+        _logger.info(f"Processing with a {args.n_procs} processes.")
+        file_args = get_project_multiprocessing_args(abs_repos, args.project_name, args.dp_dir, pm)
+        with mp.Pool(args.n_procs) as pool:
+            pool.starmap(tolerant_process_file, file_args)
+
