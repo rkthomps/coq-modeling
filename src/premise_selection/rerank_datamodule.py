@@ -88,7 +88,8 @@ class RerankDataset(Dataset):
             for i, obj in enumerate(fin):
                 if max_num_examples and i >= max_num_examples:
                     break
-                print(f"\rLoading example: {i}", end="")
+                if i % 10000 == 0:
+                    print(f"\rLoading example: {i}", end="")
                 self.examples.append(RerankExample.from_json(obj))
 
     def __len__(self) -> int:
