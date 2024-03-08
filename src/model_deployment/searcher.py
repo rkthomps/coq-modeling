@@ -124,13 +124,19 @@ class SearchTreeManager:
         initial_tactic: str = ""
         combined_valid_steps: list[str] = []
         initial_proof = SearchNode.steps_to_str(combined_valid_steps)
-        initial_check_result = proof_manager.check_proof(initial_proof)
+        initial_dset_file = proof_manager.get_initial_context()
+        if initial_dset_file is None:
+            raise ValueError("Could not get initial datasetfile")
+        self.initial_proof_obj = initial_dset_file.proofs[-1]
+        initial_check_result = proof_manager.check_proof(
+            initial_proof, self.initial_proof_obj.theorem
+        )
         try:
             assert initial_check_result.tactic_result == TacticResult.VALID
         except AssertionError:
             ipdb.set_trace()
         assert initial_check_result.current_goals is not None
-        assert initial_check_result.dataset_file is not None
+        assert initial_check_result.new_proof is not None
         initial_score = self.score_type.get_initial_score(max_branch)
         creation_time = -1
         self.root = SearchNode(
@@ -141,12 +147,10 @@ class SearchTreeManager:
             combined_valid_steps,
             initial_score,
             creation_time,
-            initial_check_result.dataset_file.proofs[-1],
+            initial_check_result.new_proof,
             initial_check_result.goal_record,
         )
-        self.search_tree = SearchTree(
-            initial_check_result.dataset_file.file_context, self.root
-        )
+        self.search_tree = SearchTree(initial_dset_file.file_context, self.root)
         self.frontier: list[SearchNode] = []
         self.seen_goals: list[ParsedObligations] = []
         self.seen_goals_nodes: list[SearchNode] = []
@@ -183,7 +187,6 @@ class SearchTreeManager:
         final_tactic = True
         makes_progress = True
         creation_time = time.time_ns() - search_start_time
-        proof = self.__get_possible_last_proof(proof_check_result.dataset_file)
         complete_node = SearchNode(
             valid,
             final_tactic,
@@ -192,7 +195,7 @@ class SearchTreeManager:
             proof_check_result.attempted_steps,
             parent_node.score.agg(score),
             creation_time,
-            proof,
+            proof_check_result.new_proof,
             proof_check_result.goal_record,
         )
         return complete_node
@@ -211,7 +214,6 @@ class SearchTreeManager:
         makes_progress = False
         combined_steps = proof_check_result.attempted_steps
         creation_time = time.time_ns() - search_start_time
-        proof = self.__get_possible_last_proof(proof_check_result.dataset_file)
         invalid_node = SearchNode(
             valid,
             final_tactic,
@@ -220,7 +222,7 @@ class SearchTreeManager:
             combined_steps,
             parent_node.score.agg(score),
             creation_time,
-            proof,
+            proof_check_result.new_proof,
             proof_check_result.goal_record,
         )
         return invalid_node
@@ -250,8 +252,6 @@ class SearchTreeManager:
                 parent_node.total_proof_str(), attempted_tactic
             )
         )
-        proof = self.__get_possible_last_proof(proof_check_result.dataset_file)
-        assert proof is not None
         valid = True
         final_tactic = False
         new_leaf = SearchNode(
@@ -262,7 +262,7 @@ class SearchTreeManager:
             proof_check_result.attempted_steps,
             parent_node.score.agg(score),
             creation_time,
-            proof,
+            proof_check_result.new_proof,
             proof_check_result.goal_record,
             redundant_to_str=redundant_to_str,
         )
@@ -316,7 +316,9 @@ class SearchTreeManager:
         ):
             proof_script = leaf_subtree.total_proof_str() + tactic
             start_time = time.time_ns()
-            proof_check_result = self.proof_manager.check_proof(proof_script)
+            proof_check_result = self.proof_manager.check_proof(
+                proof_script, leaf_subtree.proof.theorem
+            )
             end_time = time.time_ns()
             _logger.info(f"Check time: {(end_time - start_time) / 1e9}")
             node_score = self.score_type.from_unit_score(
@@ -375,16 +377,6 @@ class SearchTreeManager:
         return None
 
     @staticmethod
-    def __get_possible_last_proof(
-        dataset_file: Optional[DatasetFile],
-    ) -> Optional[Proof]:
-        match dataset_file:
-            case None:
-                return None
-            case _:
-                return dataset_file.proofs[-1]
-
-    @staticmethod
     def __is_first_proof_tactic(proof_script: str, tactic: str) -> bool:
         proof_pattern = r"Proof."
         proof_in_script = re.search(proof_pattern, proof_script) is not None
@@ -393,4 +385,7 @@ class SearchTreeManager:
 
     @staticmethod
     def __is_bullet(tactic: str) -> bool:
-        return re.search(r"\s+[-+*]+", tactic) is not None
+        bullet_in_tactic = re.search(r"\s+[-+*]+", tactic) is not None
+        if "in *" in tactic:
+            return False
+        return bullet_in_tactic

@@ -106,11 +106,13 @@ def examples_to_queue(
                     example = lm_formatter.example_from_step(
                         i,
                         proof,
-                        dp_obj,
-                        file_info,
-                        example_sample.split,
-                        example_sample.data_loc,
-                        ground_truth_steps,
+                        dp_obj=dp_obj,
+                        file_info=file_info,
+                        split=example_sample.split,
+                        data_loc=example_sample.data_loc,
+                        ground_truth_steps=ground_truth_steps,
+                        key_record=None,
+                        cutoff_idx=None,
                     )
                     q.put(example)
         case CertainSteps(steps=step_idxs):
@@ -120,11 +122,13 @@ def examples_to_queue(
                 example = lm_formatter.example_from_step(
                     step_idx.step_idx,
                     proof,
-                    dp_obj,
-                    file_info,
-                    example_sample.split,
-                    example_sample.data_loc,
-                    ground_truth_steps,
+                    dp_obj=dp_obj,
+                    file_info=file_info,
+                    split=example_sample.split,
+                    data_loc=example_sample.data_loc,
+                    ground_truth_steps=ground_truth_steps,
+                    key_record=None,
+                    cutoff_idx=None,
                 )
                 q.put(example)
 

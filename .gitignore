@@ -39,7 +39,7 @@ src/tactic_gen/confs/**
 !src/tactic_gen/confs/codellama_basic.yaml
 
 # - Eval
-evals-before-2024-01-17*
+evals-before-*
 evals-small
 evals-bad-imports
 build-coq

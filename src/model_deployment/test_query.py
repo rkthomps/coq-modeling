@@ -12,9 +12,15 @@ from model_deployment.searcher import (
     FailedSearch,
 )
 from model_deployment.proof_manager import ProofManager, initialize_hidden_files
-from model_deployment.model_wrapper import CodeLLamaServer, ModelWrapper, GPT4Wrapper
+from model_deployment.model_wrapper import (
+    CodeLLamaServer,
+    FidT5LocalWrapper,
+    ModelWrapper,
+    GPT4Wrapper,
+)
 from model_deployment.node_score import (
     TokenLengthNormalizedScore,
+    TokenSumScore,
     BranchNormalizedScore,
     LastTacGreedyScore,
     DepthFirstScore,
@@ -36,8 +42,8 @@ _logger = get_basic_logger(__name__)
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
+# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
@@ -64,10 +70,17 @@ with CoqFile(TEST_FILE, workspace=dummy_file_info.workspace) as coq_file:
 assert last is not None
 
 
-WRAPPER = CodeLLamaServer.from_conf({"server_url": "http://127.0.0.1:5000"})
-NODE_SCORE_TYPE = TokenLengthNormalizedScore
+# WRAPPER = CodeLLamaServer.from_conf({"server_url": "http://127.0.0.1:5000"})
+WRAPPER = FidT5LocalWrapper.from_conf(
+    {
+        # "alias": "fid-local",
+        # "pretrained_name": "/home/ubuntu/coq-modeling/models/t5-fid-small-basic-rnd-split-rnd-samp-pct-8/checkpoint-8000"
+        "pretrained_name": "/home/ubuntu/coq-modeling/models/t5-fid-small-tfidf-20-rnd-split-rnd-samp-pct-8/checkpoint-4000"
+    }
+)
+NODE_SCORE_TYPE = TokenSumScore
 TIMEOUT = 600
-BRANCH = 4
+BRANCH = 8
 EXPANSIONS = 500
 
 _logger.debug("Creating Proof File")

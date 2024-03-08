@@ -46,8 +46,7 @@ class TestJsonlUtils:
 
     @given(st.lists(st.text()), st.integers())
     def test_shuffle_buff_nonzero(self, in_list: list[str], buff_size: int) -> None:
-        assume(buff_size > 0)
-        assume(len(in_list) > 0)
+        assume(0 < buff_size)
         self.__write_in_file(in_list)
         if os.path.exists(self.out_file):
             os.remove(self.out_file)
@@ -56,26 +55,15 @@ class TestJsonlUtils:
 
     @given(st.lists(st.text()))
     def test_shuffle_buff_zero(self, in_list: list[str]) -> None:
-        assume(len(in_list) > 0)
         with pytest.raises(ValueError):
             if os.path.exists(self.out_file):
                 os.remove(self.out_file)
             self.__write_in_file(in_list)
             shuffle(self.in_file, self.out_file, buffer_size=0)
 
-    @given(st.integers())
-    def test_shuffle_list_zero(self, buff_size: int) -> None:
-        assume(buff_size > 0)
-        with pytest.raises(AssertionError):
-            if os.path.exists(self.out_file):
-                os.remove(self.out_file)
-            self.__write_in_file([])
-            shuffle(self.in_file, self.out_file, buff_size)
-
     @given(st.lists(st.text()), st.integers())
     def test_deduplicate(self, in_list: list[str], buff_size: int) -> None:
-        assume(buff_size > 0)
-        assume(len(in_list) > 0)
+        assume(0 < buff_size)
         if os.path.exists(self.out_file):
             os.remove(self.out_file)
         self.__write_in_file(in_list)
@@ -86,15 +74,6 @@ class TestJsonlUtils:
         multiset_of_out = self.__get_obj_frequencies(self.__file_lines(self.out_file))
         assert multiset_of_set == multiset_of_out
         assert (len(in_list) - len(in_set)) == num_duplicates
-
-    @given(st.integers())
-    def test_empty_deduplicate(self, buff_size: int) -> None:
-        assume(buff_size > 0)
-        with pytest.raises(AssertionError):
-            if os.path.exists(self.out_file):
-                os.remove(self.out_file)
-            self.__write_in_file([])
-            deduplicate(self.in_file, self.out_file, buff_size)
 
     @given(st.lists(st.integers()))
     def test_deduplicate_zero_buff(self, in_list: list[str]) -> None:

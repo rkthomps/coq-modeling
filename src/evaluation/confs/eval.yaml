@@ -1,5 +1,5 @@
 
-results_loc: /home/ubuntu/coq-modeling/evals/codellama-7b-proof-ret-rnd-split-rnd-samp-8-pct
+results_loc: /home/ubuntu/coq-modeling/evals/t5-fid-small-basic-rnd-split
 eval_set: 
   alias: data-split
   data_split_loc: /home/ubuntu/coq-modeling/splits/random-split.json 
@@ -11,7 +11,7 @@ timeout: 600
 branching_factor: 8
 max_leaf_expansions: 1000000
 model_wrapper:
-  alias: "local"
-  pretrained-name: /home/ubuntu/coq-modeling/models/codellama-7b-proof-ret-rnd-split-rnd-samp-pct-8/checkpoint-4171
+  alias: "fid-local"
+  pretrained-name: /home/ubuntu/coq-modeling/models/t5-fid-small-basic-rnd-split/checkpoint-79500
 node_score_type: token-normalized-score 
 
