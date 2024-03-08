@@ -35,6 +35,8 @@ dependencies = [
     "deepspeed",
     "GitPython",
     "typeguard",
+    "ipdb",
+    "parsy",
 ]
 
 [tool.setuptools.packages.find]

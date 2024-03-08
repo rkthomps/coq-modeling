@@ -2,6 +2,7 @@
 Given a folder with a bunch of repositories, 
 create a project-wise split according to time. 
 """
+
 from __future__ import annotations
 import sys, os
 import re
@@ -14,6 +15,9 @@ import time
 import pytz
 import requests
 from enum import Enum
+from dataclasses import dataclass
+import functools 
+import yaml
 
 import argparse
 
@@ -27,6 +31,10 @@ from data_management.dataset_file import (
     FILE_CONTEXT_NAME,
     Proof,
 )
+
+from coqpyt.coq.structs import TermType
+from util.util import get_basic_logger 
+_logger = get_basic_logger(__name__)
 
 
 REPOS_NAME = "repos"
@@ -74,6 +82,16 @@ class FileInfo:
     def get_proofs(self, data_loc: str) -> list[Proof]:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
         return DatasetFile.get_proofs(dp_loc)
+    
+    @functools.cache
+    def get_theorems(self, data_loc: str) -> set[str]:
+        thms: set[str] = set()
+        for proof in self.get_proofs(data_loc):
+            if proof.theorem.term.sentence_type == TermType.DEFINITION:
+                # We don't care about examples
+                continue
+            thms.add(proof.theorem.term.text)
+        return thms
 
     def __repr__(self) -> str:
         return str(self.__dict__)
@@ -115,14 +133,20 @@ class Project:
 
     def to_json(self) -> Any:
         return {"repo_name": self.repo_name, "files": [f.to_json() for f in self.files]}
+    
+    def filter(self, forbidden_thms: set[str], data_loc: str) -> list[FileInfo]:
+        good_files: list[FileInfo] = []
+        for file in self.files:
+            file_thms = file.get_theorems(data_loc)
+            if len(file_thms.intersection(forbidden_thms)) == 0:
+                good_files.append(file)
+        return good_files
+    
 
-    def get_thms(self, workspace: str) -> set[str]:
+    def get_thms(self, data_loc: str) -> set[str]:
         thms: set[str] = set()
         for file in self.files:
-            dp_loc = os.path.join(workspace, DATA_POINTS_NAME, file.dp_name)
-            proofs = DatasetFile.get_proofs(dp_loc)
-            for proof in proofs:
-                thms.add(proof.theorem.term.text)
+            thms |= file.get_theorems(data_loc)
         return thms
 
     def get_creation_time(self, workspace: str) -> datetime.datetime:
@@ -226,6 +250,60 @@ def file_from_split(file: str, data_split: DataSplit) -> tuple[FileInfo, Split]:
 
 
 @typechecked
+class EvalProjects:
+    def __init__(self, validation_projects: list[str], testing_projects: list[str]) -> None:
+        self.validation_projects = validation_projects
+        self.testing_projects = testing_projects
+        self._testing_name_set = set(self.get_testing_names())
+        self._validation_name_set = set(self.get_validation_names())
+        self.verify_format()
+
+    def _verify_format(self, projects: list[str]) -> None:
+        print("Verifying project formats")
+        for p in tqdm(projects):
+            if len(p.split("/")) != 2:
+                raise ValueError(f"{p} does not match expected format user/proj")
+
+    def verify_format(self) -> None:
+        self._verify_format(self.testing_projects)
+        self._verify_format(self.testing_projects)
+    
+    def get_projects(self, data_loc: str, project_names: list[str]) -> list[Project]:
+        projects: list[Project] = []
+        for project_name in project_names:
+            project_files = DataSplit.find_files(data_loc, project_name) 
+            if len(project_files) == 0:
+                _logger.warning(f"Evaluation project {project_name} has no files.")
+            projects.append(Project(project_name, project_files))
+        return projects
+    
+    def name_available_for_training(self, candidate_name: str) -> bool:
+        if candidate_name in self._testing_name_set:
+            return False
+        if candidate_name in self._validation_name_set:
+            return False
+        return True
+    
+    def get_testing_projects(self, data_loc: str) -> list[Project]:
+        return self.get_projects(data_loc, self.get_testing_names())
+    
+    def get_validation_projects(self, data_loc: str) -> list[Project]:
+        return self.get_projects(data_loc, self.get_validation_names())
+
+    def get_testing_names(self) -> list[str]:
+        return [tp.replace(os.path.sep, "-") for tp in self.testing_projects]
+
+    def get_validation_names(self) -> list[str]:
+        return [tp.replace(os.path.sep, "-") for tp in self.validation_projects]
+    
+    @classmethod
+    def from_conf(cls, conf: Any) -> EvalProjects:
+        val_projects = conf["val_projects"]
+        test_projects = conf["test_projects"]
+        return cls(val_projects, test_projects)
+
+
+@typechecked
 class DataSplit:
     def __init__(
         self,
@@ -283,7 +361,7 @@ class DataSplit:
 
     def save(self, save_loc: str) -> None:
         save_dir = os.path.dirname(save_loc)
-        if not os.path.exists(save_dir):
+        if not os.path.exists(save_dir) and 0 < len(save_dir):
             os.makedirs(save_dir)
         with open(save_loc, "w") as fout:
             fout.write(json.dumps(self.to_json(), indent=2))
@@ -324,8 +402,13 @@ class DataSplit:
                     f"Fast pattern could not match string: {file_str[:80]}"
                 )
 
+    @staticmethod
+    def __strip_data_prefix(path: str, prefix: str) -> str:
+        assert path.startswith(prefix)
+        return os.path.relpath(path, prefix)
+
     @classmethod
-    def __find_files(cls, data_loc: str, repo_name: str) -> list[FileInfo]:
+    def find_files(cls, data_loc: str, repo_name: str) -> list[FileInfo]:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME)
         repo_qualified_name = os.path.join(REPOS_NAME, repo_name)
         files: list[FileInfo] = []
@@ -333,14 +416,21 @@ class DataSplit:
             if dset_file.startswith(repo_name):
                 dset_file_loc = os.path.join(dp_loc, dset_file)
                 file_context = cls.__get_psuedo_context(dset_file_loc)
-                if file_context.repository == repo_qualified_name:
-                    file = FileInfo(
-                        dset_file,
-                        file_context.file,
-                        file_context.workspace,
-                        file_context.repository,
-                    )
-                    files.append(file)
+                assert file_context.repository.endswith(repo_qualified_name)
+                prefix_len = len(file_context.repository) - len(repo_qualified_name)
+                data_prefix = file_context.repository[:prefix_len]
+
+                repo = cls.__strip_data_prefix(file_context.repository, data_prefix)
+                file = cls.__strip_data_prefix(file_context.file, data_prefix)
+                workspace = cls.__strip_data_prefix(file_context.workspace, data_prefix)
+
+                file = FileInfo(
+                    dset_file,
+                    file, 
+                    workspace,
+                    repo
+                )
+                files.append(file)
         return files
 
     @classmethod
@@ -350,7 +440,7 @@ class DataSplit:
 
         print("Creating Project List...")
         for repo in tqdm(os.listdir(repos_loc)):
-            repo_files = cls.__find_files(data_loc, repo)
+            repo_files = cls.find_files(data_loc, repo)
             if len(repo_files) == 0:
                 continue
             projects.append(Project(repo, repo_files))
@@ -429,19 +519,75 @@ class DataSplit:
         print(f"Num captured files: {num_captured_files}")
         return data_split
 
+    @classmethod
+    def create_from_list(cls, data_loc: str, eval_projects: EvalProjects) -> DataSplit:
+        test_thms: set[str] = set()
+        test_projects = eval_projects.get_testing_projects(data_loc)
+
+        print("Creating Test Split")
+        for testing_project in tqdm(test_projects):
+            test_thms |= testing_project.get_thms(data_loc)
+        
+        print("Creating Val Split")
+        val_thms: set[str] = set()
+        val_projects: list[Project] = []
+        raw_val_projects = eval_projects.get_validation_projects(data_loc)
+        for validation_project in tqdm(raw_val_projects): 
+            clean_files = validation_project.filter(test_thms, data_loc)
+            clean_project = Project(validation_project.repo_name, clean_files)
+            val_projects.append(clean_project)
+            val_thms |= clean_project.get_thms(data_loc)
+        
+        _logger.info("Creating Train Split")
+        train_projects: list[Project] = []
+        candidate_train_projects = cls.__create_project_list(data_loc)
+        for project in tqdm(candidate_train_projects):
+            if eval_projects.name_available_for_training(project.repo_name):
+                clean_files = project.filter(test_thms | val_thms, data_loc)
+                clean_project = Project(project.repo_name, clean_files)
+                train_projects.append(clean_project)
+
+        final_test_thms = functools.reduce(set.union, [p.get_thms(data_loc) for p in test_projects], set()) 
+        final_val_thms = functools.reduce(set.union, [p.get_thms(data_loc) for p in val_projects], set()) 
+        final_train_thms = functools.reduce(set.union, [p.get_thms(data_loc) for p in train_projects], set()) 
+        assert final_test_thms.isdisjoint(final_val_thms)
+        assert final_val_thms.isdisjoint(final_train_thms)
+        assert final_test_thms.isdisjoint(final_train_thms)
+
+        final_split = cls(train_projects, val_projects, test_projects)
+        print(f"Num training files: {len(final_split.get_file_list(Split.TRAIN))}")
+        print(f"Num validation files: {len(final_split.get_file_list(Split.VAL))}")
+        print(f"Num testing files: {len(final_split.get_file_list(Split.TEST))}")
+        print()
+        print(f"Num training theorems: {len(final_train_thms)}")
+        print(f"Num validation theorems: {len(final_val_thms)}")
+        print(f"Num testing theorems: {len(final_test_thms)}")
+        return final_split
+
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Create a train/val/test split.")
     parser.add_argument("data_loc", help="Directory above 'repos' and 'data_points'.")
     parser.add_argument("save_loc", help="Location to save the split.")
-    parser.add_argument(
-        "--time_sorted",
-        "-t",
-        action="store_true",
-        help="Sort the repos by creation date.",
-    )
+    parser.add_argument("eval_projects_config", help="yaml file containing which projects should be saved for validation and testing.")
+
+    # parser.add_argument(
+    #     "--time_sorted",
+    #     "-t",
+    #     action="store_true",
+    #     help="Sort the repos by creation date.",
+    # )
+    # data_split = DataSplit.create(args.data_loc, args.time_sorted)
+
     args = parser.parse_args(sys.argv[1:])
     if os.path.exists(args.save_loc):
         raise ValueError(f"{args.save_loc} exists.")
-    data_split = DataSplit.create(args.data_loc, args.time_sorted)
+
+    with open(args.eval_projects_config, "r") as fin:
+        eval_config = yaml.load(fin, Loader=yaml.Loader)
+
+    eval_projects = EvalProjects.from_conf(eval_config)
+    data_split = DataSplit.create_from_list(args.data_loc, eval_projects)
     data_split.save(args.save_loc)

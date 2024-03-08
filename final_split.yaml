@@ -1,0 +1,51 @@
+val_projects: [
+  coq-community/sudoku,
+  coq-community/bertrand,
+  coq-community/bertrand,
+  coq-community/graph-theory,
+  coq-community/stalmarck,
+  coq-community/qarith-stern-brocot,
+  coq-community/coqeal,
+]
+
+test_projects: [
+  # Coq community Projects (COULD MOVE)
+  coq-community/coq-ext-lib,
+  coq-community/reglang,
+  coq-community/corn,
+  coq-community/fourcolor,
+  coq-community/gaia,
+  coq-community/math-classes,
+
+  # Comp Cert (MUST KEEP HERE)
+  AbsInt/CompCert,
+
+  # Coqgym projects (MUST KEEP HERE)
+  coq-community/huffman,
+  coq-community/buchberger,
+  coq-community/dblib,
+  coq-community/hoare-tut,
+  coq-contribs/fermat4,
+  coq-community/coqoban,
+  coq-community/goedel,
+  coq-community/zorns-lemma,
+
+  coq-contribs/weak-up-to,
+  coq-contribs/jordan-curve-theorem,
+  coq-contribs/zchinese,
+  coq-contribs/zfc,
+  coq-contribs/dep-map,
+  coq-contribs/chinese,
+  coq-contribs/angels,
+  coq-contribs/tree-automata,
+  coq-contribs/fundamental-arithmetics,
+
+  Armael/coq-procrastination,
+  CertiKOS/coqrel,
+  DistributedComponents/disel,
+  QinxiangCao/UnifySL,
+  uwplse/verdi,
+  uwplse/verdi-raft,
+  thery/PolTac,
+  thery/coquelicot,
+]
