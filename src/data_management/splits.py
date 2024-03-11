@@ -4,6 +4,7 @@ create a project-wise split according to time.
 """
 
 from __future__ import annotations
+from typing import Optional
 import sys, os
 import re
 from typing import Any
@@ -16,7 +17,7 @@ import pytz
 import requests
 from enum import Enum
 from dataclasses import dataclass
-import functools 
+import functools
 import yaml
 
 import argparse
@@ -33,7 +34,8 @@ from data_management.dataset_file import (
 )
 
 from coqpyt.coq.structs import TermType
-from util.util import get_basic_logger 
+from util.util import get_basic_logger
+
 _logger = get_basic_logger(__name__)
 
 
@@ -46,7 +48,11 @@ INVALID_DATE = datetime.datetime(1900, 1, 1, tzinfo=pytz.timezone("US/Pacific"))
 
 class FileInfo:
     def __init__(
-        self, dp_name: str, file: str, workspace: str, repository: str
+        self,
+        dp_name: str,
+        file: str,
+        workspace: str,
+        repository: str,
     ) -> None:
         self.dp_name = dp_name
         self.file = file
@@ -77,12 +83,13 @@ class FileInfo:
 
     def get_dp(self, data_loc: str) -> DatasetFile:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
-        return DatasetFile.from_directory(dp_loc)
+        return DatasetFile.load(dp_loc)
 
     def get_proofs(self, data_loc: str) -> list[Proof]:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
-        return DatasetFile.get_proofs(dp_loc)
-    
+        dset_file = DatasetFile.load(dp_loc, metadata_only=True)
+        return dset_file.proofs
+
     @functools.cache
     def get_theorems(self, data_loc: str) -> set[str]:
         thms: set[str] = set()
@@ -120,6 +127,32 @@ class FileInfo:
         return cls(dp_name, file, workspace, repository)
 
 
+class ThmMap:
+    def __init__(self) -> None:
+        self.thm_map: dict[str, tuple[FileInfo, set[str]]] = {}
+
+    def lookup(self, data_loc: str, dp_name: str) -> tuple[FileInfo, set[str]]:
+        dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, dp_name)
+        if dp_loc in self.thm_map:
+            return self.thm_map[dp_loc]
+        dp_obj = DatasetFile.load(dp_loc, metadata_only=True)
+        file_info = FileInfo(
+            dp_name,
+            dp_obj.file_context.file,
+            dp_obj.file_context.workspace,
+            dp_obj.file_context.repository,
+        )
+
+        thms: set[str] = set()
+        for proof in dp_obj.proofs:
+            if proof.theorem.term.sentence_type == TermType.DEFINITION:
+                # We don't care about examples
+                continue
+            thms.add(proof.theorem.term.text)
+
+        self.thm_map[dp_loc] = file_info, thms
+        return file_info, thms
+
 @typechecked
 class Project:
     def __init__(self, repo_name: str, files: list[FileInfo]) -> None:
@@ -133,7 +166,7 @@ class Project:
 
     def to_json(self) -> Any:
         return {"repo_name": self.repo_name, "files": [f.to_json() for f in self.files]}
-    
+
     def filter(self, forbidden_thms: set[str], data_loc: str) -> list[FileInfo]:
         good_files: list[FileInfo] = []
         for file in self.files:
@@ -141,12 +174,12 @@ class Project:
             if len(file_thms.intersection(forbidden_thms)) == 0:
                 good_files.append(file)
         return good_files
-    
 
-    def get_thms(self, data_loc: str) -> set[str]:
+    def get_thms(self, data_loc: str, thm_map: ThmMap) -> set[str]:
         thms: set[str] = set()
         for file in self.files:
-            thms |= file.get_theorems(data_loc)
+            _, file_thms = thm_map.lookup(data_loc, file.dp_name)
+            thms |= file_thms
         return thms
 
     def get_creation_time(self, workspace: str) -> datetime.datetime:
@@ -251,7 +284,9 @@ def file_from_split(file: str, data_split: DataSplit) -> tuple[FileInfo, Split]:
 
 @typechecked
 class EvalProjects:
-    def __init__(self, validation_projects: list[str], testing_projects: list[str]) -> None:
+    def __init__(
+        self, validation_projects: list[str], testing_projects: list[str]
+    ) -> None:
         self.validation_projects = validation_projects
         self.testing_projects = testing_projects
         self._testing_name_set = set(self.get_testing_names())
@@ -267,35 +302,36 @@ class EvalProjects:
     def verify_format(self) -> None:
         self._verify_format(self.testing_projects)
         self._verify_format(self.testing_projects)
-    
-    def get_projects(self, data_loc: str, project_names: list[str]) -> list[Project]:
+
+    def get_projects(self, data_loc: str, project_names: list[str], thm_map: ThmMap) -> list[Project]:
         projects: list[Project] = []
         for project_name in project_names:
-            project_files = DataSplit.find_files(data_loc, project_name) 
+            _logger.info(f"Gathering project: {project_name}")
+            project_files = DataSplit.find_files(data_loc, project_name, thm_map)
             if len(project_files) == 0:
                 _logger.warning(f"Evaluation project {project_name} has no files.")
             projects.append(Project(project_name, project_files))
         return projects
-    
+
     def name_available_for_training(self, candidate_name: str) -> bool:
         if candidate_name in self._testing_name_set:
             return False
         if candidate_name in self._validation_name_set:
             return False
         return True
-    
-    def get_testing_projects(self, data_loc: str) -> list[Project]:
-        return self.get_projects(data_loc, self.get_testing_names())
-    
-    def get_validation_projects(self, data_loc: str) -> list[Project]:
-        return self.get_projects(data_loc, self.get_validation_names())
+
+    def get_testing_projects(self, data_loc: str, thm_map: ThmMap) -> list[Project]:
+        return self.get_projects(data_loc, self.get_testing_names(), thm_map)
+
+    def get_validation_projects(self, data_loc: str, thm_map: ThmMap) -> list[Project]:
+        return self.get_projects(data_loc, self.get_validation_names(), thm_map)
 
     def get_testing_names(self) -> list[str]:
         return [tp.replace(os.path.sep, "-") for tp in self.testing_projects]
 
     def get_validation_names(self) -> list[str]:
         return [tp.replace(os.path.sep, "-") for tp in self.validation_projects]
-    
+
     @classmethod
     def from_conf(cls, conf: Any) -> EvalProjects:
         val_projects = conf["val_projects"]
@@ -387,20 +423,8 @@ class DataSplit:
 
     @staticmethod
     def __get_psuedo_context(dp_loc: str) -> FileContext:
-        fc_loc = os.path.join(dp_loc, FILE_CONTEXT_NAME)
-        with open(fc_loc, "r") as fin:
-            file_str = fin.read(1000)
-            fc_match = re.match(
-                r'\{"file": "(.*?)", "workspace": "(.*?)", "repository": "(.*?)"',
-                file_str,
-            )
-            if fc_match:
-                file, workspace, repository = fc_match.groups()
-                return FileContext(file, workspace, repository, [])
-            else:
-                raise ValueError(
-                    f"Fast pattern could not match string: {file_str[:80]}"
-                )
+        dp_obj = DatasetFile.load(dp_loc, metadata_only=True)
+        return dp_obj.file_context
 
     @staticmethod
     def __strip_data_prefix(path: str, prefix: str) -> str:
@@ -408,39 +432,34 @@ class DataSplit:
         return os.path.relpath(path, prefix)
 
     @classmethod
-    def find_files(cls, data_loc: str, repo_name: str) -> list[FileInfo]:
+    def find_files(cls, data_loc: str, repo_name: str, thm_map: ThmMap) -> list[FileInfo]:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME)
         repo_qualified_name = os.path.join(REPOS_NAME, repo_name)
         files: list[FileInfo] = []
-        for dset_file in os.listdir(dp_loc):
-            if dset_file.startswith(repo_name):
-                dset_file_loc = os.path.join(dp_loc, dset_file)
-                file_context = cls.__get_psuedo_context(dset_file_loc)
-                assert file_context.repository.endswith(repo_qualified_name)
-                prefix_len = len(file_context.repository) - len(repo_qualified_name)
-                data_prefix = file_context.repository[:prefix_len]
+        for dp_name in os.listdir(dp_loc):
+            if dp_name.startswith(repo_name):
+                file_info, _ = thm_map.lookup(data_loc, dp_name)
+                assert file_info.repository.endswith(repo_qualified_name)
+                prefix_len = len(file_info.repository) - len(repo_qualified_name)
+                data_prefix = file_info.repository[:prefix_len]
 
-                repo = cls.__strip_data_prefix(file_context.repository, data_prefix)
-                file = cls.__strip_data_prefix(file_context.file, data_prefix)
-                workspace = cls.__strip_data_prefix(file_context.workspace, data_prefix)
+                repo = cls.__strip_data_prefix(file_info.repository, data_prefix)
+                file = cls.__strip_data_prefix(file_info.file, data_prefix)
+                workspace = cls.__strip_data_prefix(file_info.workspace, data_prefix)
 
-                file = FileInfo(
-                    dset_file,
-                    file, 
-                    workspace,
-                    repo
-                )
+                file = FileInfo(dp_name, file, workspace, repo)
                 files.append(file)
         return files
 
     @classmethod
-    def __create_project_list(cls, data_loc: str) -> list[Project]:
+    def __create_project_list(cls, data_loc: str, thm_map: ThmMap) -> list[Project]:
         repos_loc = os.path.join(data_loc, REPOS_NAME)
         projects: list[Project] = []
 
         print("Creating Project List...")
         for repo in tqdm(os.listdir(repos_loc)):
-            repo_files = cls.find_files(data_loc, repo)
+            _logger.info(f"Gathering project: {repo}")
+            repo_files = cls.find_files(data_loc, repo, thm_map)
             if len(repo_files) == 0:
                 continue
             projects.append(Project(repo, repo_files))
@@ -448,9 +467,9 @@ class DataSplit:
 
     @classmethod
     def __get_ordered_project_list(
-        cls, data_loc: str, time_sorted: bool
+        cls, data_loc: str, time_sorted: bool, thm_map: ThmMap
     ) -> list[Project]:
-        project_list = cls.__create_project_list(data_loc)
+        project_list = cls.__create_project_list(data_loc, thm_map)
         print("Sorting Project List...")
         if time_sorted:
             print("Getting Times...")
@@ -466,7 +485,7 @@ class DataSplit:
 
     @classmethod
     def __assign_projects(
-        cls, data_loc: str, project_list: list[Project], train_cutoff: float = 0.8
+        cls, data_loc: str, project_list: list[Project], thm_map: ThmMap, train_cutoff: float = 0.8
     ) -> DataSplit:
         """
         Train gets first 80% of projects, and any projects with interecting
@@ -477,7 +496,7 @@ class DataSplit:
         train_thms: set[str] = set()
         print("Gathering training thms...")
         for train_proj in tqdm(train_projs):
-            train_thms |= train_proj.get_thms(data_loc)
+            train_thms |= train_proj.get_thms(data_loc, thm_map)
 
         val_projs: list[Project] = []
         val_thms: set[str] = set()
@@ -485,7 +504,7 @@ class DataSplit:
         test_thms: set[str] = set()
         print("Assigning Projects...")
         for i, remaining_proj in tqdm(enumerate(project_list[train_cutoff_num:])):
-            remaining_proj_thms = remaining_proj.get_thms(data_loc)
+            remaining_proj_thms = remaining_proj.get_thms(data_loc, thm_map)
             if len(remaining_proj_thms & train_thms) > 0:
                 train_projs.append(remaining_proj)
                 train_thms |= remaining_proj_thms
@@ -506,8 +525,9 @@ class DataSplit:
 
     @classmethod
     def create(cls, data_loc: str, time_sorted: bool) -> DataSplit:
-        ordered_project_list = cls.__get_ordered_project_list(data_loc, time_sorted)
-        data_split = cls.__assign_projects(data_loc, ordered_project_list)
+        thm_map = ThmMap()
+        ordered_project_list = cls.__get_ordered_project_list(data_loc, time_sorted, thm_map)
+        data_split = cls.__assign_projects(data_loc, ordered_project_list, thm_map)
         data_points_loc = os.path.join(data_loc, DATA_POINTS_NAME)
         num_raw_files = len(os.listdir(data_points_loc))
         print(f"Num raw files: {num_raw_files}")
@@ -521,35 +541,42 @@ class DataSplit:
 
     @classmethod
     def create_from_list(cls, data_loc: str, eval_projects: EvalProjects) -> DataSplit:
+        thm_map = ThmMap()
         test_thms: set[str] = set()
-        test_projects = eval_projects.get_testing_projects(data_loc)
+        test_projects = eval_projects.get_testing_projects(data_loc, thm_map)
 
         print("Creating Test Split")
         for testing_project in tqdm(test_projects):
-            test_thms |= testing_project.get_thms(data_loc)
-        
+            test_thms |= testing_project.get_thms(data_loc, thm_map)
+
         print("Creating Val Split")
         val_thms: set[str] = set()
         val_projects: list[Project] = []
-        raw_val_projects = eval_projects.get_validation_projects(data_loc)
-        for validation_project in tqdm(raw_val_projects): 
+        raw_val_projects = eval_projects.get_validation_projects(data_loc, thm_map)
+        for validation_project in tqdm(raw_val_projects):
             clean_files = validation_project.filter(test_thms, data_loc)
             clean_project = Project(validation_project.repo_name, clean_files)
             val_projects.append(clean_project)
-            val_thms |= clean_project.get_thms(data_loc)
-        
+            val_thms |= clean_project.get_thms(data_loc, thm_map)
+
         _logger.info("Creating Train Split")
         train_projects: list[Project] = []
-        candidate_train_projects = cls.__create_project_list(data_loc)
+        candidate_train_projects = cls.__create_project_list(data_loc, thm_map)
         for project in tqdm(candidate_train_projects):
             if eval_projects.name_available_for_training(project.repo_name):
                 clean_files = project.filter(test_thms | val_thms, data_loc)
                 clean_project = Project(project.repo_name, clean_files)
                 train_projects.append(clean_project)
 
-        final_test_thms = functools.reduce(set.union, [p.get_thms(data_loc) for p in test_projects], set()) 
-        final_val_thms = functools.reduce(set.union, [p.get_thms(data_loc) for p in val_projects], set()) 
-        final_train_thms = functools.reduce(set.union, [p.get_thms(data_loc) for p in train_projects], set()) 
+        final_test_thms = functools.reduce(
+            set.union, [p.get_thms(data_loc, thm_map) for p in test_projects], set()
+        )
+        final_val_thms = functools.reduce(
+            set.union, [p.get_thms(data_loc, thm_map) for p in val_projects], set()
+        )
+        final_train_thms = functools.reduce(
+            set.union, [p.get_thms(data_loc, thm_map) for p in train_projects], set()
+        )
         assert final_test_thms.isdisjoint(final_val_thms)
         assert final_val_thms.isdisjoint(final_train_thms)
         assert final_test_thms.isdisjoint(final_train_thms)
@@ -565,13 +592,14 @@ class DataSplit:
         return final_split
 
 
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Create a train/val/test split.")
     parser.add_argument("data_loc", help="Directory above 'repos' and 'data_points'.")
     parser.add_argument("save_loc", help="Location to save the split.")
-    parser.add_argument("eval_projects_config", help="yaml file containing which projects should be saved for validation and testing.")
+    parser.add_argument(
+        "eval_projects_config",
+        help="yaml file containing which projects should be saved for validation and testing.",
+    )
 
     # parser.add_argument(
     #     "--time_sorted",
