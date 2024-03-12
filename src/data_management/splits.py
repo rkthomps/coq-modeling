@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import functools
 import yaml
 
+import ipdb
 import argparse
 
 from typeguard import typechecked
@@ -439,7 +440,8 @@ class DataSplit:
         for dp_name in os.listdir(dp_loc):
             if dp_name.startswith(repo_name):
                 file_info, _ = thm_map.lookup(data_loc, dp_name)
-                assert file_info.repository.endswith(repo_qualified_name)
+                if not file_info.repository.endswith(repo_qualified_name):
+                    continue
                 prefix_len = len(file_info.repository) - len(repo_qualified_name)
                 data_prefix = file_info.repository[:prefix_len]
 
