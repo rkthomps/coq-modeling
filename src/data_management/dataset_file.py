@@ -6,12 +6,17 @@ import jsonlines
 import json
 import re
 import ipdb
+import argparse
+import time
+import functools
+import multiprocessing as mp
 
 from typeguard import typechecked
 from coqpyt.coq.structs import TermType
-from util.util import get_basic_logger
 
-_logger = get_basic_logger(__name__)
+# from util.util import get_basic_logger
+
+# _logger = get_basic_logger(__name__)
 
 
 STEPS_NAME = "steps.jsonl"
@@ -200,13 +205,11 @@ class FocusedStep:
         step: Step,
         n_step: int,
         goals: list[Goal],
-        next_steps: list[Step],
     ) -> None:
         self.term = term
         self.step = step
         self.n_step = n_step
         self.goals = goals
-        self.next_steps = next_steps
 
     def __hash__(self) -> int:
         # Can make more strict. This will do for now
@@ -223,7 +226,6 @@ class FocusedStep:
             "step": self.step.to_json(),
             "n_step": self.n_step,
             "goals": [g.to_json() for g in self.goals],
-            "next_steps": [s.to_json() for s in self.next_steps],
         }
 
     @classmethod
@@ -236,10 +238,7 @@ class FocusedStep:
         for goal_data in json_data["goals"]:
             goals.append(Goal.from_json(goal_data))
 
-        next_steps: list[Step] = []
-        for next_step_data in json_data["next_steps"]:
-            next_steps.append(Step.from_json(next_step_data))
-        return FocusedStep(term, step, n_step, goals, next_steps)
+        return FocusedStep(term, step, n_step, goals)
 
     @classmethod
     def from_step_text(cls, step_text: str) -> FocusedStep:
@@ -247,17 +246,17 @@ class FocusedStep:
         step = Step.from_text(step_text, TermType.TACTIC)
         n_step = 0
         goals: list[Goal] = []
-        steps: list[Step] = []
-        return cls(term, step, n_step, goals, steps)
+        return cls(term, step, n_step, goals)
 
     @classmethod
-    def from_step_and_goals(cls, theorem_stmt: str, step_text: str, goals: list[Goal]) -> FocusedStep:
+    def from_step_and_goals(
+        cls, theorem_stmt: str, step_text: str, goals: list[Goal]
+    ) -> FocusedStep:
         term = Term.from_text(theorem_stmt, TermType.THEOREM)
         step = Step.from_text(step_text, TermType.TACTIC)
         n_step = 0
         goals = goals
-        steps: list[Step] = []
-        return cls(term, step, n_step, goals, steps)
+        return cls(term, step, n_step, goals)
 
 
 @typechecked
@@ -314,16 +313,46 @@ class FileContext:
         self.repository = repository
         self.avail_premises = avail_premises
 
-    def to_json(self) -> Any:
-        return {
+    @classmethod
+    def empty_context_from_lines(cls, lines: list[str]) -> FileContext:
+        metadata_line = lines[0]
+        metadata = json.loads(metadata_line)
+        return cls(metadata["file"], metadata["workspace"], metadata["repository"], [])
+
+    @classmethod
+    @functools.lru_cache(maxsize=6000)
+    def context_from_line(cls, line: str) -> Sentence:
+        line_data = json.loads(line)
+        return Sentence.from_json(line_data)
+
+    @classmethod
+    def context_from_lines(cls, lines: list[str]) -> FileContext:
+        empty_context = cls.empty_context_from_lines(lines)
+        context_sentences: list[Sentence] = []
+        for line in lines[1:]:
+            context_sentence = cls.context_from_line(line)
+            context_sentences.append(context_sentence)
+        return cls(
+            empty_context.file,
+            empty_context.workspace,
+            empty_context.repository,
+            context_sentences,
+        )
+
+    def to_jsonlines(self) -> list[str]:
+        metadata_info = {
             "file": self.file,
             "workspace": self.workspace,
             "repository": self.repository,
-            "context": [s.to_json() for s in self.avail_premises],
         }
+        context_info = [s.to_json() for s in self.avail_premises]
+
+        metadata_line = json.dumps(metadata_info)
+        context_lines = [json.dumps(l) for l in context_info]
+        return [metadata_line] + context_lines
 
     @classmethod
-    def from_json(cls, json_data: Any) -> FileContext:
+    def from_verbose_json(cls, json_data: Any) -> FileContext:
         file = json_data["file"]
         workspace = json_data["workspace"]
         repository = json_data["repository"]
@@ -349,7 +378,7 @@ class FileContext:
             case None:
                 raise ValueError(f"File context data {file_context_loc} had no lines")
             case a:
-                return cls.from_json(a)
+                return cls.from_verbose_json(a)
 
 
 @typechecked
@@ -418,6 +447,36 @@ class DatasetFile:
     def get_premises_before(self, proof: Proof) -> list[Sentence]:
         return self.out_of_file_avail_premises + self.get_in_file_premises_before(proof)
 
+    def save(self, path: str) -> None:
+        path_dirname = os.path.dirname(path)
+        if 0 < len(path_dirname):
+            os.makedirs(path_dirname, exist_ok=True)
+
+        with open(path, "w") as fout:
+            fout.write(json.dumps(self.to_json(), indent=2))
+
+    def to_json(self) -> Any:
+        return {
+            "file_context": self.file_context.to_jsonlines(),
+            "proofs": [p.to_json() for p in self.proofs],
+        }
+
+    @classmethod
+    def load(cls, path: str, metadata_only: bool = False) -> DatasetFile:
+        with open(path, "r") as fin:
+            json_data = json.load(fin)
+        return cls.from_json(json_data, metadata_only)
+
+    @classmethod
+    def from_json(cls, json_data: Any, metadata_only: bool=False) -> DatasetFile:
+        if metadata_only:
+            file_context = FileContext.empty_context_from_lines(json_data["file_context"])
+        else:
+            file_context = FileContext.context_from_lines(json_data["file_context"])
+
+        proofs = [Proof.from_json(p) for p in json_data["proofs"]]
+        return cls(file_context, proofs)
+
     @staticmethod
     def proofs_from_steps(steps: list[FocusedStep]) -> list[Proof]:
         proofs: list[Proof] = []
@@ -463,14 +522,39 @@ class DatasetFile:
     def from_directory(cls, dir_path: str) -> DatasetFile:
         file_context = FileContext.from_directory(dir_path)
         proofs = cls.get_proofs(dir_path)
-
         return cls(file_context, proofs)
 
 
+def process_dp(orig_dp_loc: str, new_dp_loc: str) -> None:
+    dp = DatasetFile.from_directory(orig_dp_loc)
+    dp.save(new_dp_loc)
+
+
+def get_mp_args(orig_dp_dir: str, new_dp_dir: str) -> list[tuple[str, str]]:
+    transform_args: list[tuple[str, str]] = []
+    for dp_name in os.listdir(orig_dp_dir):
+        old_loc = os.path.join(orig_dp_dir, dp_name)
+        new_loc = os.path.join(new_dp_dir, dp_name)
+        transform_args.append((old_loc, new_loc))
+    return transform_args
+
+
 if __name__ == "__main__":
-    TEST_PATH = "raw-data/data-points-partial"
-    for dirname in os.listdir(TEST_PATH):
-        absolute_dirname = os.path.join(TEST_PATH, dirname)
-        obj = DatasetFile.from_directory(absolute_dirname)
-        print(f"\n\n{dirname}")
-        print(obj.proofs_to_string())
+    parser = argparse.ArgumentParser(
+        "Convert data-points into a more concise format for faster loading."
+    )
+    parser.add_argument("--num_procs", "-n", type=int, help="Number of processes to use")
+    parser.add_argument("orig_dp_dir", help="Directory containing original verbose data points files.")
+    parser.add_argument("new_dp_dir", help="Directory to save new concise data points files.")
+
+    args = parser.parse_args(sys.argv[1:])
+    num_procs = 0
+    if args.num_procs is not None:
+        num_procs = args.num_procs
+    
+    transformation_args = get_mp_args(args.orig_dp_dir, args.new_dp_dir)
+    with mp.Pool(args.num_procs) as pool:
+        pool.starmap(process_dp, transformation_args)
+
+
+
