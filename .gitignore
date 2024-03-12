@@ -16,6 +16,9 @@ step-evals
 eval_examples
 unimath-step-eval
 
+# Sentence database
+sentences.db
+
 # Temporary
 test_size.py
 

@@ -1,0 +1,140 @@
+from __future__ import annotations
+from typing import Optional
+import sys, os
+import time
+import ipdb
+
+from dataclasses import dataclass
+from sqlite3 import connect, Connection, Cursor
+
+
+@dataclass
+class DBSentence:
+    text: str
+    file_path: str
+    module: str
+    sentence_type: str
+    line: int
+
+
+class SentenceDB:
+    TABLE_NAME = "sentence"
+
+    def __init__(self, connection: Connection, cursor: Cursor) -> None:
+        self.connection = connection
+        self.cursor = cursor
+
+    def contains_id(self, id: int) -> bool:
+        result = self.cursor.execute(
+            f"""
+            SELECT * FROM {self.TABLE_NAME} WHERE id={id}
+                            """
+        ).fetchall()
+        if 0 == len(result):
+            return False
+        else:
+            return True
+
+    def find_sentence(self, sentence: DBSentence) -> Optional[int]:
+        result = self.cursor.execute(
+            f"""
+            SELECT id FROM {self.TABLE_NAME}
+            WHERE
+            text=? AND
+            file_path=? AND
+            module=? AND
+            sentence_type=? AND
+            line=?""",
+            (
+                sentence.text,
+                sentence.file_path,
+                sentence.module,
+                sentence.sentence_type,
+                sentence.line,
+            ),
+        ).fetchall()
+        if 0 == len(result):
+            return None
+        if 1 == len(result):
+            (resulting_id,) = result[0]
+            return resulting_id
+        raise ValueError(f"DB has more than one instance of {sentence}")
+
+    def insert_sentence(self, sentence: DBSentence) -> int:
+        found_id = self.find_sentence(sentence)
+        if found_id is not None:
+            return found_id
+
+        result = self.cursor.execute(
+            f"""
+            INSERT INTO {self.TABLE_NAME}  (text, file_path, module, sentence_type, line) VALUES
+            (?, ?, ?, ?, ?)
+            RETURNING id""",
+            (
+                sentence.text,
+                sentence.file_path,
+                sentence.module,
+                sentence.sentence_type,
+                sentence.line,
+            ),
+        ).fetchall()
+        start = time.time()
+        self.connection.commit()
+        end = time.time()
+        print("Commit time:", end - start)
+
+        if len(result) != 1:
+            raise ValueError(
+                f"Something went wrong in query. Got {len(result)} after insert."
+            )
+        (resulting_id,) = result[0]
+        return resulting_id
+
+    def retrieve(self, id: int) -> DBSentence:
+        result = self.cursor.execute(
+            f"""
+            SELECT * FROM {self.TABLE_NAME} WHERE id=?
+                            """, (id, )
+        ).fetchall()
+        if len(result) != 1:
+            raise ValueError(
+                f"Expected single result from sentence db. Got {len(result)}"
+            )
+        _, text, file_path, module, sentence_type, line = result[0]
+        return DBSentence(text, file_path, module, sentence_type, line)
+    
+    def commit(self) -> None:
+        self.connection.commit()
+
+    def close(self) -> None:
+        self.cursor.close()
+        self.connection.close()
+
+    @classmethod
+    def load(cls, db_path: str) -> SentenceDB:
+        if not os.path.exists(db_path):
+            raise ValueError(f"Database {db_path} does not exis does not exist.")
+        con = connect(
+            db_path,
+        )
+        cur = con.cursor()
+        return cls(con, cur)
+
+    @classmethod
+    def create(cls, db_path: str) -> SentenceDB:
+        if os.path.exists(db_path):
+            raise ValueError(f"DB {db_path} already exists")
+        con = connect(db_path)
+        cur = con.cursor()
+        cur.execute(
+            f"""
+            CREATE TABLE {cls.TABLE_NAME} (
+                id INTEGER PRIMARY KEY, 
+                text TEXT, 
+                file_path TEXT, 
+                module TEXT, 
+                sentence_type TEXT, 
+                line INTEGER)
+        """
+        )
+        return cls(con, cur)
