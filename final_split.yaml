@@ -1,7 +1,6 @@
 val_projects: [
   coq-community/sudoku,
   coq-community/bertrand,
-  coq-community/bertrand,
   coq-community/graph-theory,
   coq-community/stalmarck,
   coq-community/qarith-stern-brocot,
@@ -12,9 +11,7 @@ test_projects: [
   # Coq community Projects (COULD MOVE)
   coq-community/coq-ext-lib,
   coq-community/reglang,
-  coq-community/corn,
   coq-community/fourcolor,
-  coq-community/gaia,
   coq-community/math-classes,
 
   # Comp Cert (MUST KEEP HERE)

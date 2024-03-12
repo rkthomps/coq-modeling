@@ -1,7 +1,7 @@
 import sys, os
 import argparse
 
-from data_management.splits import DataSplit, Split, Project
+from data_management.splits import DataSplit, Split, Project, ThmMap, str2split
 
 
 def largest_projects(data_split: DataSplit, split: Split, n: int) -> list[Project]:
@@ -32,12 +32,32 @@ def analyze_split(data_split: DataSplit, data_loc: str, n: int = 10) -> None:
         pretty_print_projects(big_projects, split, data_loc)
 
 
+def count_thms(data_split: DataSplit, data_loc: str, split: Split) -> None:
+    thm_map = ThmMap()
+    for project in data_split.get_project_list(split):
+        print(
+            "{:60s}; {:d}".format(
+                project.repo_name, len(project.get_thms(data_loc, thm_map))
+            )
+        )
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Find large projects and times.")
-    parser.add_argument("data_split_loc", help="Location of data split.")
-    parser.add_argument(
-        "data_loc", help="Location of raw data with repos subdirectory."
-    )
+    # parser = argparse.ArgumentParser("Find large projects and times.")
+    # parser.add_argument("data_split_loc", help="Location of data split.")
+    # parser.add_argument(
+    #     "data_loc", help="Location of raw data with repos subdirectory."
+    # )
+    # args = parser.parse_args(sys.argv[1:])
+    # ds = DataSplit.load(args.data_split_loc)
+    # analyze_split(ds, args.data_loc)
+
+    parser = argparse.ArgumentParser("Count number of theorems per project")
+    parser.add_argument("data_split_loc", help="Path to data split.")
+    parser.add_argument("data_loc", help="Path to raw data")
+    parser.add_argument("split", help="Split to analyze")
+
     args = parser.parse_args(sys.argv[1:])
-    ds = DataSplit.load(args.data_split_loc)
-    analyze_split(ds, args.data_loc)
+    data_split = DataSplit.load(args.data_split_loc)
+    split = str2split(args.split)
+    count_thms(data_split, args.data_loc, split)
