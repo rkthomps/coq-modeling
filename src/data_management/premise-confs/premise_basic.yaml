@@ -1,7 +1,7 @@
 
 
 # Data split
-data_split: "/home/kthompson/coq-modeling/splits/random-split.json"
+data_split: "/home/kthompson/coq-modeling/splits/final-split.json"
 
 # Location of partitioned files from coq-lsp raw data
 data_loc: "/home/kthompson/coq-modeling/raw-data/coq-dataset"
@@ -24,6 +24,6 @@ premise_format_alias: "basic-premise-format"
 
 # Which kinds of premises to exclude from the dataset. 
 premise_filter:
-  coq_excludes: ["NOTATION", "TACTIC"]
+  coq_excludes: []
   non_coq_excludes: [] 
   general_excludes: []
