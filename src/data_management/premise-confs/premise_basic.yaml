@@ -1,10 +1,13 @@
 
 
 # Data split
-data_split: "/home/kthompson/coq-modeling/splits/random-split.json"
+data_split: "/home/kthompson/coq-modeling/splits/final-split.json"
 
 # Location of partitioned files from coq-lsp raw data
 data_loc: "/home/kthompson/coq-modeling/raw-data/coq-dataset"
+
+# Location of sentence db
+sentence_db_loc: "/home/kthompson/coq-modeling/sentences.db"
 
 # Directory to save the processed premise selection data
 output_dataset_loc: "/home/kthompson/coq-modeling/data/prem-select"
