@@ -3,12 +3,13 @@ from typing import Optional
 import sys, os
 import time
 import ipdb
+import functools
 
 from dataclasses import dataclass
 from sqlite3 import connect, Connection, Cursor
 
 
-@dataclass
+@dataclass(frozen=True)
 class DBSentence:
     text: str
     file_path: str
@@ -23,8 +24,12 @@ class SentenceDB:
     def __init__(self, connection: Connection, cursor: Cursor) -> None:
         self.connection = connection
         self.cursor = cursor
+        self.__found_cache: dict[DBSentence, int] = {}
+        self.__contains_cache: dict[int, bool] = {}
 
     def contains_id(self, id: int) -> bool:
+        if id in self.__contains_cache:
+            return self.__contains_cache[id]
         result = self.cursor.execute(
             f"""
             SELECT * FROM {self.TABLE_NAME} WHERE id={id}
@@ -33,9 +38,13 @@ class SentenceDB:
         if 0 == len(result):
             return False
         else:
+            self.__contains_cache[id] = True
             return True
 
     def find_sentence(self, sentence: DBSentence) -> Optional[int]:
+        if sentence in self.__found_cache:
+            return self.__found_cache[sentence]
+
         result = self.cursor.execute(
             f"""
             SELECT id FROM {self.TABLE_NAME}
@@ -57,9 +66,12 @@ class SentenceDB:
             return None
         if 1 == len(result):
             (resulting_id,) = result[0]
+            self.__found_cache[sentence] = resulting_id
             return resulting_id
         raise ValueError(f"DB has more than one instance of {sentence}")
 
+
+    @functools.cache
     def insert_sentence(self, sentence: DBSentence) -> int:
         found_id = self.find_sentence(sentence)
         if found_id is not None:
@@ -78,10 +90,7 @@ class SentenceDB:
                 sentence.line,
             ),
         ).fetchall()
-        start = time.time()
         self.connection.commit()
-        end = time.time()
-        print("Commit time:", end - start)
 
         if len(result) != 1:
             raise ValueError(
@@ -90,6 +99,7 @@ class SentenceDB:
         (resulting_id,) = result[0]
         return resulting_id
 
+    @functools.cache
     def retrieve(self, id: int) -> DBSentence:
         result = self.cursor.execute(
             f"""

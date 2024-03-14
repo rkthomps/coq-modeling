@@ -52,6 +52,7 @@ class Sentence:
         module: list[str],
         sentence_type: TermType,
         line: int,
+        db_idx: Optional[int] = None,
     ):
         try:
             assert text.strip().endswith(".")
@@ -64,6 +65,7 @@ class Sentence:
         self.module = module
         self.sentence_type = sentence_type
         self.line = line
+        self.db_idx = db_idx
 
     def __hash__(self) -> int:
         tup_module = tuple(self.module)
@@ -78,7 +80,6 @@ class Sentence:
         if not isinstance(other, Sentence):
             return False
         return hash(self) == hash(other)
-
 
     def to_db_sentence(self) -> DBSentence:
         return DBSentence(
@@ -101,15 +102,15 @@ class Sentence:
 
     def to_json(self, sentence_db: SentenceDB, insert_allowed: bool) -> Any:
         db_sentence = self.to_db_sentence()
-        if insert_allowed:
+        if insert_allowed and self.db_idx is None:
             result_id = sentence_db.insert_sentence(db_sentence)
             return {
                 "type": "stored",
                 "id": result_id,
             }
-        
-        cur_id = sentence_db.find_sentence(db_sentence)
-        if cur_id is None:
+
+
+        if self.db_idx is None:
             return {
                 "type": "explicit",
                 "text": self.text,
@@ -120,16 +121,22 @@ class Sentence:
             }
         return {
             "type": "stored",
-            "id": cur_id,
+            "id": self.db_idx,
         }
-        
-
 
     @classmethod
     def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Sentence:
         if json_data["type"] == "stored":
             db_sentence = sentence_db.retrieve(json_data["id"])
-            return cls.from_db_sentence(db_sentence)
+            sentence = cls.from_db_sentence(db_sentence)
+            return Sentence(
+                sentence.text,
+                sentence.file_path,
+                sentence.module,
+                sentence.sentence_type,
+                sentence.line,
+                json_data["id"],
+            )
 
         text = json_data["text"]
         file_path = json_data["file_path"]
@@ -167,7 +174,11 @@ class Term:
 
     def to_json(self, sentence_db: SentenceDB, insert_allowed: bool) -> Any:
         term_json = self.term.to_json(sentence_db, insert_allowed)
-        context_json = {"context": [s.to_json(sentence_db, insert_allowed) for s in self.term_context]}
+        context_json = {
+            "context": [
+                s.to_json(sentence_db, insert_allowed) for s in self.term_context
+            ]
+        }
         return term_json | context_json
 
     @classmethod
@@ -201,7 +212,10 @@ class Step:
         self.context = context
 
     def to_json(self, sentence_db: SentenceDB, insert_allowed: bool) -> Any:
-        return {"text": self.text, "context": [s.to_json(sentence_db, insert_allowed) for s in self.context]}
+        return {
+            "text": self.text,
+            "context": [s.to_json(sentence_db, insert_allowed) for s in self.context],
+        }
 
     @classmethod
     def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Step:
@@ -370,11 +384,11 @@ class FileContext:
         return Sentence.from_json(line_data, sentence_db)
 
     @classmethod
-    def context_from_lines(cls, lines: list[str]) -> FileContext:
+    def context_from_lines(cls, lines: list[str], sentence_db: SentenceDB) -> FileContext:
         empty_context = cls.empty_context_from_lines(lines)
         context_sentences: list[Sentence] = []
         for line in lines[1:]:
-            context_sentence = cls.context_from_line(line)
+            context_sentence = cls.context_from_line(line, sentence_db)
             context_sentences.append(context_sentence)
         return cls(
             empty_context.file,
@@ -389,7 +403,9 @@ class FileContext:
             "workspace": self.workspace,
             "repository": self.repository,
         }
-        context_info = [s.to_json(sentence_db, insert_allowed) for s in self.avail_premises]
+        context_info = [
+            s.to_json(sentence_db, insert_allowed) for s in self.avail_premises
+        ]
 
         metadata_line = json.dumps(metadata_info)
         context_lines = [json.dumps(l) for l in context_info]
@@ -400,9 +416,13 @@ class FileContext:
         file = json_data["file"]
         workspace = json_data["workspace"]
         repository = json_data["repository"]
+        seen_sentences: set[Sentence] = set()
         avail_premises: list[Sentence] = []
         for sentence_data in json_data["context"]:
-            avail_premises.append(Sentence.from_json(sentence_data, sentence_db))
+            sentence = Sentence.from_json(sentence_data, sentence_db)
+            if sentence not in seen_sentences:
+                avail_premises.append(sentence)
+                seen_sentences.add(sentence)
         return cls(file, workspace, repository, avail_premises)
 
     @classmethod
@@ -506,19 +526,23 @@ class DatasetFile:
         }
 
     @classmethod
-    def load(cls, path: str, sentence_db: SentenceDB, metadata_only: bool = False) -> DatasetFile:
+    def load(
+        cls, path: str, sentence_db: SentenceDB, metadata_only: bool = False
+    ) -> DatasetFile:
         with open(path, "r") as fin:
             json_data = json.load(fin)
         return cls.from_json(json_data, sentence_db, metadata_only)
 
     @classmethod
-    def from_json(cls, json_data: Any, sentence_db: SentenceDB, metadata_only: bool = False) -> DatasetFile:
+    def from_json(
+        cls, json_data: Any, sentence_db: SentenceDB, metadata_only: bool = False
+    ) -> DatasetFile:
         if metadata_only:
             file_context = FileContext.empty_context_from_lines(
                 json_data["file_context"]
             )
         else:
-            file_context = FileContext.context_from_lines(json_data["file_context"])
+            file_context = FileContext.context_from_lines(json_data["file_context"], sentence_db)
 
         proofs = [Proof.from_json(p, sentence_db) for p in json_data["proofs"]]
         return cls(file_context, proofs)
@@ -573,18 +597,40 @@ class DatasetFile:
 
 def process_dp(orig_dp_loc: str, new_dp_loc: str, sentence_db_loc: str) -> None:
     sentence_db = SentenceDB.load(sentence_db_loc)
+    t1 = time.time()
     dp = DatasetFile.from_directory(orig_dp_loc, sentence_db)
+    t2 = time.time()
+    print("Load time: ", t2 - t1)
     dp.save(new_dp_loc, sentence_db, True)
+    t3 = time.time()
+    print("Save time: ", t3 - t2)
     sentence_db.close()
 
 
-def get_mp_args(orig_dp_dir: str, new_dp_dir: str, sentence_db_loc: str) -> list[tuple[str, str, str]]:
+def process_dps(orig_dp_dir: str, new_dp_dir: str, sentence_db_loc: str) -> None:
+    sentence_db = SentenceDB.load(sentence_db_loc)
+    for dp_name in os.listdir(orig_dp_dir):
+        old_loc = os.path.join(orig_dp_dir, dp_name)
+        new_loc = os.path.join(new_dp_dir, dp_name)
+        t1 = time.time()
+        dp = DatasetFile.from_directory(old_loc, sentence_db)
+        t2 = time.time()
+        print("Load time: ", t2 - t1)
+        dp.save(new_loc, sentence_db, True)
+        t3 = time.time()
+        print("Save time: ", t3 - t2)
+    sentence_db.close()
+
+
+def get_mp_args(
+    orig_dp_dir: str, new_dp_dir: str, sentence_db_loc: str
+) -> list[tuple[str, str, str]]:
     transform_args: list[tuple[str, str, str]] = []
     for dp_name in os.listdir(orig_dp_dir):
         old_loc = os.path.join(orig_dp_dir, dp_name)
         new_loc = os.path.join(new_dp_dir, dp_name)
         transform_args.append((old_loc, new_loc, sentence_db_loc))
-    return transform_args 
+    return transform_args
 
 
 if __name__ == "__main__":
@@ -592,25 +638,23 @@ if __name__ == "__main__":
         "Convert data-points into a more concise format for faster loading."
     )
     parser.add_argument(
-        "--num_procs", "-n", type=int, help="Number of processes to use"
-    )
-    parser.add_argument(
         "orig_dp_dir", help="Directory containing original verbose data points files."
     )
     parser.add_argument(
         "new_dp_dir", help="Directory to save new concise data points files."
     )
-    parser.add_argument(
-        "sentence_db_loc", help="Location of sentence database."
-    )
+    parser.add_argument("sentence_db_loc", help="Location of sentence database.")
 
     args = parser.parse_args(sys.argv[1:])
-    num_procs = 0
-    if args.num_procs is not None:
-        num_procs = args.num_procs
+    # num_procs = 0
+    # if args.num_procs is not None:
+    #     num_procs = args.num_procs
 
-    transformation_args = get_mp_args(args.orig_dp_dir, args.new_dp_dir, args.sentence_db_loc)
     if not os.path.exists(args.sentence_db_loc):
         SentenceDB.create(args.sentence_db_loc)
-    with mp.Pool(args.num_procs) as pool:
-        pool.starmap(process_dp, transformation_args)
+
+    process_dps(args.orig_dp_dir, args.new_dp_dir, args.sentence_db_loc)
+
+    # transformation_args = get_mp_args(args.orig_dp_dir, args.new_dp_dir, args.sentence_db_loc)
+    # with mp.Pool(args.num_procs) as pool:
+    #     pool.starmap(process_dp, transformation_args)
