@@ -26,7 +26,7 @@ from data_management.splits import (
     split_file_path,
 )
 from data_management.jsonl_utils import shuffle, deduplicate
-from data_management.pos_premise_bank import PosPremiseBank
+from data_management.sentence_db import SentenceDB
 from util.util import get_basic_logger
 from util.constants import PREMISE_DATA_CONF_NAME
 
@@ -40,28 +40,29 @@ class PremiseDataConfig:
         self,
         data_split: DataSplit,
         data_loc: str,
+        sentence_db_loc: str, 
         output_dataset_loc: str,
         num_negatives_per_positive: int,
         num_in_file_negatives_per_positive: int,
         context_format_type: type[ContextFormat],
         premise_format_type: type[PremiseFormat],
         premise_filter: PremiseFilter,
-        pos_premise_bank: Optional[PosPremiseBank],
     ) -> None:
         self.data_split = data_split
         self.data_loc = data_loc
+        self.sentence_db_loc = sentence_db_loc
         self.output_dataset_loc = output_dataset_loc
         self.num_negatives_per_positive = num_negatives_per_positive
         self.num_in_file_negatives_per_positive = num_in_file_negatives_per_positive
         self.context_format_type = context_format_type
         self.premise_format_type = premise_format_type
         self.premise_filter = premise_filter
-        self.pos_premise_bank = pos_premise_bank
 
     @classmethod
     def from_config(cls, config: Any) -> PremiseDataConfig:
         data_split = DataSplit.load(config["data_split"])
         data_loc = config["data_loc"]
+        sentence_db_loc = config["sentence_db_loc"]
         output_dataset_loc = config["output_dataset_loc"]
         num_negatives_per_positive = config["num_negatives_per_positive"]
         num_in_file_negatives_per_positive = config[
@@ -72,20 +73,16 @@ class PremiseDataConfig:
         premise_format_alias = config["premise_format_alias"]
         premise_format_type = PREMISE_ALIASES[premise_format_alias]
         premise_filter = PremiseFilter.from_json(config["premise_filter"])
-        if "pos_premise_bank_loc" in config:
-            pos_premise_bank = PosPremiseBank.load(config["pos_premise_bank_loc"])
-        else:
-            pos_premise_bank = None
         return cls(
             data_split,
             data_loc,
+            sentence_db_loc,
             output_dataset_loc,
             num_negatives_per_positive,
             num_in_file_negatives_per_positive,
             context_format_type,
             premise_format_type,
             premise_filter,
-            pos_premise_bank,
         )
 
 
@@ -95,8 +92,9 @@ def get_examples_from_file(
     premise_conf: PremiseDataConfig,
     q: Queue[Optional[PremiseTrainingExample]],
 ) -> None:
+    sentence_db = SentenceDB.load(premise_conf.sentence_db_loc)
     try:
-        file_obj = file_info.get_dp(premise_conf.data_loc)
+        file_obj = file_info.get_dp(premise_conf.data_loc, sentence_db)
     except FileNotFoundError:
         _logger.error(f"Could not find file: {file_info.file}")
         return
@@ -111,7 +109,6 @@ def get_examples_from_file(
                 premise_conf.context_format_type,
                 premise_conf.premise_format_type,
                 premise_conf.premise_filter,
-                premise_conf.pos_premise_bank,
                 split,
             )
             for example in step_examples:

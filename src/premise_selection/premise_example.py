@@ -8,7 +8,6 @@ from typeguard import typechecked
 
 from data_management.splits import Split
 from data_management.dataset_file import FocusedStep, Proof, DatasetFile
-from data_management.pos_premise_bank import PosPremiseBank
 from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
     PremiseFormat,
@@ -82,7 +81,6 @@ class PremiseTrainingExample:
         context_format: Type[ContextFormat],
         premise_format: Type[PremiseFormat],
         premise_filter: PremiseFilter,
-        pos_premise_bank: Optional[PosPremiseBank],
         split: Split,
     ) -> list[PremiseTrainingExample]:
         in_file_neg_prems: list[str] = []
@@ -96,12 +94,6 @@ class PremiseTrainingExample:
         for premise in filter_result.avail_premises:
             formatted_prem = premise_format.format(premise)
             if formatted_prem in formatted_pos_prems:
-                continue
-            if (
-                split == Split.TRAIN
-                and pos_premise_bank
-                and not pos_premise_bank.contains(premise)
-            ):
                 continue
             if premise.file_path == proof.theorem.term.file_path:
                 in_file_neg_prems.append(

@@ -1,5 +1,6 @@
 import os
 
+from data_management.sentence_db import SentenceDB
 from data_management.splits import FileInfo, Split
 from tactic_gen.lm_example import BasicFormatter
 from tactic_gen.n_step_sampler import OneStepSampler
@@ -57,6 +58,7 @@ class TestProofManager:
                 proof_point,
                 BasicFormatter(OneStepSampler(), False, None),
                 file_info,
+                self.sentence_db,
                 split,
                 data_loc,
             ) as pm:
@@ -82,6 +84,11 @@ class TestProofManager:
     @classmethod
     def setup_class(cls) -> None:
         cls.example_loc = get_fresh_path(".", "ex1.v")
+        sentence_db_loc = "./sentences.db"
+        if not os.path.exists(sentence_db_loc):
+            raise ValueError("Sentences db doesn't exists. Expected it to be at ./sentences.db")
+        cls.sentence_db = SentenceDB.load(sentence_db_loc)
+
         with open(cls.example_loc, "w") as fout:
             fout.write(example_text)
 

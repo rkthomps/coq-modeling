@@ -50,7 +50,8 @@ class LmDataset(Dataset):
         self.max_seq_len = max_seq_len
         with jsonlines.open(data_path) as fin:
             for i, obj in enumerate(fin):
-                print(f"\rLoading example: {i}", end="")
+                if i % 10000 == 0:
+                    print(f"\rLoading example: {i}", end="")
                 self.raw_examples.append(LmExample.from_json(obj))
                 if max_n_examples and len(self.raw_examples) >= max_n_examples:
                     break

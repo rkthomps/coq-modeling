@@ -2,6 +2,7 @@ import os
 import random
 from data_management.dataset_file import Proof, DatasetFile
 from data_management.splits import DATA_POINTS_NAME
+from data_management.sentence_db import SentenceDB
 from model_deployment.step_separator import separate_steps
 from util.util import get_basic_logger
 
@@ -40,6 +41,10 @@ class TestStepSep:
     def setup_class(cls) -> None:
         cls.max_num_proofs = 1000
         cls.proofs: list[Proof] = []
+        sentence_db_loc = "./sentences.db"
+        if not os.path.exists(sentence_db_loc):
+            raise ValueError(f"Could not find sentence db. Expected at {sentence_db_loc}")
+        sentence_db = SentenceDB.load(sentence_db_loc)
         if not os.path.exists(cls.RAW_DATA_LOC):
             raise FileNotFoundError(
                 f"Could not find {cls.RAW_DATA_LOC}. Perhaps you're not in the root project folder."
@@ -48,7 +53,7 @@ class TestStepSep:
         names = os.listdir(dp_loc)
         for dp_name in names:
             dp_obj_loc = os.path.join(dp_loc, dp_name)
-            dp_obj = DatasetFile.from_directory(dp_obj_loc)
+            dp_obj = DatasetFile.load(dp_obj_loc, sentence_db)
             for proof in dp_obj.proofs:
                 cls.proofs.append(proof)
 

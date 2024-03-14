@@ -15,6 +15,7 @@ from util.coqpyt_utils import (
     go_through_point,
 )
 from data_management import dataset_file
+from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import (
     DatasetFile,
     Proof,
@@ -205,6 +206,7 @@ class ProofManager:
         proof_point: int,
         lm_formatter: LmFormatter,
         file_info: FileInfo,
+        sentence_db: SentenceDB,
         split: Split,
         data_loc: str,
     ) -> None:
@@ -216,6 +218,7 @@ class ProofManager:
 
         self.proof_file = proof_file
         self.proof_point = proof_point
+        self.sentence_db = sentence_db
 
         self.file_info = file_info
         self.split = split
@@ -482,14 +485,14 @@ class ProofManager:
         last_proof_data = get_last_proof_data_points(last_proof)
         context_list = list(self.proof_file.context.terms.values())
         context_data = get_context(context_list)
-        proofs = DatasetFile.proofs_from_jsonl(last_proof_data)
+        proofs = DatasetFile.proofs_from_jsonl(last_proof_data, self.sentence_db)
         file_context_data = {
             "file": proc_file_path(last_proof.file_path),
             "workspace": proc_file_path(last_proof.file_path),
             "repository": "junkrepo",
             "context": context_data,
         }
-        file_context = FileContext.from_json(file_context_data)
+        file_context = FileContext.from_verbose_json(file_context_data, self.sentence_db)
         self.proof_file.exec(-1)  # Return to before admitted (Point to last step)
         return DatasetFile(file_context, proofs)
 

@@ -12,6 +12,7 @@ from threading import Thread
 from typeguard import typechecked
 from yaml import load, Loader
 
+from data_management.sentence_db import SentenceDB
 from data_management.splits import FileInfo, Split
 from model_deployment.searcher import (
     SearchTreeManager,
@@ -114,6 +115,7 @@ class Evaluator:
         self,
         results_loc: str,
         eval_set: EvalSet,
+        sentence_db: SentenceDB,
         timeout: int,
         branching_factor: int,
         max_leaf_expansions: int,
@@ -123,6 +125,7 @@ class Evaluator:
     ) -> None:
         self.results_loc = results_loc
         self.eval_set = eval_set
+        self.sentence_db = sentence_db
         self.timeout = timeout
         self.branching_factor = branching_factor
         self.max_leaf_expansions = max_leaf_expansions
@@ -134,6 +137,7 @@ class Evaluator:
     def from_conf(cls, conf: Any) -> Evaluator:
         results_loc = conf["results_loc"]
         eval_set = eval_set_from_conf(conf["eval_set"])
+        sentence_db = SentenceDB.load(conf["sentence_db"])
         timeout = conf["timeout"]
         branching_factor = conf["branching_factor"]
         max_leaf_expansions = conf["max_leaf_expansions"]
@@ -142,6 +146,7 @@ class Evaluator:
         return cls(
             results_loc,
             eval_set,
+            sentence_db,
             timeout,
             branching_factor,
             max_leaf_expansions,
@@ -163,6 +168,7 @@ class Evaluator:
             proof.idx,
             self.model_wrapper.formatter,
             file,
+            self.sentence_db,
             split,
             self.eval_set.data_loc,
         ) as proof_manager:

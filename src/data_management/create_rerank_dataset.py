@@ -19,6 +19,7 @@ from data_management.samples import (
     load_sample,
 )
 from data_management.splits import DataSplit, Split, FileInfo, split_file_path
+from data_management.sentence_db import SentenceDB
 from data_management.jsonl_utils import shuffle, deduplicate
 from premise_selection.rerank_example import RerankExample
 from premise_selection.rerank_formatter import RerankFormatter
@@ -36,12 +37,14 @@ class ReRankExampleConfig:
         train_sample: ExampleSample,
         val_sample: ExampleSample,
         test_sample: ExampleSample,
+        sentence_db_loc: str,
         output_dataset_loc: str,
         rerank_formatter: RerankFormatter,
     ) -> None:
         self.train_sample = train_sample
         self.val_sample = val_sample
         self.test_sample = test_sample
+        self.sentence_db_loc = sentence_db_loc
         self.output_dataset_loc = output_dataset_loc
         self.rerank_formatter = rerank_formatter
 
@@ -53,12 +56,14 @@ class ReRankExampleConfig:
         val_sample = load_sample(val_sample_loc)
         test_sample_loc = config["test_sample_loc"]
         test_sample = load_sample(test_sample_loc)
+        sentence_db_loc = config["sentence_db_loc"]
         output_dataset_loc = config["output_dataset_loc"]
         rerank_formatter = RerankFormatter.from_conf(config["rerank_formatter"])
         return cls(
             train_sample,
             val_sample,
             test_sample,
+            sentence_db_loc,
             output_dataset_loc,
             rerank_formatter,
         )
@@ -89,13 +94,15 @@ def examples_to_queue(
     example_sample: ExampleSample,
     rerank_formatter: RerankFormatter,
     file_info: FileInfo,
+    sentence_db_loc: str,
     selected_steps: SelectedSteps,
     device_idx: int,
     q: Queue[Optional[RerankExample]],
 ) -> None:
     cuda_str = f"cuda:{device_idx}"
     rerank_formatter.move_to(cuda_str)
-    dp_obj = file_info.get_dp(example_sample.data_loc)
+    sentence_db = SentenceDB.load(sentence_db_loc)
+    dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
     match selected_steps:
         case AllSteps():
             for proof in dp_obj.proofs:
