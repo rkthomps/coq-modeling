@@ -2,11 +2,12 @@ import os
 import pdb
 
 from data_management.splits import DataSplit, Project, FileInfo
+from data_management.sentence_db import SentenceDB 
 
 
 class TestSplits:
     def test_partition_mini_dataset(self) -> None:
-        ds = DataSplit.create(self.data_path, time_sorted=True)
+        ds = DataSplit.create(self.data_path, self.sentence_db, time_sorted=True)
         file_info1 = FileInfo(
             "yalhessi-verified-verifier-BinaryLattice.v",
             "repos/yalhessi-verified-verifier/BinaryLattice.v",
@@ -36,6 +37,8 @@ class TestSplits:
 
     @classmethod
     def setup_class(cls) -> None:
+        sentence_db_loc = "./sentences.db"
+        cls.sentence_db = SentenceDB.load(sentence_db_loc)
         cls.data_path = os.path.join("test", "test_files", "coq-mini-dataset")
         if not os.path.exists(cls.data_path):
             raise FileNotFoundError(

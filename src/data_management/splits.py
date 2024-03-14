@@ -32,6 +32,7 @@ from data_management.dataset_file import (
     FILE_CONTEXT_NAME,
     Proof,
 )
+from data_management.sentence_db import SentenceDB
 
 from coqpyt.coq.structs import TermType
 from util.util import get_basic_logger
@@ -81,19 +82,19 @@ class FileInfo:
         except:
             return INVALID_DATE
 
-    def get_dp(self, data_loc: str) -> DatasetFile:
+    def get_dp(self, data_loc: str, sentence_db: SentenceDB) -> DatasetFile:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
-        return DatasetFile.load(dp_loc)
+        return DatasetFile.load(dp_loc, sentence_db)
 
-    def get_proofs(self, data_loc: str) -> list[Proof]:
+    def get_proofs(self, data_loc: str, sentence_db: SentenceDB) -> list[Proof]:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
-        dset_file = DatasetFile.load(dp_loc, metadata_only=True)
+        dset_file = DatasetFile.load(dp_loc, sentence_db, metadata_only=True)
         return dset_file.proofs
 
     @functools.cache
-    def get_theorems(self, data_loc: str) -> set[str]:
+    def get_theorems(self, data_loc: str, sentence_db: SentenceDB) -> set[str]:
         thms: set[str] = set()
-        for proof in self.get_proofs(data_loc):
+        for proof in self.get_proofs(data_loc, sentence_db):
             if proof.theorem.term.sentence_type == TermType.DEFINITION:
                 # We don't care about examples
                 continue
@@ -128,14 +129,15 @@ class FileInfo:
 
 
 class ThmMap:
-    def __init__(self) -> None:
+    def __init__(self, sentence_db: SentenceDB) -> None:
         self.thm_map: dict[str, tuple[FileInfo, set[str]]] = {}
+        self.sentence_db = sentence_db
 
     def lookup(self, data_loc: str, dp_name: str) -> tuple[FileInfo, set[str]]:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, dp_name)
         if dp_loc in self.thm_map:
             return self.thm_map[dp_loc]
-        dp_obj = DatasetFile.load(dp_loc, metadata_only=True)
+        dp_obj = DatasetFile.load(dp_loc, self.sentence_db, metadata_only=True)
         file_info = FileInfo(
             dp_name,
             dp_obj.file_context.file,
@@ -422,11 +424,6 @@ class DataSplit:
         return cls.from_json(json_data)
 
     @staticmethod
-    def __get_psuedo_context(dp_loc: str) -> FileContext:
-        dp_obj = DatasetFile.load(dp_loc, metadata_only=True)
-        return dp_obj.file_context
-
-    @staticmethod
     def __strip_data_prefix(path: str, prefix: str) -> str:
         assert path.startswith(prefix)
         return os.path.relpath(path, prefix)
@@ -524,8 +521,8 @@ class DataSplit:
         return cls([], [], [])
 
     @classmethod
-    def create(cls, data_loc: str, time_sorted: bool) -> DataSplit:
-        thm_map = ThmMap()
+    def create(cls, data_loc: str, sentence_db: SentenceDB, time_sorted: bool) -> DataSplit:
+        thm_map = ThmMap(sentence_db)
         ordered_project_list = cls.__get_ordered_project_list(data_loc, time_sorted, thm_map)
         data_split = cls.__assign_projects(data_loc, ordered_project_list, thm_map)
         data_points_loc = os.path.join(data_loc, DATA_POINTS_NAME)
@@ -540,8 +537,8 @@ class DataSplit:
         return data_split
 
     @classmethod
-    def create_from_list(cls, data_loc: str, eval_projects: EvalProjects) -> DataSplit:
-        thm_map = ThmMap()
+    def create_from_list(cls, data_loc: str, sentence_db: SentenceDB, eval_projects: EvalProjects) -> DataSplit:
+        thm_map = ThmMap(sentence_db)
         test_thms: set[str] = set()
         test_projects = eval_projects.get_testing_projects(data_loc, thm_map)
 
@@ -595,6 +592,7 @@ class DataSplit:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Create a train/val/test split.")
     parser.add_argument("data_loc", help="Directory above 'repos' and 'data_points'.")
+    parser.add_argument("sentence_db", help="Path to sentence database.")
     parser.add_argument("save_loc", help="Location to save the split.")
     parser.add_argument(
         "eval_projects_config",
@@ -613,9 +611,10 @@ if __name__ == "__main__":
     if os.path.exists(args.save_loc):
         raise ValueError(f"{args.save_loc} exists.")
 
+    sentence_db = SentenceDB.load(args.sentence_db)
     with open(args.eval_projects_config, "r") as fin:
         eval_config = yaml.load(fin, Loader=yaml.Loader)
 
     eval_projects = EvalProjects.from_conf(eval_config)
-    data_split = DataSplit.create_from_list(args.data_loc, eval_projects)
+    data_split = DataSplit.create_from_list(args.data_loc, sentence_db, eval_projects)
     data_split.save(args.save_loc)

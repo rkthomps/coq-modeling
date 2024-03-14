@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from typeguard import typechecked
 
+from data_management.sentence_db import SentenceDB
 from data_management.splits import DataSplit, Split, DATA_POINTS_NAME
 from data_management.dataset_file import DatasetFile, Sentence, data_shape_expected
 from premise_selection.model import PremiseRetriever
@@ -114,11 +115,13 @@ class Evaluator:
         self,
         model_wrapper: PremiseModelWrapper,
         data_loc: str,
+        sentence_db: SentenceDB,
         data_split: DataSplit,
         split: Split,
     ) -> None:
         self.model_wrapper = model_wrapper
         self.data_loc = data_loc
+        self.sentence_db = sentence_db
         self.data_split = data_split
         self.split = split
 
@@ -136,17 +139,13 @@ class Evaluator:
         eval_results: list[EvalResult] = []
         for file_info in tqdm(self.data_split.get_file_list(self.split)):
             file_loc = os.path.join(self.data_loc, DATA_POINTS_NAME, file_info.dp_name)
-            try:
-                parsed_dataset_file = DatasetFile.from_directory(file_loc)
-            except FileNotFoundError:
-                _logger.warning(f"Could not find file: {file_info.dp_name}")
-                continue
-            for proof in parsed_dataset_file.proofs:
+            dset_file = file_info.get_dp(self.data_loc, self.sentence_db)
+            for proof in dset_file.proofs:
                 for step in proof.steps:
                     num_steps += 1
                     filter_result = (
                         self.model_wrapper.premise_filter.get_pos_and_avail_premises(
-                            step, proof, parsed_dataset_file
+                            step, proof, dset_file
                         )
                     )
                     num_positive_premises = len(filter_result.pos_premises)
@@ -190,6 +189,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("checkpoint_loc", help="Path to model checkpoint to evaluate.")
     parser.add_argument("data_loc", help="Path to dataset.")
+    parser.add_argument("sentence_db_loc", help="Path to sentence db")
     parser.add_argument("data_split_loc", help="Path to data split")
     parser.add_argument("save_loc", help="Where to save eval results.")
 
@@ -203,7 +203,10 @@ if __name__ == "__main__":
         model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
 
     move_prem_wrapper_to(model_wrapper, "cuda")
+    sentence_db = SentenceDB.load(args.sentence_db_loc)
     data_split = DataSplit.load(args.data_split_loc)
 
-    evaluator = Evaluator(model_wrapper, args.data_loc, data_split, Split.VAL)
+    evaluator = Evaluator(
+        model_wrapper, args.data_loc, sentence_db, data_split, Split.VAL
+    )
     evaluator.run_and_save_evaluation(args.save_loc)

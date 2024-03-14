@@ -19,6 +19,7 @@ from data_management.splits import (
     Split,
     split_file_path,
 )
+from data_management.sentence_db import SentenceDB
 from data_management.samples import (
     ExampleSample,
     load_sample,
@@ -42,12 +43,14 @@ class LmExampleConfig:
         train_sample: ExampleSample,
         val_sample: ExampleSample,
         test_sample: ExampleSample,
+        sentence_db_loc: str,
         output_dataset_loc: str,
         lm_formatter: LmFormatter,
     ) -> None:
         self.train_sample = train_sample
         self.val_sample = val_sample
         self.test_sample = test_sample
+        self.sentence_db_loc = sentence_db_loc
         self.output_dataset_loc = output_dataset_loc
         self.lm_formatter = lm_formatter
 
@@ -59,10 +62,11 @@ class LmExampleConfig:
         val_sample = load_sample(val_sample_loc)
         test_sample_loc = config["test_sample_loc"]
         test_sample = load_sample(test_sample_loc)
+        sentence_db_loc = config["sentence_db_loc"]
         output_dataset_loc = config["output_dataset_loc"]
         lm_formatter = fmt_from_conf(config["lm_formatter"])
         return cls(
-            train_sample, val_sample, test_sample, output_dataset_loc, lm_formatter
+            train_sample, val_sample, test_sample, sentence_db_loc, output_dataset_loc, lm_formatter
         )
 
     @classmethod
@@ -91,12 +95,14 @@ def examples_to_queue(
     example_sample: ExampleSample,
     lm_formatter: LmFormatter,
     file_info: FileInfo,
+    sentence_db_loc: str,
     selected_steps: SelectedSteps,
     device_idx: int,
     q: Queue[Optional[LmExample]],
 ) -> None:
     cuda_str = f"cuda:{device_idx}"
     move_fmt_to(lm_formatter, cuda_str)
+    sentence_db = SentenceDB.load(sentence_db_loc) 
     dp_obj = file_info.get_dp(example_sample.data_loc)
     match selected_steps:
         case AllSteps():
@@ -134,13 +140,14 @@ def examples_to_queue(
 
 
 __ArgTuple = tuple[
-    ExampleSample, LmFormatter, FileInfo, SelectedSteps, int, Queue[Optional[LmExample]]
+    ExampleSample, LmFormatter, FileInfo, str, SelectedSteps, int, Queue[Optional[LmExample]]
 ]
 
 
 def __get_split_transformation_args(
     example_sampler: ExampleSample,
     formatter: LmFormatter,
+    sentence_db_loc: str,
     q: Queue[LmExample | None],
 ) -> list[__ArgTuple]:
     num_devices = torch.cuda.device_count()
@@ -148,7 +155,7 @@ def __get_split_transformation_args(
     for i, (file, selected_steps) in enumerate(example_sampler.step_generator()):
         device_idx = i % num_devices
         arg_list.append(
-            (example_sampler, formatter, file, selected_steps, device_idx, q)
+            (example_sampler, formatter, file, sentence_db_loc, selected_steps, device_idx, q)
         )
     return arg_list
 
@@ -161,15 +168,15 @@ def get_split_transformation_args(
     match split:
         case Split.TRAIN:
             return __get_split_transformation_args(
-                example_config.train_sample, example_config.lm_formatter, q
+                example_config.train_sample, example_config.lm_formatter, example_config.sentence_db_loc, q
             )
         case Split.VAL:
             return __get_split_transformation_args(
-                example_config.val_sample, example_config.lm_formatter, q
+                example_config.val_sample, example_config.lm_formatter, example_config.sentence_db_loc, q
             )
         case Split.TEST:
             return __get_split_transformation_args(
-                example_config.test_sample, example_config.lm_formatter, q
+                example_config.test_sample, example_config.lm_formatter, example_config.sentence_db_loc, q
             )
 
 
