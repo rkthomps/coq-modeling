@@ -15,6 +15,7 @@ proof-goals
 step-evals
 eval_examples
 unimath-step-eval
+vector-dbs
 
 # Sentence database
 sentences.db

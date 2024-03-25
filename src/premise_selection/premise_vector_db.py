@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import ipdb
 import hashlib
 import json
 import argparse
@@ -9,8 +10,11 @@ import torch
 from transformers import GPT2Tokenizer
 
 from data_management.sentence_db import SentenceDB, DBSentence
-from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
+from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper, move_prem_wrapper_to
 from premise_selection.datamodule import tokenize_strings
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__) 
 
 
 class PremiseVectorDB:
@@ -74,7 +78,10 @@ class PremiseVectorDB:
         start = page_num * page_size
         end = min(sdb_size, page_num * page_size + page_size)
         for i in range(start, end):
-            db_sentences.append(sdb.retrieve(i))
+            if i == 0:
+                db_sentences.append(DBSentence("Dummy sentence.", "", "", "", 0)) # IDs start at 1
+            else:
+                db_sentences.append(sdb.retrieve(i + 1))
         return db_sentences
 
     @classmethod
@@ -87,7 +94,7 @@ class PremiseVectorDB:
             cur_batch.append(s)
             if len(cur_batch) % batch_size == 0:
                 batches.append(cur_batch)
-            cur_batch = []
+                cur_batch = []
         if 0 < len(cur_batch):
             batches.append(cur_batch)
         return batches
@@ -104,14 +111,15 @@ class PremiseVectorDB:
         local_model_wrapper = LocalPremiseModelWrapper.from_checkpoint(
             select_checkpoint
         )
+        move_prem_wrapper_to(local_model_wrapper, "cuda")
         sdb = SentenceDB.load(sentence_db_loc)
         sdb_hash = cls.__hash_sdb(sentence_db_loc)
         sdb_size = sdb.size()
         num_written = 0
         cur_page = 0
-        if os.path.exists(sentence_db_loc):
-            raise FileExistsError(f"{sentence_db_loc}")
-        os.makedirs(sentence_db_loc)
+        if os.path.exists(db_loc):
+            raise FileExistsError(f"{db_loc}")
+        os.makedirs(db_loc)
         while num_written < sdb_size:
             sentences_to_write = cls.load_page_sentences(
                 cur_page, page_size, sdb, sdb_size
@@ -130,12 +138,14 @@ class PremiseVectorDB:
                         batch_inputs.input_ids, batch_inputs.attention_mask
                     )
                 batch_embs.append(batch_emb)
+            
             page_embs = torch.cat(batch_embs).to("cpu")
             page_loc = os.path.join(db_loc, f"{cur_page}.pt")
             torch.save(page_embs, page_loc)
             assert len(page_embs) == len(sentence_texts)
             num_written += len(sentence_texts)
             cur_page += 1
+            _logger.info(f"Processed {num_written} out of {sdb_size}")
         return PremiseVectorDB(db_loc, page_size, local_model_wrapper, sdb, sdb_hash)
 
 
@@ -143,13 +153,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("db_loc", help="Where to put the vector db.")
     parser.add_argument("page_size", type=int, help="Size of a page in the db.")
-    parser.add_argument("batch_size", help="Batch size to use when making the db.")
+    parser.add_argument("batch_size", type=int, help="Batch size to use when making the db.")
     parser.add_argument(
         "select_checkpoint", help="Checkpoint to use for the select model."
     )
     parser.add_argument("sentence_db_loc", help="Location of the sentence database")
 
+
     args = parser.parse_args()
+
     pdb = PremiseVectorDB.create(
         args.db_loc,
         args.page_size,
