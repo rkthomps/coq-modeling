@@ -1,7 +1,10 @@
 from __future__ import annotations
+from typing import Optional
 
 import os
+import math
 import ipdb
+import functools
 import hashlib
 import json
 import argparse
@@ -21,6 +24,12 @@ from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__) 
 
+@functools.lru_cache(10)
+def load_page(db_loc: str, page_idx: int) -> Optional[torch.Tensor]:
+    page_loc = os.path.join(db_loc, f"{page_idx}.pt")
+    if not os.path.exists(page_loc):
+        return None
+    return torch.load(page_loc)
 
 class PremiseVectorDB:
     hash_cache: dict[str, str] = {}
@@ -31,14 +40,20 @@ class PremiseVectorDB:
         db_loc: str,
         page_size: int,
         retriever_checkpoint_loc: str,
-        sdb: SentenceDB,
         sdb_hash: str,
     ):
         self.db_loc = db_loc
         self.page_size = page_size
         self.retriever_checkpoint_loc = retriever_checkpoint_loc
-        self.sdb = sdb
         self.sdb_hash = sdb_hash
+    
+    def get(self, idx: int) -> Optional[torch.Tensor]: 
+        page = idx // self.page_size 
+        page_tensor = load_page(self.db_loc, page)
+        if page_tensor is not None:
+            return page_tensor[idx % self.page_size]
+        return None
+
 
     @classmethod
     def __hash_sdb(cls, sentence_db_loc: str) -> str:
@@ -64,14 +79,11 @@ class PremiseVectorDB:
 
     @classmethod
     def load(
-        cls, db_loc: str, sentence_db_loc: str
+        cls, db_loc: str
     ) -> PremiseVectorDB:
-        sdb = SentenceDB.load(sentence_db_loc)
         with open(os.path.join(db_loc, cls.METADATA_LOC)) as fin:
             metadata = json.load(fin)
-        sdb_hash = cls.__hash_sdb(sentence_db_loc)
-        assert sdb_hash == metadata["sdb_hash"]
-        return cls(db_loc, metadata["page_size"], metadata["retriever_checkpoint_loc"], sdb, sdb_hash)
+        return cls(db_loc, metadata["page_size"], metadata["retriever_checkpoint_loc"], metadata["sdb_hash"])
 
     @classmethod
     def load_page_sentences(
@@ -82,9 +94,9 @@ class PremiseVectorDB:
         end = min(sdb_size + 1, page_num * page_size + page_size)
         for i in range(start, end):
             if i == 0:
-                db_sentences.append(DBSentence("Dummy sentence.", "", "", "", 0)) # IDs start at 1
+                db_sentences.append(DBSentence("Dummy sentence.", "", "[]", "TermType.LEMMA", 0)) # IDs start at 1
             else:
-                db_sentences.append(sdb.retrieve(i + 1))
+                db_sentences.append(sdb.retrieve(i))
         return db_sentences
 
     @classmethod
@@ -138,7 +150,7 @@ class PremiseVectorDB:
         if os.path.exists(db_loc):
             raise FileExistsError(f"{db_loc}")
         os.makedirs(db_loc)
-        while num_written < sdb_size:
+        while num_written < sdb_size + 1:
             sentences_to_write = cls.load_page_sentences(
                 cur_page, page_size, sdb, sdb_size
             )

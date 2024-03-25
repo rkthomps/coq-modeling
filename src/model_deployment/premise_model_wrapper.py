@@ -23,6 +23,7 @@ from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
     CONTEXT_ALIASES,
 )
+from premise_selection.premise_vector_db import PremiseVectorDB 
 from premise_selection.model import PremiseRetriever
 from premise_selection.premise_filter import PremiseFilter
 from premise_selection.rerank_model import PremiseReranker
@@ -198,8 +199,9 @@ class BM25Okapi:
         return doc_freqs
 
     def get_premise_scores_from_strings(
-        self, context_str: str, premise_strs: list[str]
+        self, context_str: str, premises: list[Sentence]
     ) -> list[float]:
+        premise_strs = [self.premise_format.format(p) for p in premises]
         docs = [self.tokenizer(p) for p in premise_strs]
         query = self.tokenizer(context_str)
         doc_freqs = self.compute_doc_freqs(docs)
@@ -283,8 +285,9 @@ class TFIdf:
         return tfs
 
     def get_premise_scores_from_strings(
-        self, context_str: str, premise_strs: list[str]
+        self, context_str: str, premises: list[Sentence]
     ) -> list[float]:
+        premise_strs = [self.premise_format.format(p) for p in premises]
         docs = [self.tokenizer(p) for p in premise_strs]
         query = self.tokenizer(context_str)
         idfs = self.compute_idfs(docs)
@@ -319,6 +322,7 @@ class LocalPremiseModelWrapper:
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
         checkpoint_loc: str,
+        vector_db: Optional[PremiseVectorDB],
     ) -> None:
         self.retriever = retriever
         self.max_seq_len = max_seq_len
@@ -328,6 +332,7 @@ class LocalPremiseModelWrapper:
         self.premise_filter = premise_filter
         self.checkpoint_loc = checkpoint_loc
         self.encoding_cache = RoundRobinCache(self.MAX_CACHE_SIZE)
+        self.vector_db = vector_db
         self.hits = 0
         self.misses = 0
 
@@ -335,17 +340,22 @@ class LocalPremiseModelWrapper:
         inputs = tokenize_strings(self.tokenizer, [s], self.max_seq_len)
         return inputs
 
-    def encode_premise(self, premise: str) -> torch.Tensor:
-        if self.encoding_cache.contains(premise):
+    def encode_premise(self, premise: Sentence) -> torch.Tensor:
+        if self.vector_db is not None and premise.db_idx is not None:
+            embedding = self.vector_db.get(premise.db_idx)
+            if embedding is not None:
+                return embedding
+        premise_str = self.premise_format.format(premise)
+        if self.encoding_cache.contains(premise_str):
             self.hits += 1
-            return self.encoding_cache.get(premise)
+            return self.encoding_cache.get(premise_str)
         self.misses += 1
-        inputs = self.get_input(premise)
+        inputs = self.get_input(premise_str)
         with torch.no_grad():
             encoding = self.retriever.encode_premise(
                 inputs.input_ids, inputs.attention_mask
             ).to("cpu")
-        self.encoding_cache.add(premise, encoding)
+        self.encoding_cache.add(premise_str, encoding)
         return encoding
 
     def reset_hit_rate(self) -> None:
@@ -358,9 +368,9 @@ class LocalPremiseModelWrapper:
         return self.hits / (self.hits + self.misses)
 
     def get_premise_scores_from_strings(
-        self, context_str: str, premise_strs: list[str]
+        self, context_str: str, premises: list[Sentence],
     ) -> list[float]:
-        if len(premise_strs) == 0:
+        if len(premises) == 0:
             return []
         device = self.retriever.device
         context_inputs = self.get_input(context_str)
@@ -369,8 +379,8 @@ class LocalPremiseModelWrapper:
                 context_inputs.input_ids, context_inputs.attention_mask
             ).to(device)
         similarities: list[float] = []
-        for premise_str in premise_strs:
-            encoded_premise = self.encode_premise(premise_str).to(device)
+        for premise in premises:
+            encoded_premise = self.encode_premise(premise).to(device)
             similarities.append(
                 float((context_encoding @ encoded_premise.t()).squeeze())
             )
@@ -390,7 +400,7 @@ class LocalPremiseModelWrapper:
         return cls.from_checkpoint(checkpoint_loc)
 
     @classmethod
-    def from_checkpoint(cls, checkpoint_loc: str) -> LocalPremiseModelWrapper:
+    def from_checkpoint(cls, checkpoint_loc: str, vector_db_loc: Optional[str]=None) -> LocalPremiseModelWrapper:
         model_loc = os.path.dirname(checkpoint_loc)
         data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
         with open(data_preparation_conf, "r") as fin:
@@ -406,6 +416,10 @@ class LocalPremiseModelWrapper:
         context_format = CONTEXT_ALIASES[context_format_alias]
         premise_filter = PremiseFilter.from_json(premise_conf["premise_filter"])
         retriever = PremiseRetriever.from_pretrained(checkpoint_loc)
+        if vector_db_loc is not None:
+            vector_db = PremiseVectorDB.load(vector_db_loc)
+        else:
+            vector_db = None
         return cls(
             retriever,
             max_seq_len,
@@ -414,11 +428,17 @@ class LocalPremiseModelWrapper:
             premise_format,
             premise_filter,
             checkpoint_loc,
+            vector_db,
         )
 
     @classmethod
     def from_conf(cls, conf: Any) -> LocalPremiseModelWrapper:
-        return cls.from_checkpoint(conf["checkpoint_loc"])
+        checkpoint_loc = conf["checkpoint_loc"]
+        if "vector_db_loc" in conf:
+            vector_db_loc = conf["vector_db_loc"]
+        else:
+            vector_db_loc = None
+        return cls.from_checkpoint(checkpoint_loc, vector_db_loc)
 
 
 @typechecked
@@ -438,8 +458,9 @@ class PremiseServerModelWrapper:
         self.url = url
 
     def get_premise_scores_from_strings(
-        self, context_str: str, premise_strs: list[str]
+        self, context_str: str, premises: list[Sentence]
     ) -> list[float]:
+        premise_strs = [self.premise_format.format(p) for p in premises]
         request = PremiseRequest(context_str, premise_strs)
         premise_endpoint = self.url.rstrip("/") + PREMISE_ENDPOINT
         score_response = requests.post(premise_endpoint, request.to_request_data())
@@ -483,9 +504,8 @@ def get_premise_scores(
     premises: list[Sentence],
 ) -> list[float]:
     formatted_context = premise_model.context_format.format(step, proof)
-    formatted_premises = [premise_model.premise_format.format(p) for p in premises]
     return premise_model.get_premise_scores_from_strings(
-        formatted_context, formatted_premises
+        formatted_context, premises 
     )
 
 
