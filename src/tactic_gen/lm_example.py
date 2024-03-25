@@ -110,33 +110,24 @@ def allocate_tokens(
     return tokenizer.decode(to_add, skip_special_tokens=True), len(to_add)
 
 
-class ProofRetrievalFormatter:
-    ALIAS = "proof-ret"
+class ProofRetrievalFidFormatter:
+    ALIAS = "proof-ret-fid"
 
     def __init__(
         self,
         proof_bank_loc: str,
-        tokenizer: CodeLlamaTokenizer,
-        state_num_tokens: int,
-        script_num_tokens: int,
-        statement_num_tokens: int,
-        ret_proof_state_tokens: int,
-        ret_proof_script_tokens: int,
+        n_proofs: int,
         n_step_sampler: NStepSampler,
         direct_num_steps: bool,
         conf: Any,
     ) -> None:
         self.proof_bank_loc = proof_bank_loc
+        self.n_proofs = n_proofs
         self.__proof_bank: dict[str, FileGoals] = {}
-        self.tokenizer = tokenizer
-        self.state_num_tokens = state_num_tokens
-        self.script_num_tokens = script_num_tokens
-        self.statement_num_tokens = statement_num_tokens
-        self.ret_proof_state_tokens = ret_proof_state_tokens
-        self.ret_proof_script_tokens = ret_proof_script_tokens
         self.n_step_sampler = n_step_sampler
         self.direct_num_steps = direct_num_steps
         self.conf = conf
+        self.basic_formatter = BasicFormatter(self.n_step_sampler, self.direct_num_steps, conf)
 
     def __get_file_goals(self, key: str) -> Optional[FileGoals]:
         if key in self.__proof_bank:
@@ -196,7 +187,7 @@ class ProofRetrievalFormatter:
                 candidates.append(record)
         return candidates
 
-    def get_similar_proof(
+    def get_similar_proofs(
         self,
         step_idx: int,
         proof: Proof,
@@ -206,20 +197,20 @@ class ProofRetrievalFormatter:
         cutoff_idx: Optional[int] = None,
         timeout: int = 10,
         max_depth: int = 3,
-    ) -> Optional[tuple[str, list[str]]]:
+    ) -> list[GoalRecord]:
         file_goals = self.__get_file_goals(file_info.dp_name)
         if key_record is None and cutoff_idx is None:
             if file_goals is None:
-                return None
+                return [] 
             record_result = self.get_record_and_cutoff_index(
                 step_idx, proof, file_goals
             )
             if record_result is None:
-                return None
+                return [] 
             record_idx, cutoff_idx = record_result
             key_record = file_goals.records[record_idx]
         elif key_record is None or cutoff_idx is None:
-            return None
+            return [] 
 
         in_file_candidates = self.get_in_file_candidates(cutoff_idx, file_goals)
 
@@ -232,8 +223,8 @@ class ProofRetrievalFormatter:
             heapq.heappush(all_candidates, (heuristic_val, time.time(), record))
 
         heuristic_idx = 0
-        global_best_candidate: Optional[tuple[int, GoalRecord]] = None
-        global_best_dist: Optional[int] = None
+        worst_candidate_dist: Optional[int] = None
+        global_best_candidates: list[tuple[int, GoalRecord]] = []
         start_time = time.time()
         while 0 < len(all_candidates):
             cur_time = time.time()
@@ -244,30 +235,29 @@ class ProofRetrievalFormatter:
             _, _, cur_best_record = heapq.heappop(all_candidates)
             cur_best_distance = key_record.term.distance(
                 cur_best_record.term,
-                abort_at_distance=global_best_dist,
+                abort_at_distance=worst_candidate_dist,
                 heuristic_depth=max_depth,
             )
 
-            if global_best_candidate is not None:
-                global_best_dist, _ = global_best_candidate
-                if cur_best_distance < global_best_dist:
-                    global_best_candidate = (cur_best_distance, cur_best_record)
-            else:
-                global_best_candidate = (cur_best_distance, cur_best_record)
+            heapq.heappush(global_best_candidates, (-1 * cur_best_distance, cur_best_record))
+            worst_candidate_dist_neg, _ = global_best_candidates[0]
+            worst_candidate_dist = -1 * worst_candidate_dist_neg
 
-            global_best_dist, _ = global_best_candidate
+            if self.n_proofs < len(global_best_candidates):
+                heapq.heappop(global_best_candidates)
+
             next_round_candidates: list[tuple[int, float, GoalRecord]] = []
             while 0 < len(all_candidates):
                 focused_candidate = heapq.heappop(all_candidates)
                 focused_dist, _, focused_record = focused_candidate
-                if global_best_dist <= focused_dist:
+                if worst_candidate_dist <= focused_dist:
                     break
                 heuristic_val = key_record.term.distance(
                     focused_record.term,
-                    abort_at_distance=global_best_dist,
+                    abort_at_distance=worst_candidate_dist,
                     heuristic_depth=heuristic_idx,
                 )
-                if heuristic_val < global_best_dist:
+                if heuristic_val < worst_candidate_dist:
                     heapq.heappush(
                         next_round_candidates,
                         (heuristic_val, time.time(), focused_record),
@@ -275,10 +265,72 @@ class ProofRetrievalFormatter:
             all_candidates = next_round_candidates
             heuristic_idx += 1
 
-        if global_best_candidate is not None:
-            _, global_best_record = global_best_candidate
-            return global_best_record.pretty_goal, global_best_record.proof
-        return None
+        sorted_candidates = sorted(global_best_candidates, key=lambda x: -1 * x[0])
+        return [record for _, record in sorted_candidates]
+
+    def example_from_step(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        key_record: Optional[GoalRecord] = None,
+        cutoff_idx: Optional[int] = None,
+        **kwargs: Any,
+    ) -> LmExample:
+        similar_proof_result = self.get_similar_proofs(
+            step_idx, proof, dp_obj, file_info, key_record, cutoff_idx
+        )
+        passages: list[str] = []
+        for record in similar_proof_result:
+            passages.append(f"{record.pretty_goal}{PROOF_RET_SEP}{''.join(record.proof)}")
+
+        basic_example = self.basic_formatter.example_from_step(step_idx, proof)
+        return LmExample(basic_example.input, basic_example.output, passages)
+
+    @classmethod
+    def from_conf(cls, conf: Any) -> ProofRetrievalFidFormatter:
+        proof_bank_loc = conf["proof_bank_loc"]
+        n_proofs = conf["n_proofs"]
+        tmp_basic_formatter = BasicFormatter.from_conf(conf)
+        return cls(
+            proof_bank_loc,
+            n_proofs,
+            tmp_basic_formatter.n_step_sampler,
+            tmp_basic_formatter.direct_num_steps,
+            conf,
+        )
+
+
+
+class ProofRetrievalFormatter:
+    ALIAS = "proof-ret"
+
+    def __init__(
+        self,
+        proof_bank_loc: str,
+        tokenizer: CodeLlamaTokenizer,
+        state_num_tokens: int,
+        script_num_tokens: int,
+        statement_num_tokens: int,
+        ret_proof_state_tokens: int,
+        ret_proof_script_tokens: int,
+        n_step_sampler: NStepSampler,
+        direct_num_steps: bool,
+        conf: Any,
+    ) -> None:
+        self.sub_formatter = ProofRetrievalFidFormatter(
+            proof_bank_loc, 1, n_step_sampler, direct_num_steps, conf
+        )
+        self.tokenizer = tokenizer
+        self.state_num_tokens = state_num_tokens
+        self.script_num_tokens = script_num_tokens
+        self.statement_num_tokens = statement_num_tokens
+        self.ret_proof_state_tokens = ret_proof_state_tokens
+        self.ret_proof_script_tokens = ret_proof_script_tokens
+        self.n_step_sampler = n_step_sampler
+        self.direct_num_steps = direct_num_steps
+        self.conf = conf
 
     def example_from_step(
         self,
@@ -291,11 +343,12 @@ class ProofRetrievalFormatter:
         **kwargs: Any,
     ) -> LmExample:
         step = proof.steps[step_idx]
-        similar_proof_result = self.get_similar_proof(
+        similar_proof_result = self.sub_formatter.get_similar_proofs(
             step_idx, proof, dp_obj, file_info, key_record, cutoff_idx
         )
-        if similar_proof_result:
-            similar_proof_state, similar_proof_script = similar_proof_result
+        if 0 < len(similar_proof_result):
+            similar_proof_record = similar_proof_result[0]
+            similar_proof_state, similar_proof_script = similar_proof_record.pretty_goal, similar_proof_record.proof 
             ret_state_str, _ = allocate_tokens(
                 self.tokenizer, similar_proof_state, self.ret_proof_state_tokens
             )

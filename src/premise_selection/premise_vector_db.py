@@ -8,10 +8,15 @@ import argparse
 
 import torch
 from transformers import GPT2Tokenizer
+from yaml import load, Loader
 
+from data_management.dataset_file import Sentence 
 from data_management.sentence_db import SentenceDB, DBSentence
-from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper, move_prem_wrapper_to
+from premise_selection.model import PremiseRetriever 
 from premise_selection.datamodule import tokenize_strings
+from premise_selection.premise_formatter import PremiseFormat, PREMISE_ALIASES
+from util.train_utils import get_required_arg 
+from util.constants import PREMISE_DATA_CONF_NAME, TRAINING_CONF_NAME
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__) 
@@ -25,13 +30,13 @@ class PremiseVectorDB:
         self,
         db_loc: str,
         page_size: int,
-        retriever: LocalPremiseModelWrapper,
+        retriever_checkpoint_loc: str,
         sdb: SentenceDB,
         sdb_hash: str,
     ):
         self.db_loc = db_loc
         self.page_size = page_size
-        self.retriever = retriever
+        self.retriever_checkpoint_loc = retriever_checkpoint_loc
         self.sdb = sdb
         self.sdb_hash = sdb_hash
 
@@ -52,23 +57,21 @@ class PremiseVectorDB:
         metadata = {
             "page_size": self.page_size,
             "sdb_hash": self.sdb_hash,
+            "retriever_checkpoint_loc": self.retriever_checkpoint_loc,
         }
         with open(metadata_loc, "w") as fout:
             fout.write(json.dumps(metadata))
 
     @classmethod
     def load(
-        cls, db_loc: str, sentence_db_loc: str, premise_checkpoint_loc: str
+        cls, db_loc: str, sentence_db_loc: str
     ) -> PremiseVectorDB:
-        local_model_wrapper = LocalPremiseModelWrapper.from_checkpoint(
-            premise_checkpoint_loc
-        )
         sdb = SentenceDB.load(sentence_db_loc)
         with open(os.path.join(db_loc, cls.METADATA_LOC)) as fin:
             metadata = json.load(fin)
         sdb_hash = cls.__hash_sdb(sentence_db_loc)
         assert sdb_hash == metadata["sdb_hash"]
-        return cls(db_loc, metadata["page_size"], local_model_wrapper, sdb, sdb_hash)
+        return cls(db_loc, metadata["page_size"], metadata["retriever_checkpoint_loc"], sdb, sdb_hash)
 
     @classmethod
     def load_page_sentences(
@@ -76,7 +79,7 @@ class PremiseVectorDB:
     ) -> list[DBSentence]:
         db_sentences: list[DBSentence] = []
         start = page_num * page_size
-        end = min(sdb_size, page_num * page_size + page_size)
+        end = min(sdb_size + 1, page_num * page_size + page_size)
         for i in range(start, end):
             if i == 0:
                 db_sentences.append(DBSentence("Dummy sentence.", "", "", "", 0)) # IDs start at 1
@@ -98,6 +101,23 @@ class PremiseVectorDB:
         if 0 < len(cur_batch):
             batches.append(cur_batch)
         return batches
+    
+    @classmethod
+    def load_retriever(cls, checkpoint_loc: str) -> tuple[PremiseRetriever, GPT2Tokenizer, PremiseFormat, int]:
+        model_loc = os.path.dirname(checkpoint_loc)
+        data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
+        with open(data_preparation_conf, "r") as fin:
+            premise_conf = load(fin, Loader=Loader)
+        model_conf_loc = os.path.join(model_loc, TRAINING_CONF_NAME)
+        with open(model_conf_loc, "r") as fin:
+            model_conf = load(fin, Loader=Loader)
+        max_seq_len = get_required_arg("max_seq_len", model_conf)
+        tokenizer = GPT2Tokenizer.from_pretrained(model_conf["model_name"])
+        premise_format_alias = premise_conf["premise_format_alias"]
+        premise_format = PREMISE_ALIASES[premise_format_alias]
+        retriever = PremiseRetriever.from_pretrained(checkpoint_loc)
+        return retriever, tokenizer, premise_format, max_seq_len
+
 
     @classmethod
     def create(
@@ -108,10 +128,8 @@ class PremiseVectorDB:
         select_checkpoint: str,
         sentence_db_loc: str,
     ) -> PremiseVectorDB:
-        local_model_wrapper = LocalPremiseModelWrapper.from_checkpoint(
-            select_checkpoint
-        )
-        move_prem_wrapper_to(local_model_wrapper, "cuda")
+        retriever, tokenizer, premise_format, max_seq_len = cls.load_retriever(select_checkpoint)
+        retriever.to("cuda")
         sdb = SentenceDB.load(sentence_db_loc)
         sdb_hash = cls.__hash_sdb(sentence_db_loc)
         sdb_size = sdb.size()
@@ -124,17 +142,17 @@ class PremiseVectorDB:
             sentences_to_write = cls.load_page_sentences(
                 cur_page, page_size, sdb, sdb_size
             )
-            sentence_texts = [s.text for s in sentences_to_write]
+            sentence_texts = [premise_format.format(Sentence.from_db_sentence(s)) for s in sentences_to_write]
             sentence_batches = cls.batch_sentences(sentence_texts, batch_size)
             batch_embs: list[torch.Tensor] = []
             for batch in sentence_batches:
                 with torch.no_grad():
                     batch_inputs = tokenize_strings(
-                        local_model_wrapper.tokenizer,
+                        tokenizer,
                         batch,
-                        local_model_wrapper.max_seq_len,
+                        max_seq_len,
                     )
-                    batch_emb = local_model_wrapper.retriever.encode_premise(
+                    batch_emb = retriever.encode_premise(
                         batch_inputs.input_ids, batch_inputs.attention_mask
                     )
                 batch_embs.append(batch_emb)
@@ -146,7 +164,7 @@ class PremiseVectorDB:
             num_written += len(sentence_texts)
             cur_page += 1
             _logger.info(f"Processed {num_written} out of {sdb_size}")
-        return PremiseVectorDB(db_loc, page_size, local_model_wrapper, sdb, sdb_hash)
+        return PremiseVectorDB(db_loc, page_size, select_checkpoint, sdb, sdb_hash)
 
 
 if __name__ == "__main__":
