@@ -5,6 +5,7 @@ from types import TracebackType
 import sys, os
 from enum import Enum
 import ipdb
+import time
 
 from typeguard import typechecked
 
@@ -32,10 +33,12 @@ from model_deployment.goal_comparer import (
     ParsedHyp,
     extract_body_from_step,
 )
+from model_deployment.fast_client import FastLspClient
 from model_deployment.mine_goals import get_goal_record, GoalRecord
 from util.util import get_basic_logger
 from util.coqpyt_utils import get_all_goals
 
+from coqpyt.lsp.client import LspClient
 from coqpyt.coq.lsp.client import (
     TextDocumentIdentifier,
     TextDocumentItem,
@@ -43,11 +46,21 @@ from coqpyt.coq.lsp.client import (
     Position,
 )
 from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
-from coqpyt.coq.structs import ProofTerm, Term, TermType
-from coqpyt.coq.lsp.structs import Goal, GoalAnswer
+from coqpyt.coq.structs import ProofTerm, Term, TermType, Step as CStep
+from coqpyt.coq.lsp.structs import Goal, GoalAnswer, RangedSpan
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.exceptions import InvalidChangeException
+
+from coqpyt.lsp.structs import (
+    TextDocumentIdentifier,
+    VersionedTextDocumentIdentifier,
+    TextDocumentContentChangeEvent,
+    TextDocumentItem,
+    Position,
+    Range,
+)
+
 
 _logger = get_basic_logger(__name__)
 
@@ -194,6 +207,46 @@ def hidden_files_from_prefix(orig_file_path: str, file_prefix: str) -> tuple[str
     set_hidden_files(fresh_file_path, fresh_aux_file_path, prefix_no_tok)
     return fresh_file_path, fresh_aux_file_path
 
+class ClientWrapper:
+    def __init__(self, client: CoqLspClient | FastLspClient, file_uri: str) -> None:
+        self.client = client
+        self.file_uri = file_uri
+        self.file_version = 1
+        self.client.didOpen(TextDocumentItem(self.file_uri, "coq", self.file_version, ""))
+    
+    def set_version(self, v: int) -> None:
+        self.file_version = v
+    
+    def write(self, content: str) -> None:
+        self.file_version += 1
+        self.client.didChange(VersionedTextDocumentIdentifier(self.file_uri, self.file_version), [TextDocumentContentChangeEvent(None, None, content)])
+    
+    def write_and_get_steps(self, content: str) -> list[CStep]:
+        t1 = time.time()
+        self.write(content)
+        lines = content.split("\n")
+        spans = self.client.get_document(TextDocumentIdentifier(self.file_uri)).spans
+        steps: list[CStep] = []
+        prev_line, prev_char = (0, 0)
+        for i, span in enumerate(spans):
+            if i == len(spans) - 1 and span.span is None:
+                continue
+            end_line, end_char = (spans[i].range.end.line, spans[i].range.end.character)
+            cur_lines = lines[prev_line:(end_line + 1)]
+            cur_lines[0] = cur_lines[0][prev_char:]
+            cur_lines[-1] = cur_lines[-1][:end_char]
+            prev_line, prev_char = end_line, end_char
+            text = "\n".join(cur_lines)
+            steps.append(CStep(text, "", span))
+        t2 = time.time()
+        print("Change time: ", t2 - t1)
+        return steps
+    
+    def close(self) -> None:
+        self.client.shutdown()
+        self.client.exit()
+
+
 
 @typechecked
 class ProofManager:
@@ -214,7 +267,6 @@ class ProofManager:
         file_basename = os.path.basename(file_path)
         self.file_path = file_path
         self.lm_formatter = lm_formatter
-        self.aux_file_path = get_fresh_path(file_dir, f"aux_{file_basename}")
 
         self.proof_file = proof_file
         self.proof_point = proof_point
@@ -230,16 +282,30 @@ class ProofManager:
             self.proof_file, self.proof_point
         )
 
-        self.goal_file_path = get_fresh_path(file_dir, "aux_goals.v")
-        self.goal_file_uri = f"file://{self.goal_file_path}"
-        self.goal_client_root_uri = f"file://{self.__workspace_loc}"
-        self.aux_client = CoqLspClient(self.goal_client_root_uri, timeout=120)
-        self.goal_file_version = 1
-        self.aux_client.didOpen(
-            TextDocumentItem(
-                self.goal_file_uri, "coq", self.goal_file_version, self.file_prefix
-            )
-        )
+        self.workspace_uri= f"file://{self.__workspace_loc}"
+
+
+
+        self.fast_aux_file_path = os.path.abspath(get_fresh_path(file_dir, f"aux_fast_{file_basename}"))
+        fast_aux_client = FastLspClient(self.workspace_uri, timeout=120)
+        fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
+        self.fast_client = ClientWrapper(fast_aux_client, fast_aux_file_uri)
+
+        self.aux_file_path = os.path.abspath(get_fresh_path(file_dir, f"aux_{file_basename}"))
+        aux_file_uri = f"file://{self.aux_file_path}"
+        aux_client = CoqLspClient(self.workspace_uri, timeout=120)
+        self.aux_client = ClientWrapper(aux_client, aux_file_uri)
+
+        # self.goal_file_path = get_fresh_path(file_dir, "aux_goals.v")
+        # self.goal_file_uri = f"file://{self.goal_file_path}"
+        # self.goal_client_root_version = 1
+        # self.aux_client.didOpen(
+        #     TextDocumentItem(
+        #         self.goal_file_uri, "coq", self.goal_file_version, self.file_prefix
+        #     )
+        # )
+
+
 
     def __get_file_prefix(self) -> str:
         return "".join(
@@ -291,12 +357,12 @@ class ProofManager:
         return final_strings
 
     def __read_definition(
-        self, coq_file: CoqFile, num_definitions: int, num_read: int
+        self, steps: list[CStep], num_definitions: int, num_read: int
     ) -> tuple[Any, str, int]:
-        num_steps = len(coq_file.steps)
+        num_steps = len(steps)
         read_idx = num_steps - num_definitions + num_read
-        def_text = coq_file.steps[read_idx].text
-        ast_def_body = extract_body_from_step(coq_file.steps[read_idx])
+        def_text = steps[read_idx].text
+        ast_def_body = extract_body_from_step(steps[read_idx])
         return ast_def_body, def_text, num_read + 1
 
     def get_goal_record(self, steps: list[str]) -> Optional[GoalRecord]:
@@ -306,15 +372,15 @@ class ProofManager:
         end_pos = self.proof_file.steps[new_step_idx].ast.range.end
         goal_dict: dict[int, Optional[GoalAnswer]] = {}
         record, version = get_goal_record(
-            self.aux_client,
-            self.goal_file_uri,
-            self.goal_file_version,
+            self.fast_client.client,
+            self.fast_client.file_uri,
+            self.fast_client.file_version,
             end_pos,
             self.proof_file.steps,
             new_step_idx,
             goal_dict,
         )
-        self.goal_file_version = version
+        self.fast_client.set_version(version)
         return record
 
     def get_parsed_goals(
@@ -325,25 +391,26 @@ class ProofManager:
         _logger.debug(f"Num goals: {len(all_goals)}")
         goal_as_definitions = self.__get_goal_strs(current_goals)
         goal_str = "\n\n".join(goal_as_definitions)
-        to_write = f"{partial_proof}\n\n{goal_str}"
-        self.__update_aux_file(to_write)
+        to_write = f"{self.file_prefix}{partial_proof}\n\n{goal_str}"
+        steps = self.fast_client.write_and_get_steps(to_write)
+
+        ##self.__update_aux_file(to_write)
         num_read = 0
         num_definitions = len(goal_as_definitions)
         parsed_goals: list[ParsedObligation] = []
-        with CoqFile(self.aux_file_path, workspace=self.__workspace_loc) as coq_file:
-            for goal in all_goals:
-                parsed_hyps: list[ParsedHyp] = []
-                for hyp in goal.hyps:
-                    hyp_ast, hyp_text, num_read = self.__read_definition(
-                        coq_file, num_definitions, num_read
-                    )
-                    parsed_hyp = ParsedHyp(hyp.names, hyp_ast, hyp_text)
-                    parsed_hyps.append(parsed_hyp)
-                goal_ast, goal_text, num_read = self.__read_definition(
-                    coq_file, num_definitions, num_read
+        for goal in all_goals:
+            parsed_hyps: list[ParsedHyp] = []
+            for hyp in goal.hyps:
+                hyp_ast, hyp_text, num_read = self.__read_definition(
+                    steps, num_definitions, num_read
                 )
-                parsed_goal = ParsedObligation(parsed_hyps, goal_ast, goal_text)
-                parsed_goals.append(parsed_goal)
+                parsed_hyp = ParsedHyp(hyp.names, hyp_ast, hyp_text)
+                parsed_hyps.append(parsed_hyp)
+            goal_ast, goal_text, num_read = self.__read_definition(
+                steps, num_definitions, num_read
+            )
+            parsed_goal = ParsedObligation(parsed_hyps, goal_ast, goal_text)
+            parsed_goals.append(parsed_goal)
         return ParsedObligations(parsed_goals)
 
     def get_proof_shell(
@@ -352,7 +419,7 @@ class ProofManager:
         focused_steps: list[FocusedStep] = []
         for i, step in enumerate(cur_steps):
             focused_steps.append(
-                FocusedStep(theorem, Step.from_text(step, TermType.TACTIC), i, [], [])
+                FocusedStep(theorem, Step.from_text(step, TermType.TACTIC), i, [])
             )
 
         goals = [dataset_file.Goal.from_json(repr(g)) for g in cur_goals.goals.goals]
@@ -362,7 +429,6 @@ class ProofManager:
                 Step.from_text("\nAdmitted.", TermType.TACTIC),
                 len(cur_steps),
                 goals,
-                [],
             )
         )
         proof = Proof(theorem, focused_steps)
@@ -397,6 +463,12 @@ class ProofManager:
             return None
         dset_file = self.get_dataset_file()
         return dset_file
+    
+    def check_valid(self, client: CoqLspClient) -> bool:
+        for diagnostic in client.lsp_endpoint.diagnostics[self.aux_client.file_uri]:
+            if diagnostic.severity == 1:
+                return False
+        return True
 
     def check_proof(
         self, partial_proof: str, theorem: dataset_file.Term
@@ -409,19 +481,36 @@ class ProofManager:
             or ("Abort." in partial_proof)
         ):
             return ProofCheckResult.get_invalid()
-        self.__update_aux_file(partial_proof)
-        with CoqFile(self.aux_file_path, workspace=self.__workspace_loc) as coq_file:
-            if not coq_file.is_valid:
-                return ProofCheckResult.get_invalid()
-            partial_steps = [s.text for s in coq_file.steps[(self.proof_point + 1) :]]
-            end_pos = coq_file.steps[-1].ast.range.end
-            farther_end = Position(end_pos.line + 1, 0)
-            uri = f"file://{self.aux_file_path}"
-            current_goals = coq_file.coq_lsp_client.proof_goals(
-                TextDocumentIdentifier(uri), farther_end
-            )
-            if current_goals is None:
-                return ProofCheckResult.get_invalid()
+        t1 = time.time()
+        contents = f"{self.file_prefix}{partial_proof}"
+        #steps = self.aux_client.write_and_get_steps(contents)
+        steps = self.fast_client.write_and_get_steps(contents)
+        # if not self.check_valid(self.aux_client.client):
+        #     return ProofCheckResult.get_invalid()
+        partial_steps = [s.text for s in steps[(self.proof_point + 1) :]]
+        end_pos = steps[-1].ast.range.end
+        farther_end = Position(end_pos.line + 1, 0)
+        #current_goals = self.aux_client.client.proof_goals(TextDocumentIdentifier(self.aux_client.file_uri), farther_end) 
+        current_goals = self.fast_client.client.proof_goals(TextDocumentIdentifier(self.fast_client.file_uri), farther_end) 
+        if current_goals is None:
+            return ProofCheckResult.get_invalid() 
+        t2 = time.time()
+        print("New check time:", t2 - t1)
+
+        # self.__update_aux_file(partial_proof)
+        # with CoqFile(self.aux_file_path, workspace=self.__workspace_loc) as coq_file:
+        #     if not coq_file.is_valid:
+        #         return ProofCheckResult.get_invalid()
+        #     partial_steps = [s.text for s in coq_file.steps[(self.proof_point + 1) :]]
+        #     end_pos = coq_file.steps[-1].ast.range.end
+        #     farther_end = Position(end_pos.line + 1, 0)
+        #     uri = f"file://{self.aux_file_path}"
+        #     current_goals = coq_file.coq_lsp_client.proof_goals(
+        #         TextDocumentIdentifier(uri), farther_end
+        #     )
+        #     if current_goals is None:
+        #         return ProofCheckResult.get_invalid()
+
         try:
             assert "".join(partial_steps) == partial_proof
         except AssertionError:
@@ -448,7 +537,10 @@ class ProofManager:
             )
 
         new_proof = self.get_proof_shell(partial_steps, current_goals, theorem)
+        t1_g = time.time()
         parsed_obligations = self.get_parsed_goals(partial_proof, current_goals)
+        t2_g = time.time()
+        print("Parse goal time: ", t2_g - t1_g)
         goal_record = self.get_goal_record(partial_steps)
         return ProofCheckResult(
             TacticResult.VALID,
@@ -508,6 +600,8 @@ class ProofManager:
         _logger.debug("Restoring proof file.")
         if os.path.exists(self.aux_file_path):
             os.remove(self.aux_file_path)
-        self.aux_client.shutdown()
-        self.aux_client.exit()
+        if os.path.exists(self.fast_aux_file_path):
+            os.remove(self.fast_aux_file_path)
+        self.fast_client.close()
+        self.aux_client.close()
         restore_proof_file(self.proof_file, self.proof_point, self.__proof_stored_steps)

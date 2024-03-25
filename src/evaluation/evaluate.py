@@ -59,9 +59,9 @@ class EvalSearchResult:
         self.statement = statement
         self.ground_truth_steps = ground_truth_steps
 
-    def to_json(self) -> Any:
+    def to_json(self, sentence_db: SentenceDB) -> Any:
         return {
-            "search_result": search_result_to_json(self.search_result),
+            "search_result": search_result_to_json(self.search_result, sentence_db),
             "file": self.file.to_json(),
             "thm_idx": self.thm_idx,
             "statement": self.statement,
@@ -76,18 +76,18 @@ class EvalSearchResult:
     def get_ground_truth_str(self) -> str:
         return "".join(self.ground_truth_steps)
 
-    def save(self, out_dir: str) -> None:
+    def save(self, out_dir: str, sentence_db: SentenceDB) -> None:
         os.makedirs(os.path.join(out_dir, self.ATTEMPTS_NAME), exist_ok=True)
         save_loc = self.save_path(self.file.dp_name, self.thm_idx, out_dir)
         with open(save_loc, "w") as fout:
-            fout.write(json.dumps(self.to_json(), indent=2))
+            fout.write(json.dumps(self.to_json(sentence_db), indent=2))
 
     @classmethod
     def from_json(
-        cls, json_data: Any, load_data_points: bool = True
+        cls, json_data: Any, sentence_db: SentenceDB 
     ) -> EvalSearchResult:
         search_result_data = json_data["search_result"]
-        search_result = search_result_from_json(search_result_data, load_data_points)
+        search_result = search_result_from_json(search_result_data, sentence_db)
         file = FileInfo.from_json(json_data["file"])
         thm_idx = json_data["thm_idx"]
         statement = json_data["statement"]
@@ -95,10 +95,10 @@ class EvalSearchResult:
         return cls(search_result, file, thm_idx, statement, ground_truth_steps)
 
     @classmethod
-    def load(cls, path: str, load_data_points: bool = True) -> EvalSearchResult:
+    def load(cls, path: str, sentence_db: SentenceDB) -> EvalSearchResult:
         with open(path, "r") as fin:
             json_data = json.load(fin)
-            return cls.from_json(json_data, load_data_points)
+            return cls.from_json(json_data, sentence_db)
 
 
 @dataclass
@@ -137,7 +137,7 @@ class Evaluator:
     def from_conf(cls, conf: Any) -> Evaluator:
         results_loc = conf["results_loc"]
         eval_set = eval_set_from_conf(conf["eval_set"])
-        sentence_db = SentenceDB.load(conf["sentence_db"])
+        sentence_db = SentenceDB.load(conf["sentence_db_loc"])
         timeout = conf["timeout"]
         branching_factor = conf["branching_factor"]
         max_leaf_expansions = conf["max_leaf_expansions"]
@@ -229,7 +229,7 @@ class Evaluator:
                     statement,
                     ground_truth,
                 )
-                eval_search_result.save(self.results_loc)
+                eval_search_result.save(self.results_loc, self.sentence_db)
 
                 match search_result:
                     case SuccessfulSearch():

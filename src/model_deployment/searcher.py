@@ -14,6 +14,7 @@ from model_deployment.proof_manager import ProofManager, TacticResult, ProofChec
 from model_deployment.search_tree import SearchNode, SearchTree
 from util.util import get_basic_logger
 
+from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Proof
 
 from typeguard import typechecked
@@ -32,16 +33,16 @@ class SuccessfulSearch:
     def get_proof(self) -> str:
         return self.qed_node.steps_to_str(self.qed_node.combined_proof_steps)
 
-    def to_json(self) -> Any:
+    def to_json(self, sentence_db: SentenceDB) -> Any:
         return {
-            "search_tree": self.search_tree.to_json(),
-            "qed_node": self.qed_node.to_json(),
+            "search_tree": self.search_tree.to_json(sentence_db),
+            "qed_node": self.qed_node.to_json(sentence_db),
         }
 
     @classmethod
-    def from_json(cls, json_data: Any, load_data_points: bool = True) -> Any:
-        search_tree = SearchTree.from_json(json_data["search_tree"], load_data_points)
-        qed_node = SearchNode.from_json(json_data["qed_node"], load_data_points)
+    def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Any:
+        search_tree = SearchTree.from_json(json_data["search_tree"], sentence_db)
+        qed_node = SearchNode.from_json(json_data["qed_node"], sentence_db)
         return cls(search_tree, qed_node)
 
 
@@ -52,12 +53,12 @@ class FailedSearch:
     def __init__(self, search_tree: SearchTree) -> None:
         self.search_tree = search_tree
 
-    def to_json(self) -> Any:
-        return {"search_tree": self.search_tree.to_json()}
+    def to_json(self, sentence_db: SentenceDB) -> Any:
+        return {"search_tree": self.search_tree.to_json(sentence_db)}
 
     @classmethod
-    def from_json(cls, json_data: Any, load_data_points: bool = True) -> Any:
-        search_tree = SearchTree.from_json(json_data["search_tree"])
+    def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Any:
+        search_tree = SearchTree.from_json(json_data["search_tree"], sentence_db)
         return cls(search_tree)
 
 
@@ -83,18 +84,18 @@ class ErroredSearch:
 SearchResult = SuccessfulSearch | FailedSearch | ErroredSearch
 
 
-def search_result_to_json(search_result: SearchResult) -> Any:
-    return {"alias": search_result.ALIAS} | search_result.to_json()
+def search_result_to_json(search_result: SearchResult, sentence_db: SentenceDB) -> Any:
+    return {"alias": search_result.ALIAS} | search_result.to_json(sentence_db)
 
 
 def search_result_from_json(
-    json_data: Any, load_data_points: bool = True
+    json_data: Any, sentence_db: SentenceDB 
 ) -> SearchResult:
     match json_data["alias"]:
         case "success":
-            return SuccessfulSearch.from_json(json_data, load_data_points)
+            return SuccessfulSearch.from_json(json_data, sentence_db)
         case "failure":
-            return FailedSearch.from_json(json_data, load_data_points)
+            return FailedSearch.from_json(json_data, sentence_db)
         case "error":
             return ErroredSearch.from_json(json_data)
         case a:

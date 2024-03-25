@@ -26,6 +26,7 @@ from model_deployment.node_score import (
     DepthFirstScore,
     BreadthFirstScore,
 )
+from data_management.sentence_db import SentenceDB
 from util.util import get_basic_logger
 
 from coqpyt.coq.proof_file import ProofFile
@@ -42,10 +43,10 @@ _logger = get_basic_logger(__name__)
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/examples/Adding/add_2.v"
@@ -69,18 +70,19 @@ with CoqFile(TEST_FILE, workspace=dummy_file_info.workspace) as coq_file:
             last = i
 assert last is not None
 
+sentence_db = SentenceDB.load("./sentences.db") 
 
 # WRAPPER = CodeLLamaServer.from_conf({"server_url": "http://127.0.0.1:5000"})
 WRAPPER = FidT5LocalWrapper.from_conf(
     {
         # "alias": "fid-local",
         # "pretrained_name": "/home/ubuntu/coq-modeling/models/t5-fid-small-basic-rnd-split-rnd-samp-pct-8/checkpoint-8000"
-        "pretrained_name": "/home/ubuntu/coq-modeling/models/t5-fid-small-tfidf-20-rnd-split-rnd-samp-pct-8/checkpoint-4000"
+        "pretrained-name": "/home/ubuntu/coq-modeling/models/t5-fid-base-basic-final/checkpoint-110500"
     }
 )
 NODE_SCORE_TYPE = TokenSumScore
 TIMEOUT = 600
-BRANCH = 8
+BRANCH = 2
 EXPANSIONS = 500
 
 _logger.debug("Creating Proof File")
@@ -95,6 +97,7 @@ with ProofFile(
         proof_point,
         WRAPPER.formatter,
         dummy_file_info,
+        sentence_db,
         dummy_split,
         dummy_data_loc,
     ) as proof_manager:
@@ -105,7 +108,7 @@ with ProofFile(
         _logger.debug("Beginning Proof Search")
         result = tree_manager.search(print_trees=True)
         with open("proof-tree.json", "w") as fout:
-            json_proof_tree = result.search_tree.to_json()
+            json_proof_tree = result.search_tree.to_json(proof_manager.sentence_db)
             fout.write(json.dumps(json_proof_tree, indent=2))
 
         match result:

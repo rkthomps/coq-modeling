@@ -7,6 +7,7 @@ import re
 from typeguard import typechecked
 
 from data_management.dataset_file import FileContext, Proof
+from data_management.sentence_db import SentenceDB
 from model_deployment.node_score import NodeScore
 from model_deployment.mine_goals import GoalRecord
 from termcolor import colored
@@ -24,20 +25,16 @@ class SearchTree:
     ) -> None:
         self.root.pretty_print(verbose=verbose)
 
-    def to_json(self) -> Any:
+    def to_json(self, sentences_db: SentenceDB) -> Any:
         return {
-            "file_context": self.file_context.to_json(),
-            "root": self.root.to_json(),
+            "file_context": self.file_context.to_jsonlines(sentences_db, False),
+            "root": self.root.to_json(sentences_db),
         }
 
     @classmethod
-    def from_json(cls, json_data: Any, load_data_points: bool = True) -> SearchTree:
-        if load_data_points:
-            file_context = FileContext.from_json(json_data["file_context"])
-            root = SearchNode.from_json(json_data["root"], load_data_points)
-        else:
-            file_context = FileContext("", "", "", [])
-            root = SearchNode.from_json(json_data["root"], load_data_points)
+    def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> SearchTree:
+        file_context = FileContext.context_from_lines(json_data["file_context"], sentence_db)
+        root = SearchNode.from_json(json_data["root"], sentence_db)
         return cls(file_context, root)
 
 
@@ -165,7 +162,7 @@ class SearchNode:
                 return [self] + child_return_path
         return []
 
-    def to_json(self) -> Any:
+    def to_json(self, sentences_db: SentenceDB) -> Any:
         return {
             "valid": self.valid,
             "final_tactic": self.final_tactic,
@@ -174,16 +171,16 @@ class SearchNode:
             "combined_proof_steps": self.combined_proof_steps,
             "score": self.score.to_json(),
             "creation_time": self.creation_time,
-            "proof": self.proof.to_json() if self.proof else self.proof,
+            "proof": self.proof.to_json(sentences_db, False) if self.proof else self.proof,
             "goal_record": self.goal_record.to_json() if self.goal_record else None,
             "expanded": self.expanded,
             "model_input": self.model_input,
             "redundant_to_str": self.redundant_to_str,
-            "children": [c.to_json() for c in self.children],
+            "children": [c.to_json(sentences_db) for c in self.children],
         }
 
     @classmethod
-    def from_json(cls, json_data: Any, load_data_points: bool = True) -> SearchNode:
+    def from_json(cls, json_data: Any, sentences_db: SentenceDB) -> SearchNode:
         valid = json_data["valid"]
         final_tactic = json_data["final_tactic"]
         makes_progress = json_data["makes_progress"]
@@ -191,11 +188,8 @@ class SearchNode:
         combined_proof_steps = json_data["combined_proof_steps"]
         score = NodeScore.from_json(json_data["score"])
         creation_time = json_data["creation_time"]
-        if load_data_points:
-            proof_data = json_data["proof"]
-            proof = Proof.from_json(proof_data) if proof_data else proof_data
-        else:
-            proof = None
+        proof_data = json_data["proof"]
+        proof = Proof.from_json(proof_data, sentences_db) if proof_data else proof_data
 
         if "goal_record" in json_data and json_data["goal_record"] is not None:
             goal_record = GoalRecord.from_json(json_data["goal_record"])
@@ -204,7 +198,7 @@ class SearchNode:
 
         expanded = json_data["expanded"]
         model_input = json_data["model_input"] if "model_input" in json_data else None
-        children = [SearchNode.from_json(c) for c in json_data["children"]]
+        children = [SearchNode.from_json(c, sentences_db) for c in json_data["children"]]
         redundant_to_str = json_data["redundant_to_str"]
         return cls(
             valid,

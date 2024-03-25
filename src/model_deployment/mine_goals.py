@@ -13,9 +13,8 @@ import argparse
 import json
 
 from coqpyt.coq.base_file import CoqFile
-from coqpyt.coq.lsp.client import CoqLspClient
 from coqpyt.coq.structs import Step, GoalAnswer
-from coqpyt.coq.lsp.structs import Goal
+from coqpyt.coq.lsp.structs import Goal, RangedSpan, Hyp
 from coqpyt.lsp.structs import (
     TextDocumentIdentifier,
     VersionedTextDocumentIdentifier,
@@ -25,6 +24,8 @@ from coqpyt.lsp.structs import (
     Range,
 )
 
+from model_deployment.fast_client import FastLspClient
+#from coqpyt.coq.lsp.client import CoqLspClient 
 from data_management.splits import FileInfo, Split, DataSplit
 from model_deployment.transform_ast import (
     term_from_ast,
@@ -115,9 +116,37 @@ def get_fg_goal(goal: GoalAnswer) -> Goal:
         raise EmptyFgGoalError("No foreground goals.")
     return fg_goals[0]
 
+def fmt_hyp(h: Hyp) -> str:
+    lhs = " ".join(h.names)
+    rhs = h.ty
+    return f"({lhs} : {rhs})"
+
+def fix_reserved_ids(g: Goal) -> Goal:
+    """
+    Hack for when ids are reserved in the goal
+    i.e. _k_ in repos/david-jao-zfc-coq/binomial.v
+    """
+    hs = g.hyps
+    cur_body = g.ty
+    new_hyps: list[Hyp] = []
+    tys: list[str] = [h.ty for h in hs]
+    for i, h in enumerate(hs):
+        h_new_names: list[str] = []
+        for name in h.names:
+            if name.startswith("_"):
+                new_name = name.lstrip("_")
+                cur_body = cur_body.replace(name, new_name)
+                for j in range(i, len(hs)):
+                    tys[j] = tys[j].replace(name, new_name)
+                h_new_names.append(new_name)
+            else:
+                h_new_names.append(name)
+        new_hyps.append(Hyp(h_new_names, tys[i]))
+    return Goal(new_hyps, cur_body) 
+
 
 def get_goal_record(
-    client: CoqLspClient,
+    client: FastLspClient,
     doc_uri: str,
     doc_version: int,
     end_pos: Position,
@@ -196,16 +225,23 @@ def get_goal_record(
     goals = client.proof_goals(TextDocumentIdentifier(doc_uri), norm_goal_pos)
 
     fg_goal = get_fg_goal(goals)
-    text = f"\nDefinition a := ({fg_goal.ty})."
+    adjusted_fg_goal = fix_reserved_ids(fg_goal)
+    hyp_str = " ".join([fmt_hyp(h) for h in adjusted_fg_goal.hyps])
+    text = f"Definition a {hyp_str} := ({adjusted_fg_goal.ty})."
 
     doc_version += 1
     client.didChange(
         VersionedTextDocumentIdentifier(doc_uri, doc_version),
-        [TextDocumentContentChangeEvent(None, None, prefix + text)],
+        [TextDocumentContentChangeEvent(None, None, text)],
     )
 
     new_ast = client.get_document(TextDocumentIdentifier(doc_uri))
-    term = term_from_ast(get_body_from_definition(new_ast.spans[-2].span))
+    try:
+        term = term_from_ast(get_body_from_definition(new_ast.spans[-2].span))
+    except TypeError:
+        _logger.error("Typeerror in file")
+        raise TypeError("typerror")
+
     return GoalRecord(step_idx, subproof, pretty_goal, term.to_strtree()), doc_version
 
 
@@ -214,12 +250,13 @@ def get_file_goals(
 ) -> None:
     file_abs = os.path.abspath(os.path.join(data_loc, file_info.file))
     workspace_abs = os.path.abspath(os.path.join(data_loc, file_info.workspace))
-    with CoqFile(file_abs, workspace=workspace_abs) as coq_file:
+    with CoqFile(file_abs, workspace=workspace_abs, low_verbosity=False, timeout=timeout) as coq_file:
         steps = coq_file.steps
     tmp_file = get_fresh_path(".", "goal_aux.v")
     client_uri = f"file://{workspace_abs}"
     doc_uri = f"file://{tmp_file}"
-    client = CoqLspClient(client_uri, timeout=timeout)
+    client = FastLspClient(client_uri, timeout=timeout)
+
     try:
         goal_bank: dict[int, Optional[GoalAnswer]] = {}
         version = 0
@@ -262,12 +299,20 @@ def compute_file_goals(
         return
     _logger.info(f"Processing {file_info.dp_name}")
 
+    file_loc = os.path.abspath(os.path.join(data_loc, file_info.file))
+    workspace_loc = os.path.abspath(os.path.join(data_loc, file_info.workspace))
+    with CoqFile(file_loc, workspace=workspace_loc, timeout=timeout) as coq_file:
+        if not coq_file.is_valid:
+            _logger.warning(f"{file_info.file} not valid.")
+            return
+        num_steps = len(coq_file.steps)
+
     ret_obj = GoalThreadReturn(None)
     goal_thread = Thread(
         target=get_file_goals, args=(data_loc, file_info, ret_obj, timeout)
     )
     goal_thread.start()
-    goal_thread.join(timeout)
+    goal_thread.join(timeout * num_steps)
     if ret_obj.file_goals:
         if len(ret_obj.file_goals.records) == 0:
             _logger.debug(f"Empty set of records for file: {file_info.file}")
@@ -279,6 +324,10 @@ def compute_file_goals(
 
 __ARG = tuple[str, FileInfo, str, int]
 
+new_repos = {
+    "repos/coq-community-corn",
+    "repos/coq-community-gaia",
+}
 
 def get_args(
     data_loc: str, data_split: DataSplit, save_loc: str, timeout: int
@@ -286,7 +335,9 @@ def get_args(
     args: list[__ARG] = []
     for split in Split:
         for file_info in data_split.get_file_list(split):
-            args.append((data_loc, file_info, save_loc, timeout))
+            if file_info.repository in new_repos or split == Split.VAL or split == Split.TEST:
+                args.append((data_loc, file_info, save_loc, timeout))
+    args.reverse()
     return args
 
 
@@ -315,5 +366,9 @@ if __name__ == "__main__":
     sys.setrecursionlimit(1500)
     data_split = DataSplit.load(args.data_split_loc)
     mining_args = get_args(args.data_loc, data_split, args.save_goals, args.timeout)
+    
+    # for arg_tuple in mining_args:
+    #     compute_file_goals(*arg_tuple)
+
     with mp.Pool(num_procs) as pool:
         pool.starmap(compute_file_goals, mining_args)
