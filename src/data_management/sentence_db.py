@@ -98,6 +98,20 @@ class SentenceDB:
             )
         (resulting_id,) = result[0]
         return resulting_id
+    
+    def size(self) -> int:
+        result = self.cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM {self.TABLE_NAME}
+                            """
+        ).fetchall()
+        if len(result) != 1:
+            raise ValueError(
+                "Problem executing size query."
+            )
+        (count,) = result[0]
+        return count
+
 
     @functools.cache
     def retrieve(self, id: int) -> DBSentence:

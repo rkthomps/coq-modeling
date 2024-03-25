@@ -37,6 +37,9 @@ def find_indices(sdb: SentenceDB):
     for s in sentences:
         sdb.find_sentence(s)
 
+def get_size(sdb: SentenceDB):
+    sdb.size()
+
 if __name__ == "__main__":
     if not os.path.exists(SENTENCE_DB_LOC):
         raise FileNotFoundError(SENTENCE_DB_LOC)
@@ -45,5 +48,6 @@ if __name__ == "__main__":
     print_benchmark(get_many_indices, sdb, "Getting 10000 indices: ")
     print_benchmark(get_many_random_indices, sdb, "Getting 10000 random indices out of first 100000: ")
     print_benchmark(find_indices, sdb, "Finding 10000 sentences: ")
+    print_benchmark(get_size, sdb, "Finding 10000 sentences: ")
    
 
