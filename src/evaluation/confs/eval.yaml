@@ -1,17 +1,18 @@
 
-results_loc: /home/ubuntu/coq-modeling/evals/t5-fid-small-basic-rnd-split
+results_loc: /home/ubuntu/coq-modeling/evals/t5-fid-base-basic
 eval_set: 
   alias: data-split
-  data_split_loc: /home/ubuntu/coq-modeling/splits/random-split.json 
-  split: val 
+  data_split_loc: /home/ubuntu/coq-modeling/splits/final-split.json 
+  split: test 
   data_loc: /home/ubuntu/coq-modeling/raw-data/coq-dataset
   eval_tmp_dir: /home/ubuntu/coq-modeling/evals/tmp
   seed: 0
+sentence_db_loc: /home/ubuntu/coq-modeling/sentences.db
 timeout: 600
 branching_factor: 8
 max_leaf_expansions: 1000000
 model_wrapper:
   alias: "fid-local"
-  pretrained-name: /home/ubuntu/coq-modeling/models/t5-fid-small-basic-rnd-split/checkpoint-79500
+  pretrained-name: /home/ubuntu/coq-modeling/models/t5-fid-base-basic-final/checkpoint-110500
 node_score_type: token-normalized-score 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Any, Callable, Optional
-import pdb
+import ipdb
 import functools
 
 import sys, os
@@ -119,6 +119,7 @@ class FidT5LocalWrapper:
     def get_recs(self, example: LmExample, n: int) -> ModelResult:
         input_batch = self.local_dset.collate([example])
         with torch.no_grad():
+            # TODO THIS BREAKS with n=1
             outputs = self.model.generate(
                 input_batch["input_ids"].cuda(),
                 input_batch["attention_mask"].cuda(),

@@ -10,6 +10,7 @@ import sys, os
 import json
 import time
 
+from data_management.sentence_db import SentenceDB
 from evaluation.evaluate import (
     EvalSearchResult,
     SuccessfulSearch,
@@ -127,7 +128,8 @@ def small_result_from_json(json_data: Any) -> SmallSearchResult:
             raise SmallResultNotFoundError(f"{attempted_alias}")
 
 
-def retrieve_small_result(eval_dir: str, proof_name: str) -> SmallEvalResult:
+def retrieve_small_result(eval_dir: str, proof_name: str, sentence_db_loc: str) -> SmallEvalResult:
+    sentence_db = SentenceDB.load(sentence_db_loc)
     large_path = os.path.join(eval_dir, EvalSearchResult.ATTEMPTS_NAME, proof_name)
     small_path = os.path.join(eval_dir, SmallEvalResult.SMALL_ATTEMPTS_NAME, proof_name)
     if os.path.exists(small_path):
@@ -135,7 +137,7 @@ def retrieve_small_result(eval_dir: str, proof_name: str) -> SmallEvalResult:
     os.makedirs(
         os.path.join(eval_dir, SmallEvalResult.SMALL_ATTEMPTS_NAME), exist_ok=True
     )
-    large_obj = EvalSearchResult.load(large_path)
+    large_obj = EvalSearchResult.load(large_path, sentence_db)
     small_obj = SmallEvalResult.from_large_eval_result(large_obj)
     small_obj.save(small_path)
     return small_obj
@@ -150,11 +152,13 @@ class SmallEvalResult:
         small_search_result: SmallSearchResult,
         ground_truth_length: int,
         file: str,
+        repo: str,
         thm_idx: int,
     ) -> None:
         self.small_search_result = small_search_result
         self.ground_truth_length = ground_truth_length
         self.file = file
+        self.repo = repo
         self.thm_idx = thm_idx
 
     def to_json(self) -> Any:
@@ -162,6 +166,7 @@ class SmallEvalResult:
             "small_search_result": small_result_to_json(self.small_search_result),
             "ground_truth_length": self.ground_truth_length,
             "file": self.file,
+            "repo": self.repo,
             "thm_idx": self.thm_idx,
         }
 
@@ -197,6 +202,7 @@ class SmallEvalResult:
             small_search_result,
             len(large_eval_result.ground_truth_steps),
             large_eval_result.file.file,
+            large_eval_result.file.repository,
             large_eval_result.thm_idx,
         )
 
@@ -206,8 +212,9 @@ class SmallEvalResult:
         small_search_result = small_result_from_json(small_search_result_data)
         ground_truth_length = json_data["ground_truth_length"]
         file = json_data["file"]
+        repo = json_data["repo"]
         thm_idx = json_data["thm_idx"]
-        return cls(small_search_result, ground_truth_length, file, thm_idx)
+        return cls(small_search_result, ground_truth_length, file, repo, thm_idx)
 
     @classmethod
     def load(cls, path: str) -> SmallEvalResult:
@@ -300,11 +307,11 @@ class EvalDict:
 
     @classmethod
     def from_shared_proofs(
-        cls, name: str, path: str, shared_proofs: set[str]
+        cls, name: str, path: str, shared_proofs: set[str], sentence_db: SentenceDB,
     ) -> EvalDict:
         eval_objs: dict[str, SmallEvalResult] = {}
         for proof_name in shared_proofs:
-            small_obj = retrieve_small_result(path, proof_name)
+            small_obj = retrieve_small_result(path, proof_name, sentence_db)
             eval_objs[proof_name] = small_obj
         return cls(name, path, eval_objs)
 
@@ -411,11 +418,11 @@ def time_key(s: SuccessResult) -> float:
     return s.seconds
 
 
-def get_small_eval_retrieve_args(eval_dir: str) -> list[tuple[str, str]]:
+def get_small_eval_retrieve_args(eval_dir: str, sentence_db_loc: str) -> list[tuple[str, str, str]]:
     attempts_loc = os.path.join(eval_dir, EvalSearchResult.ATTEMPTS_NAME)
-    attempt_list: list[tuple[str, str]] = []
+    attempt_list: list[tuple[str, str, str]] = []
     for attempt in os.listdir(attempts_loc):
-        attempt_list.append((eval_dir, attempt))
+        attempt_list.append((eval_dir, attempt, sentence_db_loc))
     return attempt_list
 
 
@@ -424,10 +431,11 @@ if __name__ == "__main__":
         "Get small results for analysis from top level eval directory."
     )
     parser.add_argument("eval_dir", help="Directory resulting from run_eval.py.")
+    parser.add_argument("sentence_db_loc", help="Location of the sentence database")
     parser.add_argument(
         "n_procs", type=int, help="Number of processes to use to create small results."
     )
     args = parser.parse_args(sys.argv[1:])
-    retrieve_args = get_small_eval_retrieve_args(args.eval_dir)
+    retrieve_args = get_small_eval_retrieve_args(args.eval_dir, args.sentence_db_loc)
     with multiprocessing.Pool(args.n_procs) as pool:
         pool.starmap(retrieve_small_result, retrieve_args)
