@@ -132,6 +132,7 @@ __ArgTuple = tuple[
     ExampleSample,
     RerankFormatter,
     FileInfo,
+    str,
     SelectedSteps,
     int,
     Queue[Optional[RerankExample]],
@@ -141,6 +142,7 @@ __ArgTuple = tuple[
 def __get_split_transformation_args(
     example_sampler: ExampleSample,
     formatter: RerankFormatter,
+    sentence_db_loc: str,
     q: Queue[RerankExample | None],
 ) -> list[__ArgTuple]:
     num_devices = torch.cuda.device_count()
@@ -152,6 +154,7 @@ def __get_split_transformation_args(
                 example_sampler,
                 formatter,
                 file,
+                sentence_db_loc, 
                 selected_steps,
                 device_idx,
                 q,
@@ -170,18 +173,21 @@ def get_split_transformation_args(
             return __get_split_transformation_args(
                 example_config.train_sample,
                 example_config.rerank_formatter,
+                example_config.sentence_db_loc,
                 q,
             )
         case Split.VAL:
             return __get_split_transformation_args(
                 example_config.val_sample,
                 example_config.rerank_formatter,
+                example_config.sentence_db_loc,
                 q,
             )
         case Split.TEST:
             return __get_split_transformation_args(
                 example_config.test_sample,
                 example_config.rerank_formatter,
+                example_config.sentence_db_loc,
                 q,
             )
 
