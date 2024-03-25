@@ -109,20 +109,22 @@ class Sentence:
                 "id": result_id,
             }
 
-
         if self.db_idx is None:
-            return {
-                "type": "explicit",
-                "text": self.text,
-                "file_path": self.file_path,
-                "module": self.module,
-                "type": str(self.sentence_type),
-                "line": self.line,
-            }
-        return {
-            "type": "stored",
-            "id": self.db_idx,
-        }
+            idx_option = sentence_db.find_sentence(db_sentence)
+            if idx_option is None:
+                return {
+                    "type": "explicit",
+                    "text": self.text,
+                    "file_path": self.file_path,
+                    "module": self.module,
+                    "type": str(self.sentence_type),
+                    "line": self.line,
+                }
+            else:
+                return {
+                    "type": "stored",
+                    "id": idx_option,
+                }
 
     @classmethod
     def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Sentence:

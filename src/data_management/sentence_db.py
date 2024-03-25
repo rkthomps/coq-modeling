@@ -147,4 +147,9 @@ class SentenceDB:
                 line INTEGER)
         """
         )
+        cur.execute(
+            f"""
+            CREATE INDEX text_index ON {cls.TABLE_NAME}(text)
+        """
+        )
         return cls(con, cur)

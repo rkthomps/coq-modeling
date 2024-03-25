@@ -279,6 +279,10 @@ def compute_file_goals(
 
 __ARG = tuple[str, FileInfo, str, int]
 
+new_repos = {
+    "repos/coq-community-corn",
+    "repos/coq-community-gaia",
+}
 
 def get_args(
     data_loc: str, data_split: DataSplit, save_loc: str, timeout: int
@@ -286,7 +290,8 @@ def get_args(
     args: list[__ARG] = []
     for split in Split:
         for file_info in data_split.get_file_list(split):
-            args.append((data_loc, file_info, save_loc, timeout))
+            if split == Split.VAL or split == Split.TEST or file_info.repository in new_repos: 
+                args.append((data_loc, file_info, save_loc, timeout))
     return args
 
 
