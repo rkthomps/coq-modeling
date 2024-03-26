@@ -47,6 +47,7 @@ class PremiseVectorDB:
         self.retriever_checkpoint_loc = retriever_checkpoint_loc
         self.sdb_hash = sdb_hash
     
+    # MIGHT BE ABLE TO KEEP WHOLE MATRIX IN MEMORY. WILL HAVE TO SEE IF THAT's a GOOD IDEA
     def get(self, idx: int) -> Optional[torch.Tensor]: 
         page = idx // self.page_size 
         page_tensor = load_page(self.db_loc, page)

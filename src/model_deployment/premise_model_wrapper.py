@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Iterable, Any, Optional
 
+import time
 import sys, os
 import json
 import requests
@@ -344,7 +345,7 @@ class LocalPremiseModelWrapper:
         if self.vector_db is not None and premise.db_idx is not None:
             embedding = self.vector_db.get(premise.db_idx)
             if embedding is not None:
-                return embedding
+                return embedding[None]
         premise_str = self.premise_format.format(premise)
         if self.encoding_cache.contains(premise_str):
             self.hits += 1
@@ -384,7 +385,6 @@ class LocalPremiseModelWrapper:
             encodings.append(encoded_premise)
         premise_matrix = torch.cat(encodings).to(device)
         similarities = torch.mm(context_encoding, premise_matrix.t())
-        ipdb.set_trace()
         assert similarities.shape[0] == 1
         return similarities[0].tolist()
 

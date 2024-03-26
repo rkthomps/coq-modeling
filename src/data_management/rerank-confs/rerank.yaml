@@ -1,14 +1,14 @@
 
 # Path to sample configs
-train_sample_loc: /home/kthompson/coq-modeling/samples/final/train.json
-val_sample_loc: /home/kthompson/coq-modeling/samples/final/val.json
-test_sample_loc: /home/kthompson/coq-modeling/samples/final/test.json
+train_sample_loc: samples/final/train.json
+val_sample_loc: samples/final/val.json
+test_sample_loc: samples/final/test.json
 
 # Path to output
-output_dataset_loc: /home/kthompson/coq-modeling/data/rerank
+output_dataset_loc: data/rerank
 
 # Sentence db
-sentence_db_loc: /home/kthompson/coq-modeling/sentences.db
+sentence_db_loc: sentences.db
 
 # Format Config
 rerank_formatter:
@@ -16,6 +16,6 @@ rerank_formatter:
   premise_wrapper:
     alias: local 
     vector_db_loc: vector-dbs/prem-select
-    checkpoint_loc: /home/kthompson/coq-modeling/models/prem-select/checkpoint-15000
+    checkpoint_loc: models/prem-select/checkpoint-15000
   consider_num: 256
   negatives_per_positive: 15
