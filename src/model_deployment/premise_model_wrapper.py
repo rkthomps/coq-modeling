@@ -378,18 +378,23 @@ class LocalPremiseModelWrapper:
             context_encoding = self.retriever.encode_context(
                 context_inputs.input_ids, context_inputs.attention_mask
             ).to(device)
-        similarities: list[float] = []
+        encodings: list[torch.Tensor] = []
         for premise in premises:
-            encoded_premise = self.encode_premise(premise).to(device)
-            similarities.append(
-                float((context_encoding @ encoded_premise.t()).squeeze())
-            )
-        return similarities
-        premise_encodings.append(encoded_premise)
-        premise_matrix = torch.cat(premise_encodings)
+            encoded_premise = self.encode_premise(premise)
+            encodings.append(encoded_premise)
+        premise_matrix = torch.cat(encodings).to(device)
         similarities = torch.mm(context_encoding, premise_matrix.t())
+        ipdb.set_trace()
         assert similarities.shape[0] == 1
         return similarities[0].tolist()
+
+        # similarities.append(
+        #     float((context_encoding @ encoded_premise.t()).squeeze())
+        # )
+        # return similarities
+        # premise_encodings.append(encoded_premise)
+        # premise_matrix = torch.cat(premise_encodings)
+        # similarities = torch.mm(context_encoding, premise_matrix.t())
 
     def to_json(self) -> Any:
         return {"checkpoint_path", self.checkpoint_loc}

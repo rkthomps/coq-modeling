@@ -15,6 +15,7 @@ rerank_formatter:
   alias: basic 
   premise_wrapper:
     alias: local 
+    vector_db_loc: vector-dbs/prem-select
     checkpoint_loc: /home/kthompson/coq-modeling/models/prem-select/checkpoint-15000
   consider_num: 256
   negatives_per_positive: 15

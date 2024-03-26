@@ -7,6 +7,7 @@ import shutil
 import argparse
 import json
 import yaml
+import time
 from queue import Queue
 from typeguard import typechecked
 import torch
@@ -102,17 +103,23 @@ def examples_to_queue(
     cuda_str = f"cuda:{device_idx}"
     rerank_formatter.move_to(cuda_str)
     sentence_db = SentenceDB.load(sentence_db_loc)
+    start = time.time()
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
+    end = time.time()
+    print(f"Get dp time: {file_info.file}", end - start)
     match selected_steps:
         case AllSteps():
             for proof in dp_obj.proofs:
                 for i in range(len(proof.steps)):
                     step = proof.steps[i]
+                    start = time.time()
                     examples = rerank_formatter.examples_from_step(
                         step,
                         proof,
                         dp_obj,
                     )
+                    end = time.time()
+                    print("Step time: ", end - start)
                     for example in examples:
                         q.put(example)
         case CertainSteps(steps=step_idxs):
@@ -245,10 +252,12 @@ if __name__ == "__main__":
                     deduplicated=True,
                 )
                 print(f"Processing {split.name}...")
-                train_writer = pool.apply_async(writer, (q, raw_path))
-                pool.starmap(examples_to_queue, split_args)
-                q.put(None)
-                train_writer.wait()
+                # train_writer = pool.apply_async(writer, (q, raw_path))
+                # pool.starmap(examples_to_queue, split_args)
+                # q.put(None)
+                # train_writer.wait()
+                for args in split_args:
+                    examples_to_queue(*args)
                 num_duplicates = deduplicate(raw_path, deduped_path)
                 print(f"Num Duplicates: {num_duplicates}")
                 os.remove(raw_path)

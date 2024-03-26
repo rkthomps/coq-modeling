@@ -24,7 +24,7 @@ from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__) 
 
-@functools.lru_cache(10)
+@functools.lru_cache(100)
 def load_page(db_loc: str, page_idx: int) -> Optional[torch.Tensor]:
     page_loc = os.path.join(db_loc, f"{page_idx}.pt")
     if not os.path.exists(page_loc):
