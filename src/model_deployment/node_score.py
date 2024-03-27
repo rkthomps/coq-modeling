@@ -46,6 +46,40 @@ class NodeScore:
         raise NotImplementedError
 
 
+class ModelScore(NodeScore):
+    def __init__(self, model_score: float):
+        self.model_score = model_score
+    
+    def compute(self) -> float:
+        return self.model_score
+    
+    def agg(self, other: NodeScore) -> NodeScore:
+        return other
+    
+    def to_json(self) -> Any:
+        return {
+            "model_score": self.model_score
+        }
+    
+    @classmethod
+    def from_unit_score(cls, unit_score: float, num_tokens: int, max_branch: int) -> NodeScore:
+        return cls(unit_score) 
+
+    @classmethod
+    def get_initial_score(cls, branching_factor: int) -> NodeScore:
+        score = 0
+        return cls(score)
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> ModelScore:
+        model_score = json_data["model_score"]
+        return cls(model_score)
+
+    @staticmethod
+    def get_alias() -> str:
+        return "model_score"
+
+
 @typechecked
 class TokenSumScore(NodeScore):
     def __init__(self, sequence_score: int | float):
