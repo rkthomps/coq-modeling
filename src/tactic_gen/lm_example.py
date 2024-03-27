@@ -62,6 +62,17 @@ def fmt_goals(goals: list[Goal]) -> str:
     goal_strings = [goal.to_string() for goal in goals]
     return GOAL_SEP.join(goal_strings)
 
+class BasicWholeProofFormatter:
+    ALIAS = "basic-whole-proof"
+
+    def __init__(self, conf: Any):
+        self.conf = conf
+    
+    def example_from_proof(self, proof: Proof) -> LmExample:
+        theorem_text = proof.theorem.term.text
+        proof_text = proof.proof_text_to_string(include_theorem=False)
+        return LmExample(theorem_text, proof_text)
+
 
 class BasicFormatter:
     ALIAS = "basic"

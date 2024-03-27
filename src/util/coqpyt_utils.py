@@ -1,7 +1,15 @@
-from coqpyt.coq.structs import GoalAnswer
+
+
+from typing import Any
+
+from coqpyt.coq.structs import GoalAnswer, Term
 from coqpyt.coq.lsp.structs import Goal
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
+from coqpyt.coq.proof_file import ProofFile
+
+from data_management.dataset_file import FileContext
+from data_management.sentence_db import SentenceDB 
 
 import ipdb
 
@@ -73,3 +81,37 @@ def restore_proof_file(
     delete_steps = [CoqDeleteStep(i) for i in reversed(delete_indices)]
     add_steps = [CoqAddStep(s, thm_idx + i) for i, s in enumerate(orig_proof_steps)]
     coq_file.change_steps(delete_steps + add_steps)
+
+def proc_file_path(file_path: str) -> str:
+    if file_path.startswith("/home"):
+        return "/".join(file_path.split("/")[3:])
+    return file_path
+
+def get_context(context: list[Term]) -> list[dict[str, Any]]:
+    res: list[dict[str, Any]] = []
+    for term in context:
+        res.append(
+            {
+                "text": term.text,
+                "file_path": proc_file_path(term.file_path),
+                "module": term.module,
+                "type": str(term.type),
+                "line": term.ast.range.start.line,
+            }
+        )
+    return res
+
+
+def get_file_context(proof_file: ProofFile, sentence_db: SentenceDB) -> FileContext:
+    last_proof = proof_file.proofs[-1]
+    context_list = list(proof_file.context.terms.values())
+    context_data = get_context(context_list)
+    file_context_data = {
+        "file": proc_file_path(last_proof.file_path),
+        "workspace": proc_file_path(last_proof.file_path),
+        "repository": "junkrepo",
+        "context": context_data,
+    }
+    file_context = FileContext.from_verbose_json(file_context_data, sentence_db)
+    return file_context
+

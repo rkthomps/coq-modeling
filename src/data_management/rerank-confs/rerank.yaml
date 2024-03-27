@@ -18,4 +18,4 @@ rerank_formatter:
     vector_db_loc: vector-dbs/prem-select
     checkpoint_loc: models/prem-select/checkpoint-15000
   consider_num: 256
-  negatives_per_positive: 15
+  negatives_per_positive: 3

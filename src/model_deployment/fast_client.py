@@ -1,6 +1,7 @@
 import sys
 import threading
 import subprocess
+import time
 
 from coqpyt.lsp.structs import *
 from coqpyt.lsp.json_rpc_endpoint import JsonRpcEndpoint
@@ -15,7 +16,7 @@ class FastLspClient(LspClient):
         root_uri: str,
         timeout: int = 30,
         memory_limit: int = 80097152,
-        coq_lsp: str = "coq-lsp",
+        coq_lsp: str = "coq-lsp -D 0.001",
     ):
         self.file_progress: Dict[str, List[CoqFileProgressParams]] = {}
 
@@ -35,14 +36,12 @@ class FastLspClient(LspClient):
 
         super().__init__(lsp_endpoint)
         workspaces = [{"name": "coq-lsp", "uri": root_uri}]
-        # This is required to be False since we use it to know if operations
-        # such as didOpen and didChange already finished.
+
         init_options = {
-            "max_errors": 120000000,
-            "show_coq_info_messages": True,
-            "check_only_on_request": True,
-            "verbosity": 0,
+            "verbosity": 1,
+            #"check_only_on_request": True,
         }
+        self.init_options = init_options
 
         self.initialize(
             proc.pid,
@@ -91,10 +90,14 @@ class FastLspClient(LspClient):
             GoalAnswer: Contains the goals at a position, messages associated
                 to the position and if errors exist, the top error at the position.
         """
+        start = time.time()
         result_dict = self.lsp_endpoint.call_method(
-            "proof/goals", textDocument=textDocument, position=position
+            "proof/goals", textDocument=textDocument, position=position,
         )
-        return GoalAnswer.parse(result_dict)
+        end = time.time()
+        print('goal time str: ', end - start)
+        parsed_goals = GoalAnswer.parse(result_dict)
+        return parsed_goals
 
     def get_document(
         self, textDocument: TextDocumentIdentifier

@@ -7,11 +7,14 @@ import re
 
 import sys, os
 
+from coqpyt.coq.structs import GoalAnswer
+from util.coqpyt_utils import get_all_goals
+
 from model_deployment.model_wrapper import ModelWrapper, ModelResult
 from model_deployment.node_score import NodeScore
-from model_deployment.goal_comparer import ParsedObligations
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import SearchNode, SearchTree
+from model_deployment.goal_comparer import goal_answer_as_hard_as 
 from util.util import get_basic_logger
 
 from data_management.sentence_db import SentenceDB
@@ -70,7 +73,7 @@ class ErroredSearch:
         self.message = message
         self.error_after = error_after
 
-    def to_json(self) -> Any:
+    def to_json(self, sentence_db: SentenceDB) -> Any:
         return {
             "message": self.message,
             "error_after": self.error_after,
@@ -111,6 +114,7 @@ class SearchTreeManager:
         score_type: type[NodeScore],
         max_branch: int,
         max_num_leaf_expansions: int,
+        depth_limit: int,
         timeout: int,
     ) -> None:
         self.model_wrapper = model_wrapper
@@ -118,6 +122,7 @@ class SearchTreeManager:
         self.score_type = score_type
         self.max_branch = max_branch
         self.max_num_leaf_expansions = max_num_leaf_expansions
+        self.depth_limit = depth_limit
         self.timeout = timeout
         initial_validity = True
         final_tactic = False
@@ -150,14 +155,15 @@ class SearchTreeManager:
             creation_time,
             initial_check_result.new_proof,
             initial_check_result.goal_record,
+            depth=0,
         )
         self.search_tree = SearchTree(initial_dset_file.file_context, self.root)
         self.frontier: list[SearchNode] = []
-        self.seen_goals: list[ParsedObligations] = []
+        self.seen_goals: list[GoalAnswer] = []
         self.seen_goals_nodes: list[SearchNode] = []
         heapq.heappush(self.frontier, self.root)
 
-    def search(self, print_trees: bool = False) -> SuccessfulSearch | FailedSearch:
+    def search(self, print_trees: bool = False, print_proofs: bool= False) -> SuccessfulSearch | FailedSearch:
         start = time.time_ns()
         for i in range(self.max_num_leaf_expansions):
             cur = time.time_ns()
@@ -166,7 +172,7 @@ class SearchTreeManager:
             if len(self.frontier) == 0:
                 break
             _logger.info(f"Beginning iteration {i + 1} of search.")
-            possible_complete_node = self.search_step(i, start)
+            possible_complete_node = self.search_step(i, start, print_proofs)
             if print_trees:
                 self.search_tree.pretty_print(verbose=True)
             if possible_complete_node:
@@ -188,6 +194,7 @@ class SearchTreeManager:
         final_tactic = True
         makes_progress = True
         creation_time = time.time_ns() - search_start_time
+        assert parent_node.depth is not None 
         complete_node = SearchNode(
             valid,
             final_tactic,
@@ -198,6 +205,7 @@ class SearchTreeManager:
             creation_time,
             proof_check_result.new_proof,
             proof_check_result.goal_record,
+            depth=parent_node.depth + 1,
         )
         return complete_node
 
@@ -215,6 +223,7 @@ class SearchTreeManager:
         makes_progress = False
         combined_steps = proof_check_result.attempted_steps
         creation_time = time.time_ns() - search_start_time
+        assert parent_node.depth is not None 
         invalid_node = SearchNode(
             valid,
             final_tactic,
@@ -225,6 +234,7 @@ class SearchTreeManager:
             creation_time,
             proof_check_result.new_proof,
             proof_check_result.goal_record,
+            depth=parent_node.depth + 1,
         )
         return invalid_node
 
@@ -238,10 +248,12 @@ class SearchTreeManager:
     ) -> SearchNode:
         assert proof_check_result.current_goals is not None
         assert proof_check_result.current_goals.goals is not None
-        assert proof_check_result.parsed_current_goals is not None
-        redundant_to = proof_check_result.parsed_current_goals.redundant_to(
-            self.seen_goals, self.seen_goals_nodes
-        )
+        redundant_to = None
+        for seen_goals, seen_goal_node in zip(self.seen_goals, self.seen_goals_nodes):
+            if goal_answer_as_hard_as(proof_check_result.current_goals, seen_goals):
+                redundant_to = seen_goal_node
+                break
+
         redundant_to_str = (
             redundant_to.redundant_str() if redundant_to is not None else None
         )
@@ -255,6 +267,7 @@ class SearchTreeManager:
         )
         valid = True
         final_tactic = False
+        assert parent_node.depth is not None 
         new_leaf = SearchNode(
             valid,
             final_tactic,
@@ -266,25 +279,26 @@ class SearchTreeManager:
             proof_check_result.new_proof,
             proof_check_result.goal_record,
             redundant_to_str=redundant_to_str,
+            depth = parent_node.depth + 1
         )
         return new_leaf
 
     def __filter_next_candidates(
         self,
         next_candidates: list[SearchNode],
-        next_goals: list[ParsedObligations],
-    ) -> list[tuple[SearchNode, ParsedObligations]]:
-        mins: list[tuple[SearchNode, ParsedObligations]] = []
+        next_goals: list[GoalAnswer],
+    ) -> list[tuple[SearchNode, GoalAnswer]]:
+        mins: list[tuple[SearchNode, GoalAnswer]] = []
         for candidate, goals in zip(next_candidates, next_goals):
             insert_new = True
             for i in range(len(mins)):
                 cur_min_candidate, cur_min_goal = mins[i]
-                if goals.as_hard_as(cur_min_goal):
+                if goal_answer_as_hard_as(goals, cur_min_goal):
                     insert_new = False
                     candidate.makes_progress = False
                     candidate.redundant_to_str = cur_min_candidate.redundant_str()
                     break
-                if cur_min_goal.as_hard_as(goals):
+                if goal_answer_as_hard_as(cur_min_goal, goals):
                     insert_new = False
                     cur_min_candidate.makes_progress = False
                     cur_min_candidate.redundant_to_str = candidate.redundant_str()
@@ -295,11 +309,13 @@ class SearchTreeManager:
         return mins
 
     def search_step(
-        self, step_num: int, search_start_time: int
+        self, step_num: int, search_start_time: int, print_proofs: bool,
     ) -> Optional[SearchNode]:
         """If the search is completed, return the resulting node in
         the proof search tree."""
         leaf_subtree = heapq.heappop(self.frontier)
+        if print_proofs:
+            print("".join(leaf_subtree.combined_proof_steps))
         leaf_subtree.set_expanded_num(step_num)
         assert leaf_subtree.proof is not None
         dset_file = DatasetFile(self.search_tree.file_context, [leaf_subtree.proof])
@@ -311,7 +327,7 @@ class SearchTreeManager:
         _logger.info(f"Model time: {(end_time - start_time) / 1e9}")
         children: list[SearchNode] = []
         next_frontier_pool: list[SearchNode] = []
-        next_frontier_goals: list[ParsedObligations] = []
+        next_frontier_goals: list[GoalAnswer] = []
         for tactic, score, num_tokens in zip(
             result.next_tactic_list, result.score_list, result.num_tokens_list
         ):
@@ -359,11 +375,11 @@ class SearchTreeManager:
                     children.append(valid_node)
                     # We will check again if the candide makes progress to make
                     # sure it isn't superceded by later candidates.
-                    if valid_node.makes_progress:
-                        assert proof_check_result.parsed_current_goals is not None
+                    if valid_node.makes_progress and valid_node.depth is not None and valid_node.depth <= self.depth_limit:
+                        assert proof_check_result.current_goals is not None
                         next_frontier_pool.append(valid_node)
                         next_frontier_goals.append(
-                            proof_check_result.parsed_current_goals
+                            proof_check_result.current_goals
                         )
 
         filtered_candidates = self.__filter_next_candidates(

@@ -103,7 +103,7 @@ def examples_to_queue(
     cuda_str = f"cuda:{device_idx}"
     move_fmt_to(lm_formatter, cuda_str)
     sentence_db = SentenceDB.load(sentence_db_loc) 
-    dp_obj = file_info.get_dp(example_sample.data_loc)
+    dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
     match selected_steps:
         case AllSteps():
             for proof in dp_obj.proofs:

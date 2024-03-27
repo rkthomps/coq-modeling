@@ -325,11 +325,14 @@ class Proof:
         self.theorem = theorem
         self.steps = steps
 
-    def proof_text_to_string(self) -> str:
+    def proof_text_to_string(self, include_theorem: bool = True) -> str:
         theorem_text = self.theorem.term.text
         step_strings = [s.step.text for s in self.steps]
         proof_text = "".join(step_strings)
-        return f"{theorem_text}{proof_text}"
+        if include_theorem:
+            return f"{theorem_text}{proof_text}"
+        else:
+            return proof_text
 
     def proof_prefix_to_string(
         self,

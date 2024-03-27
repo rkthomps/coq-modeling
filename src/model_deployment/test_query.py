@@ -5,13 +5,14 @@ import json
 import pdb
 
 from data_management.splits import FileInfo, Split
+from data_management.dataset_file import FileContext, Term, Sentence
 from model_deployment.searcher import (
     SearchTreeManager,
     SearchResult,
     SuccessfulSearch,
     FailedSearch,
 )
-from model_deployment.proof_manager import ProofManager, initialize_hidden_files
+from model_deployment.proof_manager import ProofManager
 from model_deployment.model_wrapper import (
     CodeLLamaServer,
     FidT5LocalWrapper,
@@ -29,6 +30,7 @@ from model_deployment.node_score import (
 from data_management.sentence_db import SentenceDB
 from util.util import get_basic_logger
 
+from coqpyt.coq.structs import Step, TermType
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
 
@@ -43,14 +45,14 @@ _logger = get_basic_logger(__name__)
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/examples/Adding/add_2.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min_superlist.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min_superlist.v"
 
 
 dummy_file_info = FileInfo(
@@ -62,14 +64,6 @@ dummy_file_info = FileInfo(
 dummy_split = Split.TEST
 dummy_data_loc = "/"
 
-with CoqFile(TEST_FILE, workspace=dummy_file_info.workspace) as coq_file:
-    print("Initially valid: ", coq_file.is_valid)
-    last: Optional[int] = None
-    for i, step in enumerate(coq_file.steps):
-        if "Theorem" in step.text or "Lemma" in step.text:
-            last = i
-assert last is not None
-
 sentence_db = SentenceDB.load("./sentences.db") 
 
 # WRAPPER = CodeLLamaServer.from_conf({"server_url": "http://127.0.0.1:5000"})
@@ -80,20 +74,19 @@ WRAPPER = FidT5LocalWrapper.from_conf(
         "pretrained-name": "/home/ubuntu/coq-modeling/models/t5-fid-base-basic-final/checkpoint-110500"
     }
 )
-NODE_SCORE_TYPE = TokenSumScore
+NODE_SCORE_TYPE = TokenLengthNormalizedScore
 TIMEOUT = 600
-BRANCH = 2
+BRANCH = 32
+DEPTH_LIMIT=30
 EXPANSIONS = 500
 
-_logger.debug("Creating Proof File")
-with ProofFile(
-    TEST_FILE, workspace=dummy_file_info.workspace, timeout=60
-) as proof_file:
-    proof_point = last
-    _logger.debug("Creating Proof Manager")
+
+def do_search(file_context: FileContext, initial_steps: list[Step], proof_point: int, proof_term: Term):
     with ProofManager(
         TEST_FILE,
-        proof_file,
+        file_context,
+        proof_term,
+        initial_steps,
         proof_point,
         WRAPPER.formatter,
         dummy_file_info,
@@ -102,11 +95,11 @@ with ProofFile(
         dummy_data_loc,
     ) as proof_manager:
         tree_manager = SearchTreeManager(
-            WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, TIMEOUT
+            WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, DEPTH_LIMIT, TIMEOUT
         )
 
         _logger.debug("Beginning Proof Search")
-        result = tree_manager.search(print_trees=True)
+        result = tree_manager.search(print_proofs=True)
         with open("proof-tree.json", "w") as fout:
             json_proof_tree = result.search_tree.to_json(proof_manager.sentence_db)
             fout.write(json.dumps(json_proof_tree, indent=2))
@@ -123,3 +116,27 @@ with ProofFile(
                 )
             case FailedSearch():
                 print("Failed Search")
+
+
+def do_coq_file_search():
+    file = os.path.abspath(dummy_file_info.file)
+    workspace = os.path.abspath(dummy_file_info.workspace)
+    file_context = FileContext(file, workspace, dummy_file_info.repository, [])
+    with CoqFile(TEST_FILE, workspace=dummy_file_info.workspace) as coq_file:
+        print("Initially valid: ", coq_file.is_valid)
+        last: Optional[int] = None
+        for i, step in enumerate(coq_file.steps):
+            if "Theorem" in step.text or "Lemma" in step.text:
+                last = i
+        assert last is not None
+        initial_steps = coq_file.steps[:(last + 1)]
+    theorem_sentence = Sentence(initial_steps[-1].text, file, [], TermType.LEMMA, initial_steps[-1].ast.range.start.line)
+    term = Term(theorem_sentence, [])
+    do_search(file_context, initial_steps, last, term)
+
+
+def do_proof_file_search():
+    ## TODO
+    pass
+
+do_coq_file_search()

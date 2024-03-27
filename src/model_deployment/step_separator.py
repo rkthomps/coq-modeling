@@ -31,10 +31,10 @@ _proofp = _stepp.many() << _whitespacep.many()
 
 
 def separate_steps(step_str: str) -> list[str]:
-    try:
-        return _proofp.parse(step_str)
-    except ParseError:
-        ipdb.set_trace()
+    return _proofp.parse(step_str)
+    # try:
+    # except ParseError:
+    #     ipdb.set_trace()
 
 
 if __name__ == "__main__":

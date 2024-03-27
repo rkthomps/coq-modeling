@@ -60,6 +60,7 @@ class SearchNode:
         model_input: Optional[str] = None,
         children: Optional[list[SearchNode]] = None,
         redundant_to_str: Optional[str] = None,
+        depth: Optional[int] = None,
     ) -> None:
         self.valid = valid
         self.final_tactic = final_tactic
@@ -77,6 +78,8 @@ class SearchNode:
             self.children = []
         else:
             self.children = children
+        self.depth = depth
+    
 
     def total_proof_str(self) -> str:
         return self.steps_to_str(self.combined_proof_steps)
