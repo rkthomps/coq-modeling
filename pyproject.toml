@@ -37,6 +37,7 @@ dependencies = [
     "typeguard",
     "ipdb",
     "parsy",
+    "edist",
 ]
 
 [tool.setuptools.packages.find]

@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typeguard import typechecked
 import json
 import ipdb
+import functools
+from edist import ted
+from edist import seted
+
 
 import numpy as np
 import numpy.typing as npt
@@ -919,7 +923,7 @@ class NotationT:
         assert len(ast) == 4
         assert ast[0] == "CNotation"
         terms = [term_from_ast(t) for t in ast[3][0]]
-        return cls(terms) 
+        return cls(terms)
 
 
 class HoleT:
@@ -1024,6 +1028,38 @@ def term_from_ast(ast: Any) -> Term:
             )
             return UnknownT()
 
+
+class AdjTree:
+    def __init__(self, nodes: list[str], idxs: list[list[int]]):
+        self.nodes = nodes
+        self.idxs = idxs
+    
+    def distance(self, other: AdjTree) -> int:
+        return ted.standard_ted(self.nodes, self.idxs, other.nodes, other.idxs)
+    
+    def fast_distance(self, other: AdjTree) -> int:
+        return seted.standard_seted(self.nodes, other.nodes)
+    
+    @classmethod
+    @functools.cache
+    def __from_stree(cls, t: StrTree, start_idx: int) -> tuple[AdjTree, int]:
+        nodes = [t.key]
+        idxs: list[int] = []
+        child_idxs: list[list[int]] = [idxs]
+        next_idx = start_idx + 1
+        for c in t.children: 
+            idxs.append(next_idx)
+            c_adj_tree, next_idx = AdjTree.__from_stree(c, next_idx)
+            nodes.extend(c_adj_tree.nodes)
+            child_idxs.extend(c_adj_tree.idxs)
+        return cls(nodes, child_idxs), next_idx
+
+
+    @classmethod
+    def from_stree(cls, t: StrTree) -> AdjTree:
+        adj_t, _ = cls.__from_stree(t, 0)
+        return adj_t 
+    
 
 class StrTree:
     def __init__(self, key: str, children: list[StrTree]) -> None:

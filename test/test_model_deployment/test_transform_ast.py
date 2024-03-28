@@ -1,4 +1,4 @@
-from model_deployment.transform_ast import StrTree
+from model_deployment.transform_ast import StrTree, AdjTree
 
 
 class TestTransformAst:
@@ -49,3 +49,27 @@ class TestTransformAst:
             "0", [StrTree("2", []), StrTree("1", [StrTree("2", []), StrTree("3", [])])]
         )
         assert t.keyset() == ["0", "1", "2", "2", "3"]
+    
+    def test_adj_tree1(self) -> None:
+        t = StrTree("1", [StrTree("2", []), StrTree("3", [])])
+        at = AdjTree.from_stree(t)
+        assert at.nodes == ["1", "2", "3"]
+        assert at.idxs == [[1, 2], [], []]
+
+    def test_adj_tree2(self) -> None:
+        t = StrTree(
+            "0", [StrTree("2", []), StrTree("1", [StrTree("2", []), StrTree("3", [])])]
+        )
+        at = AdjTree.from_stree(t)
+        assert at.nodes == ["0", "2", "1", "2", "3"]
+        assert at.idxs == [[1, 2], [], [3, 4], [], []]
+    
+
+    def test_adj_tree_emp(self) -> None:
+        t = StrTree("1", [])
+        at = AdjTree.from_stree(t)
+        assert at.nodes == ["1"]
+        assert at.idxs == [[]]
+
+
+

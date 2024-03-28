@@ -14,7 +14,6 @@ import multiprocessing as mp
 
 from data_management.sentence_db import SentenceDB, DBSentence
 
-from typeguard import typechecked
 from coqpyt.coq.structs import TermType
 
 # from util.util import get_basic_logger
@@ -41,7 +40,6 @@ def data_shape_expected(raw_data_loc: str) -> bool:
     return True
 
 
-@typechecked
 class Sentence:
     bad_sentence_endings: set[str] = set()
 
@@ -128,6 +126,7 @@ class Sentence:
 
     @classmethod
     def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Sentence:
+        start = time.time()
         if json_data["type"] == "stored":
             db_sentence = sentence_db.retrieve(json_data["id"])
             sentence = cls.from_db_sentence(db_sentence)
@@ -145,6 +144,8 @@ class Sentence:
         module = json_data["module"]
         sentence_type = TermType[json_data["type"].split(".")[1]]
         line = json_data["line"]
+        end = time.time()
+        sentence_time += end - start
         return cls(text, file_path, module, sentence_type, line)
 
     @classmethod
@@ -155,7 +156,6 @@ class Sentence:
         return cls(text, file_path, module, term_type, line)
 
 
-@typechecked
 class Term:
     def __init__(self, term: Sentence, term_context: list[Sentence]):
         self.term = term
@@ -198,7 +198,6 @@ class Term:
         return cls(term, context)
 
 
-@typechecked
 class Step:
     bad_tactic_endings: set[str] = set()
 
@@ -233,7 +232,6 @@ class Step:
         return cls(text, context)
 
 
-@typechecked
 class Goal:
     def __init__(self, hyps: list[str], goal: str) -> None:
         self.hyps = hyps
@@ -257,7 +255,6 @@ class Goal:
         return cls(hyps, hyp_goal[1])
 
 
-@typechecked
 class FocusedStep:
     def __init__(
         self,
@@ -319,7 +316,6 @@ class FocusedStep:
         return cls(term, step, n_step, goals)
 
 
-@typechecked
 class Proof:
     def __init__(self, theorem: Term, steps: list[FocusedStep]) -> None:
         self.theorem = theorem
@@ -366,7 +362,6 @@ class Proof:
         return cls(theorem, steps)
 
 
-@typechecked
 class FileContext:
     def __init__(
         self, file: str, workspace: str, repository: str, avail_premises: list[Sentence]
@@ -450,7 +445,6 @@ class FileContext:
                 return cls.from_verbose_json(a, sentence_db)
 
 
-@typechecked
 class DatasetFile:
     def __init__(self, file_context: FileContext, proofs: list[Proof]) -> None:
         # TODO: Turn into list of proofs.
@@ -536,7 +530,8 @@ class DatasetFile:
     ) -> DatasetFile:
         with open(path, "r") as fin:
             json_data = json.load(fin)
-        return cls.from_json(json_data, sentence_db, metadata_only)
+        ret_obj = cls.from_json(json_data, sentence_db, metadata_only)
+        return ret_obj
 
     @classmethod
     def from_json(
