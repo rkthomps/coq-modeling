@@ -4,7 +4,6 @@ from typing import Any
 import sys, os
 import ipdb
 import re
-from pytorch_lightning.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from transformers import (
     ByT5Tokenizer,
     T5EncoderModel,

@@ -13,6 +13,7 @@ from model_deployment.searcher import (
     FailedSearch,
 )
 from model_deployment.proof_manager import ProofManager
+from model_deployment.model_node_scorer import ModelNodeScorer
 from model_deployment.model_wrapper import (
     CodeLLamaServer,
     FidT5LocalWrapper,
@@ -21,6 +22,7 @@ from model_deployment.model_wrapper import (
 )
 from model_deployment.node_score import (
     TokenLengthNormalizedScore,
+    ModelScore,
     TokenSumScore,
     BranchNormalizedScore,
     LastTacGreedyScore,
@@ -45,21 +47,21 @@ _logger = get_basic_logger(__name__)
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
 #TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
+#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
 # TEST_FILE = "/home/ubuntu/coq-modeling/examples/Adding/add_2.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min_superlist.v"
+TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min_superlist.v"
 
 
 dummy_file_info = FileInfo(
     "hi-dog",
     TEST_FILE,
-    "/home/ubuntu/coq-modeling/examples",
-    "/home/ubuntu/coq-modeling/examples",
+    "/home/ubuntu/coq-modeling/test-coq-projs",
+    "/home/ubuntu/coq-modeling/test-coq-projs",
 )
 dummy_split = Split.TEST
 dummy_data_loc = "/"
@@ -75,10 +77,13 @@ WRAPPER = FidT5LocalWrapper.from_conf(
     }
 )
 NODE_SCORE_TYPE = TokenLengthNormalizedScore
+#NODE_SCORE_TYPE = ModelScore 
 TIMEOUT = 600
 BRANCH = 32
-DEPTH_LIMIT=30
+DEPTH_LIMIT=300
 EXPANSIONS = 500
+#MODEL_SCORER = ModelNodeScorer.from_name("codellama/CodeLlama-7b-hf")
+MODEL_SCORER = None
 
 
 def do_search(file_context: FileContext, initial_steps: list[Step], proof_point: int, proof_term: Term):
@@ -95,11 +100,11 @@ def do_search(file_context: FileContext, initial_steps: list[Step], proof_point:
         dummy_data_loc,
     ) as proof_manager:
         tree_manager = SearchTreeManager(
-            WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, DEPTH_LIMIT, TIMEOUT
-        )
+            WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, DEPTH_LIMIT, TIMEOUT, MODEL_SCORER 
+    )
 
         _logger.debug("Beginning Proof Search")
-        result = tree_manager.search(print_proofs=True)
+        result = tree_manager.search(print_proofs=True, print_trees=True)
         with open("proof-tree.json", "w") as fout:
             json_proof_tree = result.search_tree.to_json(proof_manager.sentence_db)
             fout.write(json.dumps(json_proof_tree, indent=2))

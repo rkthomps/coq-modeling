@@ -22,9 +22,6 @@ from transformers import (
     BatchEncoding,
 )
 from transformers.integrations import HfDeepSpeedConfig
-from deepspeed.inference.quantization.quantization import (
-    _init_group_wise_weight_quantization,
-)
 import torch
 from torch.utils.data import Dataset
 

@@ -6,7 +6,6 @@ import ipdb
 import re
 from enum import Enum
 
-from pytorch_lightning.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from transformers import (
     GPT2Tokenizer,
     OPTModel,

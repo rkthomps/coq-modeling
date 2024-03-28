@@ -235,7 +235,7 @@ class ProofRetrievalFidFormatter:
 
         heuristic_idx = 0
         worst_candidate_dist: Optional[int] = None
-        global_best_candidates: list[tuple[int, GoalRecord]] = []
+        global_best_candidates: list[tuple[int, float, GoalRecord]] = []
         start_time = time.time()
         while 0 < len(all_candidates):
             cur_time = time.time()
@@ -250,8 +250,8 @@ class ProofRetrievalFidFormatter:
                 heuristic_depth=max_depth,
             )
 
-            heapq.heappush(global_best_candidates, (-1 * cur_best_distance, cur_best_record))
-            worst_candidate_dist_neg, _ = global_best_candidates[0]
+            heapq.heappush(global_best_candidates, (-1 * cur_best_distance, time.time(), cur_best_record))
+            worst_candidate_dist_neg, _, _ = global_best_candidates[0]
             worst_candidate_dist = -1 * worst_candidate_dist_neg
 
             if self.n_proofs < len(global_best_candidates):
@@ -277,7 +277,7 @@ class ProofRetrievalFidFormatter:
             heuristic_idx += 1
 
         sorted_candidates = sorted(global_best_candidates, key=lambda x: -1 * x[0])
-        return [record for _, record in sorted_candidates]
+        return [record for _, _, record in sorted_candidates]
 
     def example_from_step(
         self,
@@ -1204,6 +1204,7 @@ LmFormatter = (
     | OptimalPremiseFormatter
     | StatementPremiseFormatter
     | ProofRetrievalFormatter
+    | ProofRetrievalFidFormatter
     | FidPremiseFormatter
     | GroundTruthLeakFormatter
     | FixedPremiseFormatter
@@ -1258,6 +1259,8 @@ def fmt_from_conf(conf: Any) -> LmFormatter:
             return FidPremiseFormatter.from_conf(conf)
         case ProofRetrievalFormatter.ALIAS:
             return ProofRetrievalFormatter.from_conf(conf)
+        case ProofRetrievalFidFormatter.ALIAS:
+            return ProofRetrievalFidFormatter.from_conf(conf)
         case FixedPremiseFormatter.ALIAS:
             return FixedPremiseFormatter.from_conf(conf)
         case PremiseFormatter.ALIAS:
@@ -1291,6 +1294,7 @@ def fmt_get_conf(formatter: LmFormatter) -> Any:
             | FidPremiseFormatter()
             | ProofRetrievalOracleFormatter()
             | ProofRetrievalFormatter()
+            | ProofRetrievalFidFormatter()
             | BaseCodeLLamaPremiseLmFormatter()
         ):
             return formatter.conf

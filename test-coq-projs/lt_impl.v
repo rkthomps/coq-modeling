@@ -4,17 +4,8 @@ Require Import Nat.
 Lemma succ_preserves_eq: forall (n1 n2 : nat),
     (n1 <=? n2 = true) <-> ((S n1) <=? (S n2) = true).
 Proof. 
-    split. 
-    - generalize dependent n2. induction n1 as [|n1' IHn1']. 
-      + reflexivity. 
-      + intros. simpl. destruct n2 as [|n2'] eqn:E.  
-        * discriminate H. 
-        * simpl in H. apply H. 
-    - generalize dependent n2. induction n1 as [|n1' IHn1'].
-      + reflexivity. 
-      + intros. simpl. destruct n2 as [|n2'] eqn:E. 
-        * discriminate H. 
-        * apply IHn1'. apply IHn1' in H. simpl. apply H.  
+induction n1; intuition; simpl in *.
+destruct n2; intuition. 
 Qed.
 
 Lemma if_ltb_then_leb: forall (n1 n2 : nat),
