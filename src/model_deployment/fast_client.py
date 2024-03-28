@@ -1,13 +1,51 @@
+from __future__ import annotations
 import sys
 import threading
 import subprocess
 import time
 
-from coqpyt.lsp.structs import *
+from coqpyt.coq.structs import Step
+from coqpyt.lsp.structs import * 
 from coqpyt.lsp.json_rpc_endpoint import JsonRpcEndpoint
 from coqpyt.lsp.endpoint import LspEndpoint
 from coqpyt.lsp.client import LspClient
 from coqpyt.coq.lsp.structs import *
+
+class ClientWrapper:
+    def __init__(self, client: FastLspClient, file_uri: str) -> None:
+        self.client = client
+        self.file_uri = file_uri
+        self.file_version = 1
+        self.client.didOpen(TextDocumentItem(self.file_uri, "coq", self.file_version, ""))
+    
+    def set_version(self, v: int) -> None:
+        self.file_version = v
+    
+    def write(self, content: str) -> None:
+        self.file_version += 1
+        self.client.didChange(VersionedTextDocumentIdentifier(self.file_uri, self.file_version), [TextDocumentContentChangeEvent(None, None, content)])
+    
+    def write_and_get_steps(self, content: str) -> list[Step]:
+        self.write(content)
+        lines = content.split("\n")
+        spans = self.client.get_document(TextDocumentIdentifier(self.file_uri)).spans
+        steps: list[Step] = []
+        prev_line, prev_char = (0, 0)
+        for i, span in enumerate(spans):
+            if i == len(spans) - 1 and span.span is None:
+                continue
+            end_line, end_char = (spans[i].range.end.line, spans[i].range.end.character)
+            cur_lines = lines[prev_line:(end_line + 1)]
+            cur_lines[0] = cur_lines[0][prev_char:]
+            cur_lines[-1] = cur_lines[-1][:end_char]
+            prev_line, prev_char = end_line, end_char
+            text = "\n".join(cur_lines)
+            steps.append(Step(text, "", span))
+        return steps
+    
+    def close(self) -> None:
+        self.client.shutdown()
+        self.client.exit()
 
 
 class FastLspClient(LspClient):
@@ -33,6 +71,10 @@ class FastLspClient(LspClient):
         )
         json_rpc_endpoint = JsonRpcEndpoint(proc.stdin, proc.stdout)
         lsp_endpoint = LspEndpoint(json_rpc_endpoint, timeout=timeout)
+        # lsp_endpoint.notify_callbacks = {
+        #     "$/coq/fileProgress": self.__handle_file_progress,
+        #     "textDocument/publishDiagnostics": self.__handle_publish_diagnostics,
+        # }
 
         super().__init__(lsp_endpoint)
         workspaces = [{"name": "coq-lsp", "uri": root_uri}]
@@ -54,13 +96,13 @@ class FastLspClient(LspClient):
         )
         self.initialized()
 
-
     def didOpen(self, textDocument: TextDocumentItem):
         """Open a text document in the server.
 
         Args:
             textDocument (TextDocumentItem): Text document to open
         """
+        self.lsp_endpoint.diagnostics[textDocument.uri] = []
         super().didOpen(textDocument)
 
 
@@ -75,6 +117,7 @@ class FastLspClient(LspClient):
             textDocument (VersionedTextDocumentIdentifier): Text document changed.
             contentChanges (list[TextDocumentContentChangeEvent]): Changes made.
         """
+        self.lsp_endpoint.diagnostics[textDocument.uri] = []
         super().didChange(textDocument, contentChanges)
 
     def proof_goals(

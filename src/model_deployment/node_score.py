@@ -132,6 +132,7 @@ class TokenLengthNormalizedScore(NodeScore):
         if self.proof_num_tokens == 0:
             assert self.sequence_score == 0
             return 0
+        #return self.sequence_score - self.proof_num_tokens * math.log(0.1)
         return self.sequence_score / self.proof_num_tokens
 
     def agg(self, other: NodeScore) -> NodeScore:

@@ -12,18 +12,4 @@ Fixpoint min (l : (list nat)) : option nat :=
 
 Lemma exists_min: forall (l : (list nat)), 
     (l <> nil) -> exists h, min(l) = Some(h).
-induction l; intuition; simpl in *.                                                                                                                            
-destruct l; simpl in *.                                                                                                                                        
-econstructor.                                                                                                                                                  
-exfalso.                                                                                                                                                       
-eapply H.                                                                                                                                                      
-eapply eq_sym.                                                                                                                                                 
-destruct a.                                                                                                                                                    
-exfalso.                                                                                                                                                       
-eapply not_eq_sym.                                                                                                                                             
-eapply nil_cons.                                                                                                                                               
-exfalso.                                                                                                                                                       
-eapply not_eq_sym.                                                                                                                                             
-eapply nil_cons.                                                                                                                                               
-exfalso.        
 Admitted.

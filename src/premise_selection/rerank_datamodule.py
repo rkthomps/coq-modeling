@@ -1,8 +1,6 @@
 from typing import Any, Optional
 
 import jsonlines
-import pytorch_lightning as pl
-from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 from transformers import AutoTokenizer, GPT2Tokenizer
 from torch.utils.data import Dataset, DataLoader
 import torch

@@ -29,9 +29,11 @@ from data_management.splits import Split, FileInfo
 
 from tactic_gen.lm_example import LmExample, LmFormatter, ProofRetrievalFormatter
 
-from model_deployment.fast_client import FastLspClient
+from model_deployment.goal_comparer import ParsedObligations, ParsedObligation, ParsedHyp 
+from model_deployment.fast_client import FastLspClient, ClientWrapper
 from model_deployment.mine_goals import get_goal_record, GoalRecord
 from model_deployment.step_separator import separate_steps
+from util.coqpyt_utils import get_all_goals
 from util.util import get_basic_logger
 
 from coqpyt.lsp.client import LspClient
@@ -74,7 +76,7 @@ class ProofCheckResult:
         self,
         tactic_result: TacticResult,
         attempted_steps: list[str],
-        current_goals: Optional[GoalAnswer],
+        current_goals: Optional[list[Goal]],
         goal_record: Optional[GoalRecord],
         new_proof: Optional[Proof],
     ) -> None:
@@ -96,43 +98,6 @@ class ProofCheckResult:
             goal_record,
             new_dataset_file,
         )
-
-
-class ClientWrapper:
-    def __init__(self, client: CoqLspClient | FastLspClient, file_uri: str) -> None:
-        self.client = client
-        self.file_uri = file_uri
-        self.file_version = 1
-        self.client.didOpen(TextDocumentItem(self.file_uri, "coq", self.file_version, ""))
-    
-    def set_version(self, v: int) -> None:
-        self.file_version = v
-    
-    def write(self, content: str) -> None:
-        self.file_version += 1
-        self.client.didChange(VersionedTextDocumentIdentifier(self.file_uri, self.file_version), [TextDocumentContentChangeEvent(None, None, content)])
-    
-    def write_and_get_steps(self, content: str) -> list[CStep]:
-        self.write(content)
-        lines = content.split("\n")
-        spans = self.client.get_document(TextDocumentIdentifier(self.file_uri)).spans
-        steps: list[CStep] = []
-        prev_line, prev_char = (0, 0)
-        for i, span in enumerate(spans):
-            if i == len(spans) - 1 and span.span is None:
-                continue
-            end_line, end_char = (spans[i].range.end.line, spans[i].range.end.character)
-            cur_lines = lines[prev_line:(end_line + 1)]
-            cur_lines[0] = cur_lines[0][prev_char:]
-            cur_lines[-1] = cur_lines[-1][:end_char]
-            prev_line, prev_char = end_line, end_char
-            text = "\n".join(cur_lines)
-            steps.append(CStep(text, "", span))
-        return steps
-    
-    def close(self) -> None:
-        self.client.shutdown()
-        self.client.exit()
 
 
 
@@ -182,7 +147,9 @@ class ProofManager:
         #     )
         # )
     def __restart_clients(self) -> None:
-        self.aux_client.close()
+        #self.aux_client.close()
+        if os.path.exists(self.fast_aux_file_path):
+            os.remove(self.fast_aux_file_path)
         self.fast_client.close()
         self.__start_clients()
     
@@ -190,14 +157,14 @@ class ProofManager:
         file_dir = os.path.dirname(self.file_path)
         file_basename = os.path.basename(self.file_path)
         self.fast_aux_file_path = os.path.abspath(get_fresh_path(file_dir, f"aux_fast_{file_basename}"))
-        fast_aux_client = FastLspClient(self.workspace_uri, timeout=2)
+        fast_aux_client = FastLspClient(self.workspace_uri, timeout=60)
         fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
         self.fast_client = ClientWrapper(fast_aux_client, fast_aux_file_uri)
 
-        self.aux_file_path = os.path.abspath(get_fresh_path(file_dir, f"aux_{file_basename}"))
-        aux_file_uri = f"file://{self.aux_file_path}"
-        aux_client = CoqLspClient(self.workspace_uri, timeout=2)
-        self.aux_client = ClientWrapper(aux_client, aux_file_uri)
+        # self.aux_file_path = os.path.abspath(get_fresh_path(file_dir, f"aux_{file_basename}"))
+        # aux_file_uri = f"file://{self.aux_file_path}"
+        # aux_client = CoqLspClient(self.workspace_uri, timeout=2)
+        # self.aux_client = ClientWrapper(aux_client, aux_file_uri)
 
 
     def get_proof_shell(
@@ -249,8 +216,8 @@ class ProofManager:
         return DatasetFile(self.file_context, [initial_proof_result.new_proof])
 
     
-    def check_valid(self, client: CoqLspClient) -> bool:
-        for diagnostic in client.lsp_endpoint.diagnostics[self.aux_client.file_uri]:
+    def check_valid(self, client: FastLspClient) -> bool:
+        for diagnostic in client.lsp_endpoint.diagnostics[self.fast_client.file_uri]:
             if diagnostic.severity == 1:
                 return False
         return True
@@ -288,26 +255,34 @@ class ProofManager:
         t1 = time.time()
         contents = f"{self.file_prefix}{partial_proof}"
         try:
-            steps = self.aux_client.write_and_get_steps(contents)
+            steps = self.fast_client.write_and_get_steps(contents)
         except ResponseError:
             self.__restart_clients()
             return ProofCheckResult.get_invalid()
+        except TimeoutError:
+            self.__restart_clients()
+            return ProofCheckResult.get_invalid()
 
-        if not self.check_valid(self.aux_client.client):
+        if not self.check_valid(self.fast_client.client):
             return ProofCheckResult.get_invalid()
         partial_steps = [s.text for s in steps[(self.proof_point + 1) :]]
         #end_pos = steps[-1].ast.range.end
         num_lines = len(contents.split("\n"))
         farther_end = Position(num_lines + 1, 0)
         try:
-            current_goals = self.aux_client.client.proof_goals(TextDocumentIdentifier(self.aux_client.file_uri), farther_end) 
+            current_goals = self.fast_client.client.proof_goals(TextDocumentIdentifier(self.fast_client.file_uri), farther_end) 
         except ResponseError:
+            self.__restart_clients()
+            return ProofCheckResult.get_invalid()
+        except TimeoutError:
             self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
         if current_goals is None:
             return ProofCheckResult.get_invalid() 
         t2 = time.time()
+
+        self.fast_client.client.lsp_endpoint.timeout = 0.5
         print("New check time:", t2 - t1)
 
         # try:
@@ -328,7 +303,7 @@ class ProofManager:
             return ProofCheckResult(
                 TacticResult.COMPLETE,
                 partial_steps,
-                current_goals,
+                get_all_goals(current_goals),
                 goal_record,
                 proof,
             )
@@ -338,7 +313,7 @@ class ProofManager:
         return ProofCheckResult(
             TacticResult.VALID,
             partial_steps,
-            current_goals,
+            get_all_goals(current_goals),
             goal_record,
             new_proof,
         )
@@ -371,9 +346,9 @@ class ProofManager:
         traceback: TracebackType | None,
     ) -> None:
         _logger.debug("Restoring proof file.")
-        if os.path.exists(self.aux_file_path):
-            os.remove(self.aux_file_path)
+        # if os.path.exists(self.aux_file_path):
+        #     os.remove(self.aux_file_path)
+        # self.aux_client.close()
         if os.path.exists(self.fast_aux_file_path):
             os.remove(self.fast_aux_file_path)
         self.fast_client.close()
-        self.aux_client.close()
