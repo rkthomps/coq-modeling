@@ -22,6 +22,7 @@ from model_deployment.premise_model_wrapper import (
     premise_wrapper_from_conf,
 )
 from model_deployment.mine_goals import FileGoals, GoalRecord
+from model_deployment.transform_ast import AdjTree
 from util.util import get_basic_logger
 
 from coqpyt.coq.structs import TermType
@@ -121,6 +122,27 @@ def allocate_tokens(
     return tokenizer.decode(to_add, skip_special_tokens=True), len(to_add)
 
 
+class ProofCandidate:
+    def __init__(self, distance: int, candidate: GoalRecord):
+        self.distance = distance
+        self.candidate = candidate
+
+    def __lt__(self, other: ProofCandidate) -> bool:
+        return self.distance < other.distance
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ProofCandidate):
+            return False
+        return self.distance == other.distance
+
+class ProofCandidateReversed(ProofCandidate):
+    def __init__(self, distance: int, candidate: GoalRecord):
+        super(ProofCandidateReversed, self).__init__(distance, candidate)
+
+    def __lt__(self, other: ProofCandidate) -> bool:
+        return other.distance < self.distance
+    
+
 class ProofRetrievalFidFormatter:
     ALIAS = "proof-ret-fid"
 
@@ -198,6 +220,85 @@ class ProofRetrievalFidFormatter:
                 candidates.append(record)
         return candidates
 
+    # def get_similar_proofs(
+    #     self,
+    #     step_idx: int,
+    #     proof: Proof,
+    #     dp_obj: DatasetFile,
+    #     file_info: FileInfo,
+    #     key_record: Optional[GoalRecord] = None,
+    #     cutoff_idx: Optional[int] = None,
+    #     timeout: int = 10,
+    #     max_depth: int = 3,
+    # ) -> list[GoalRecord]:
+    #     file_goals = self.__get_file_goals(file_info.dp_name)
+    #     if key_record is None and cutoff_idx is None:
+    #         if file_goals is None:
+    #             return [] 
+    #         record_result = self.get_record_and_cutoff_index(
+    #             step_idx, proof, file_goals
+    #         )
+    #         if record_result is None:
+    #             return [] 
+    #         record_idx, cutoff_idx = record_result
+    #         key_record = file_goals.records[record_idx]
+    #     elif key_record is None or cutoff_idx is None:
+    #         return [] 
+
+    #     in_file_candidates = self.get_in_file_candidates(cutoff_idx, file_goals)
+
+    #     out_of_file_candidates = self.get_out_of_file_candidates(dp_obj)
+    #     all_raw_candidates = in_file_candidates + out_of_file_candidates
+
+    #     all_candidates: list[ProofCandidate] = []
+    #     for record in all_raw_candidates:
+    #         heuristic_val = abs(key_record.term.size() - record.term.size())
+    #         heapq.heappush(all_candidates, ProofCandidate(heuristic_val, record))
+
+    #     heuristic_idx = 0
+    #     worst_candidate_dist: Optional[int] = None
+    #     global_best_candidates: list[ProofCandidateReversed] = []
+    #     start_time = time.time()
+    #     while 0 < len(all_candidates):
+    #         cur_time = time.time()
+    #         if 0 < heuristic_idx and timeout < cur_time - start_time:
+    #             _logger.debug(
+    #                 f"Returing similar proof from {heuristic_idx} heristic iterations. File: {file_info.file}"
+    #             )
+    #         cur_best_candidate = heapq.heappop(all_candidates)
+    #         cur_best_distance = key_record.term.distance(
+    #             cur_best_candidate.candidate.term,
+    #             abort_at_distance=worst_candidate_dist,
+    #             heuristic_depth=max_depth,
+    #         )
+
+    #         heapq.heappush(global_best_candidates, ProofCandidateReversed(cur_best_distance, cur_best_candidate.candidate))
+    #         worst_candidate_dist = global_best_candidates[0].distance
+
+    #         if self.n_proofs < len(global_best_candidates):
+    #             heapq.heappop(global_best_candidates)
+
+    #         next_round_candidates: list[ProofCandidate] = []
+    #         while 0 < len(all_candidates):
+    #             focused_candidate = heapq.heappop(all_candidates)
+    #             if worst_candidate_dist <= focused_candidate.distance:
+    #                 break
+    #             heuristic_val = key_record.term.distance(
+    #                 focused_candidate.candidate.term,
+    #                 abort_at_distance=worst_candidate_dist,
+    #                 heuristic_depth=heuristic_idx,
+    #             )
+    #             if heuristic_val < worst_candidate_dist:
+    #                 heapq.heappush(
+    #                     next_round_candidates,
+    #                     ProofCandidate(heuristic_val, focused_candidate.candidate),
+    #                 )
+    #         all_candidates = next_round_candidates
+    #         heuristic_idx += 1
+
+    #     sorted_candidates = heapq.nlargest(len(global_best_candidates), global_best_candidates) 
+    #     return [c.candidate for c in sorted_candidates]
+
     def get_similar_proofs(
         self,
         step_idx: int,
@@ -206,8 +307,7 @@ class ProofRetrievalFidFormatter:
         file_info: FileInfo,
         key_record: Optional[GoalRecord] = None,
         cutoff_idx: Optional[int] = None,
-        timeout: int = 10,
-        max_depth: int = 3,
+        max_num_nodes: int = 50,
     ) -> list[GoalRecord]:
         file_goals = self.__get_file_goals(file_info.dp_name)
         if key_record is None and cutoff_idx is None:
@@ -224,60 +324,35 @@ class ProofRetrievalFidFormatter:
             return [] 
 
         in_file_candidates = self.get_in_file_candidates(cutoff_idx, file_goals)
-
+        in_file_candidates.reverse()
         out_of_file_candidates = self.get_out_of_file_candidates(dp_obj)
         all_raw_candidates = in_file_candidates + out_of_file_candidates
+        key_prefix = key_record.term.get_breadth_prefix(50)
+        key_adjtree = AdjTree.from_stree(key_prefix)
 
-        all_candidates: list[tuple[int, float, GoalRecord]] = []
-        for record in all_raw_candidates:
-            heuristic_val = abs(key_record.term.size() - record.term.size())
-            heapq.heappush(all_candidates, (heuristic_val, time.time(), record))
+        best_record_candiates: list[ProofCandidateReversed] = []
+        for c in all_raw_candidates:
+            c_prefix = c.term.get_breadth_prefix(50)
+            c_adjtree = AdjTree.from_stree(c_prefix)
+                # if self.n_proofs <= len(best_record_candiates):
+                #     cur_worst_dist = best_record_candiates[0].distance
+                #     c_size = c.term.size()
+                #     key_size = key_record.term.size()
+                #     if cur_worst_dist <= abs(c_size - key_size):
+                #         continue
+                # c_set_dist = key_adjtree.fast_distance(c_adjtree)
+                # if cur_worst_dist <= c_set_dist:
+                #     continue
 
-        heuristic_idx = 0
-        worst_candidate_dist: Optional[int] = None
-        global_best_candidates: list[tuple[int, float, GoalRecord]] = []
-        start_time = time.time()
-        while 0 < len(all_candidates):
-            cur_time = time.time()
-            if 0 < heuristic_idx and timeout < cur_time - start_time:
-                _logger.debug(
-                    f"Returing similar proof from {heuristic_idx} heristic iterations. File: {file_info.file}"
-                )
-            _, _, cur_best_record = heapq.heappop(all_candidates)
-            cur_best_distance = key_record.term.distance(
-                cur_best_record.term,
-                abort_at_distance=worst_candidate_dist,
-                heuristic_depth=max_depth,
-            )
+            c_distance = key_adjtree.distance(c_adjtree)
+            #c_distance = key_adjtree.fast_distance(c_adjtree)
+            #c_distance = key_adjtree.custom_set_dist(c_adjtree)
+            heapq.heappush(best_record_candiates, ProofCandidateReversed(c_distance, c))
+            if self.n_proofs < len(best_record_candiates):
+                heapq.heappop(best_record_candiates)
+        sorted_candidates = heapq.nlargest(len(best_record_candiates), best_record_candiates) 
+        return [c.candidate for c in sorted_candidates]
 
-            heapq.heappush(global_best_candidates, (-1 * cur_best_distance, time.time(), cur_best_record))
-            worst_candidate_dist_neg, _, _ = global_best_candidates[0]
-            worst_candidate_dist = -1 * worst_candidate_dist_neg
-
-            if self.n_proofs < len(global_best_candidates):
-                heapq.heappop(global_best_candidates)
-
-            next_round_candidates: list[tuple[int, float, GoalRecord]] = []
-            while 0 < len(all_candidates):
-                focused_candidate = heapq.heappop(all_candidates)
-                focused_dist, _, focused_record = focused_candidate
-                if worst_candidate_dist <= focused_dist:
-                    break
-                heuristic_val = key_record.term.distance(
-                    focused_record.term,
-                    abort_at_distance=worst_candidate_dist,
-                    heuristic_depth=heuristic_idx,
-                )
-                if heuristic_val < worst_candidate_dist:
-                    heapq.heappush(
-                        next_round_candidates,
-                        (heuristic_val, time.time(), focused_record),
-                    )
-            all_candidates = next_round_candidates
-            heuristic_idx += 1
-
-        sorted_candidates = sorted(global_best_candidates, key=lambda x: -1 * x[0])
-        return [record for _, _, record in sorted_candidates]
 
     def example_from_step(
         self,

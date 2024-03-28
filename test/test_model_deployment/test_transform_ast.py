@@ -63,7 +63,24 @@ class TestTransformAst:
         at = AdjTree.from_stree(t)
         assert at.nodes == ["0", "2", "1", "2", "3"]
         assert at.idxs == [[1, 2], [], [3, 4], [], []]
-    
+
+    def test_prefix(self) -> None:
+        t = StrTree(
+            "0", [StrTree("2", []), StrTree("1", [StrTree("2", []), StrTree("3", [])])]
+        )
+        prefix = t.get_breadth_prefix(3)
+        exp = StrTree(
+            "0", [StrTree("2", []), StrTree("1", [])]
+        )
+        assert prefix.to_string() == exp.to_string()
+
+    def test_prefix2(self) -> None:
+        t = StrTree(
+            "0", [StrTree("2", []), StrTree("1", [StrTree("2", []), StrTree("3", [])])]
+        )
+        prefix = t.get_breadth_prefix(6)
+        print(prefix.to_string())
+        assert prefix.to_string() == t.to_string()
 
     def test_adj_tree_emp(self) -> None:
         t = StrTree("1", [])

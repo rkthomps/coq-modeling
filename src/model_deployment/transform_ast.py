@@ -5,8 +5,7 @@ from typeguard import typechecked
 import json
 import ipdb
 import functools
-from edist import ted
-from edist import seted
+from edist import ted, seted, sed
 
 
 import numpy as np
@@ -1040,6 +1039,14 @@ class AdjTree:
     def fast_distance(self, other: AdjTree) -> int:
         return seted.standard_seted(self.nodes, other.nodes)
     
+    @functools.cache
+    def get_node_multiset(self) -> list[str]:
+        return sorted(self.nodes)
+    
+    def custom_set_dist(self, other: AdjTree) -> int:
+        return sed.standard_sed(self.get_node_multiset(), other.get_node_multiset())
+
+    
     @classmethod
     @functools.cache
     def __from_stree(cls, t: StrTree, start_idx: int) -> tuple[AdjTree, int]:
@@ -1277,6 +1284,21 @@ class StrTree:
             keyset.sort()
             self.__cached_keyset = keyset
             return keyset
+    
+    @functools.cache
+    def get_breadth_prefix(self, size_limit: int) -> StrTree:
+        assert 0 < size_limit
+        root_tree = StrTree(self.key, [])
+        size_limit -= 1
+        worklist = [(c, root_tree) for c in self.children]
+        while 0 < len(worklist) and 0 < size_limit:
+            new_child, cur_tree = worklist.pop(0)
+            new_child_empty = StrTree(new_child.key, [])
+            cur_tree.children.append(new_child_empty)
+            size_limit -= 1
+            worklist.extend([(c, new_child_empty) for c in new_child.children])
+        return root_tree 
+
 
     @classmethod
     def from_json(cls, json_data: Any) -> StrTree:
