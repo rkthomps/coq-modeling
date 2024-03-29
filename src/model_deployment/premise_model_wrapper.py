@@ -12,7 +12,6 @@ from tqdm import tqdm
 import torch
 from transformers import GPT2Tokenizer
 from yaml import load, Loader
-from typeguard import typechecked
 
 from coqpyt.coq.structs import TermType
 
@@ -47,7 +46,6 @@ from util.train_utils import get_required_arg
 from util.constants import TRAINING_CONF_NAME, RERANK_DATA_CONF_NAME
 
 
-@typechecked
 class RoundRobinCache:
     def __init__(self, max_size: int = 50000) -> None:
         self.cache: dict[str, torch.Tensor] = {}
@@ -72,7 +70,6 @@ class RoundRobinCache:
         return self.cache[key]
 
 
-@typechecked
 class LocalRerankModelWrapper:
     ALIAS = "local-rerank"
 
@@ -309,7 +306,6 @@ class TFIdf:
         return similarities
 
 
-@typechecked
 class LocalPremiseModelWrapper:
     ALIAS = "local"
     MAX_CACHE_SIZE = 50000
@@ -355,7 +351,7 @@ class LocalPremiseModelWrapper:
         with torch.no_grad():
             encoding = self.retriever.encode_premise(
                 inputs.input_ids, inputs.attention_mask
-            ).to("cpu")
+            )
         self.encoding_cache.add(premise_str, encoding)
         return encoding
 
@@ -367,6 +363,22 @@ class LocalPremiseModelWrapper:
         if self.hits + self.misses == 0:
             return None
         return self.hits / (self.hits + self.misses)
+    
+    def get_premise_idxs(self, premises: list[Sentence]) -> Optional[list[int]]:
+        idxs: list[int] = []
+        for p in premises:
+            if p.db_idx is None:
+                return None 
+            idxs.append(p.db_idx)
+        return idxs
+
+
+    def encode_premises_one_by_one(self, premises: list[Sentence]) -> torch.Tensor:
+        encodings: list[torch.Tensor] = []
+        for premise in premises:
+            encoded_premise = self.encode_premise(premise)
+            encodings.append(encoded_premise)
+        return torch.cat(encodings)
 
     def get_premise_scores_from_strings(
         self, context_str: str, premises: list[Sentence],
@@ -379,11 +391,15 @@ class LocalPremiseModelWrapper:
             context_encoding = self.retriever.encode_context(
                 context_inputs.input_ids, context_inputs.attention_mask
             ).to(device)
-        encodings: list[torch.Tensor] = []
-        for premise in premises:
-            encoded_premise = self.encode_premise(premise)
-            encodings.append(encoded_premise)
-        premise_matrix = torch.cat(encodings).to(device)
+
+        start = time.time()
+        all_indices = self.get_premise_idxs(premises)
+        if all_indices is not None and self.vector_db:
+            premise_matrix = self.vector_db.get_embs(all_indices) 
+            if premise_matrix is None:
+                premise_matrix = self.encode_premises_one_by_one(premises)
+        else:
+            premise_matrix = self.encode_premises_one_by_one(premises)
         similarities = torch.mm(context_encoding, premise_matrix.t())
         assert similarities.shape[0] == 1
         return similarities[0].tolist()
@@ -446,7 +462,6 @@ class LocalPremiseModelWrapper:
         return cls.from_checkpoint(checkpoint_loc, vector_db_loc)
 
 
-@typechecked
 class PremiseServerModelWrapper:
     ALIAS = "server"
 

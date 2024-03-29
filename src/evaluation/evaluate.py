@@ -13,7 +13,7 @@ from typeguard import typechecked
 from yaml import load, Loader
 
 from data_management.sentence_db import SentenceDB
-from data_management.splits import FileInfo, Split
+from data_management.splits import FileInfo, Split, DataSplit, str2split
 from model_deployment.searcher import (
     SearchTreeManager,
     SuccessfulSearch,
@@ -29,13 +29,6 @@ from model_deployment.proof_manager import (
 from model_deployment.model_wrapper import ModelWrapper, wrapper_from_conf
 from model_deployment.node_score import NodeScore, NODE_SCORE_ALIASES
 
-from evaluation.eval_set import (
-    DataSplitEvalSet,
-    FileListEvalSet,
-    EvalSet,
-    ProofInfo,
-    eval_set_from_conf,
-)
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
@@ -108,23 +101,55 @@ class ThreadReturnObj:
     num_errors: int
 
 
+@dataclass
+class EvalConf:
+    results_loc: str
+    data_split: DataSplit
+    split: Split
+    sentence_db_loc: str 
+    timeout: int
+    branching_factor: int
+    max_leaf_expansions: int
+    model_wrapper: ModelWrapper
+    node_score_type: type[NodeScore]
+    ## THINK ABOUT MODEL SCORER
+    ## HOW TO LOAD MODELS?  
+    ## MAYBE I SHOULD SPLIT THE PROOFS MANUALLY TO HAVE MORE CONTROLL
+
+    @classmethod
+    def from_conf(cls, conf: Any) -> EvalConf:
+        results_loc = conf["results_loc"]
+        data_split = DataSplit.load(conf["data_split_loc"])
+        split = str2split(conf["split"]) 
+        sentence_db_loc = conf["sentence_db_loc"]
+        timeout = conf["timeout"]
+        branching_factor = conf["branching_factor"]
+        max_leaf_expansions = conf["max_leaf_expansions"]
+        model_wrapper = wrapper_from_conf(conf["model_wrapper"])
+        node_score_type = NODE_SCORE_ALIASES[conf["node_score_type"]]
+        return cls(
+            results_loc,
+            data_split, 
+            split,
+            sentence_db_loc,
+            timeout,
+            branching_factor,
+            max_leaf_expansions,
+            model_wrapper,
+            node_score_type,
+        )
+
+
+
 # Need a proof
 @typechecked
 class Evaluator:
     def __init__(
         self,
-        results_loc: str,
-        eval_set: EvalSet,
-        sentence_db: SentenceDB,
-        timeout: int,
-        branching_factor: int,
-        max_leaf_expansions: int,
-        model_wrapper: ModelWrapper,
-        node_score_type: type[NodeScore],
-        coq_file_timeout: int = 60,
     ) -> None:
         self.results_loc = results_loc
-        self.eval_set = eval_set
+        self.data_split = data_split 
+        self.split = split
         self.sentence_db = sentence_db
         self.timeout = timeout
         self.branching_factor = branching_factor
@@ -136,7 +161,8 @@ class Evaluator:
     @classmethod
     def from_conf(cls, conf: Any) -> Evaluator:
         results_loc = conf["results_loc"]
-        eval_set = eval_set_from_conf(conf["eval_set"])
+        data_split = DataSplit.load(conf["data_split_loc"])
+        split = str2split(conf["split"]) 
         sentence_db = SentenceDB.load(conf["sentence_db_loc"])
         timeout = conf["timeout"]
         branching_factor = conf["branching_factor"]
@@ -145,7 +171,8 @@ class Evaluator:
         node_score_type = NODE_SCORE_ALIASES[conf["node_score_type"]]
         return cls(
             results_loc,
-            eval_set,
+            data_split, 
+            split,
             sentence_db,
             timeout,
             branching_factor,

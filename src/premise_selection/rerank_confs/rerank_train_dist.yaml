@@ -1,12 +1,12 @@
 # File Paths
 
-data_path: "/home/kthompson/coq-modeling/data/rerank-opt-select"
+data_path: "data/rerank"
 model_name: "facebook/opt-125m"
-output_dir: "/home/kthompson/coq-modeling/models/rerank-opt-select" 
+output_dir: "models/rerank" 
 
 # Training Args
 max_seq_len: 128 
-per_device_train_batch_size: 128
+per_device_train_batch_size: 64 
 learning_rate: 1.0e-4
 num_train_epochs: 5
 gradient_accumulation_steps: 2
@@ -14,7 +14,7 @@ gradient_accumulation_steps: 2
 # Evaluation Args
 eval_steps: 50 
 eval_accumulation_steps: 1
-per_device_eval_batch_size: 128
+per_device_eval_batch_size: 64 
 save_steps: 100 
 num_eval_examples: 2000 # Evaluation would take ~2 hours each time w/o limiting this
 
