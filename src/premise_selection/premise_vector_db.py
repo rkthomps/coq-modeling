@@ -24,12 +24,12 @@ from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__) 
 
-@functools.lru_cache(100)
+@functools.lru_cache(50)
 def load_page(db_loc: str, page_idx: int) -> Optional[torch.Tensor]:
     page_loc = os.path.join(db_loc, f"{page_idx}.pt")
     if not os.path.exists(page_loc):
         return None
-    return torch.load(page_loc)
+    return torch.load(page_loc).to("cuda")
 
 class PremiseVectorDB:
     hash_cache: dict[str, str] = {}
@@ -47,7 +47,31 @@ class PremiseVectorDB:
         self.retriever_checkpoint_loc = retriever_checkpoint_loc
         self.sdb_hash = sdb_hash
     
-    # MIGHT BE ABLE TO KEEP WHOLE MATRIX IN MEMORY. WILL HAVE TO SEE IF THAT's a GOOD IDEA
+    def page_loc(self, idx: int) -> str:
+        return os.path.join(self.db_loc, f"{idx}.pt")
+
+    def group_idxs(self, idxs: list[int]) -> dict[int, list[int]]:
+        page_idxs: dict[int, list[int]] = {}
+        for idx in idxs:
+            page_idx = idx // self.page_size
+            if page_idx not in page_idxs:
+                page_idxs[page_idx] = []
+            page_idxs[page_idx].append(idx)
+        return page_idxs
+
+    def get_embs(self, idxs: list[int]) -> Optional[torch.Tensor]:
+        page_groups = self.group_idxs(idxs)
+        page_tensors: list[torch.Tensor] = []
+        for pg_num, pg_idxs in page_groups.items():
+            page_tensor = load_page(self.db_loc, pg_num)
+            if page_tensor is None:
+                return None
+            indices = (torch.tensor(pg_idxs, device="cuda") % self.page_size)
+            page_tensors.append((page_tensor[indices]))
+        return torch.cat(page_tensors)
+
+
+    # # MIGHT BE ABLE TO KEEP WHOLE MATRIX IN MEMORY. WILL HAVE TO SEE IF THAT's a GOOD IDEA
     def get(self, idx: int) -> Optional[torch.Tensor]: 
         page = idx // self.page_size 
         page_tensor = load_page(self.db_loc, page)
@@ -80,7 +104,7 @@ class PremiseVectorDB:
 
     @classmethod
     def load(
-        cls, db_loc: str
+        cls, db_loc: str,
     ) -> PremiseVectorDB:
         with open(os.path.join(db_loc, cls.METADATA_LOC)) as fin:
             metadata = json.load(fin)

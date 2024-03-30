@@ -36,7 +36,6 @@ from util.util import get_basic_logger
 _logger = get_basic_logger(__name__)
 
 
-@typechecked
 class EvalResult:
     def __init__(
         self,
@@ -66,7 +65,6 @@ class EvalResult:
         return cls(num_avail_premises, hits_on, num_positive_premises)
 
 
-@typechecked
 class EvalData:
     def __init__(self, num_steps: int, eval_result_list: list[EvalResult]) -> None:
         self.num_steps = num_steps
@@ -109,7 +107,6 @@ class EvalData:
         return cls(num_steps, eval_result_list)
 
 
-@typechecked
 class Evaluator:
     def __init__(
         self,
@@ -138,7 +135,6 @@ class Evaluator:
         num_steps = 0
         eval_results: list[EvalResult] = []
         for file_info in tqdm(self.data_split.get_file_list(self.split)):
-            file_loc = os.path.join(self.data_loc, DATA_POINTS_NAME, file_info.dp_name)
             dset_file = file_info.get_dp(self.data_loc, self.sentence_db)
             for proof in dset_file.proofs:
                 for step in proof.steps:
@@ -188,6 +184,7 @@ if __name__ == "__main__":
         description="Conduct an evaluation of a premise selection model."
     )
     parser.add_argument("checkpoint_loc", help="Path to model checkpoint to evaluate.")
+    parser.add_argument("--vdb", help="Optional location of the vector database")
     parser.add_argument("data_loc", help="Path to dataset.")
     parser.add_argument("sentence_db_loc", help="Path to sentence db")
     parser.add_argument("data_split_loc", help="Path to data split")
@@ -200,7 +197,7 @@ if __name__ == "__main__":
     elif "rerank" in args.checkpoint_loc.lower():
         model_wrapper = LocalRerankModelWrapper.from_checkpoint(args.checkpoint_loc)
     else:
-        model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc)
+        model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc, args.vdb)
 
     move_prem_wrapper_to(model_wrapper, "cuda")
     sentence_db = SentenceDB.load(args.sentence_db_loc)
