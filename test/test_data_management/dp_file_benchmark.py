@@ -12,6 +12,7 @@ DP_LOC = os.path.join("raw-data", "coq-dataset", "data_points")
 SENTENCES_DB_LOC = "sentences.db"
 
 BENCHMARK_FILES = [
+    "coq-community-corn-reals-stdlib-ConstructiveUniformCont.v",
     "AbsInt-CompCert-lib-Wfsimpl.v",
     "AbsInt-CompCert-lib-Zbits.v",
     "AbsInt-CompCert-powerpc-Archi.v",
@@ -56,8 +57,8 @@ def run_split() -> None:
             file_info.get_dp(data_loc, sentences_db)
 
 if __name__ == "__main__":
-    #cProfile.run("run_benchmark()")
-    cProfile.run("run_split()")
+    cProfile.run("run_benchmark()")
+    #cProfile.run("run_split()")
     #run_benchmark()
 
 

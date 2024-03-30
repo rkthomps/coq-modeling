@@ -18,11 +18,18 @@ data_split = DataSplit.load("splits/final-split.json")
 data_loc = "raw-data/coq-dataset"
 sentence_db = SentenceDB.load(SENTENCES_LOC)
 
+def count_steps(file_dp: DatasetFile) -> int:
+    n_steps = 0
+    for proof in file_dp.proofs:
+        n_steps += len(proof.steps)
+    return n_steps
+
 def one_file(
     file: str, formatter: LmFormatter 
 ) -> list[LmExample]:
     file_info, split = file_from_split(file, data_split)
     file_dp = file_info.get_dp(data_loc, sentence_db)
+    print("Number of steps: ", count_steps(file_dp))
     examples: list[LmExample] = []
     for proof in file_dp.proofs:
         for i, step in enumerate(proof.steps):
@@ -44,6 +51,7 @@ def one_file(
     return examples
 
 files = [
+    "repos/coq-community-corn/reals/stdlib/ConstructiveUniformCont.v",
     "repos/AbsInt-CompCert/x86/Asm.v",
     "repos/AbsInt-CompCert/x86/Asmgenproof.v",
     # "repos/AbsInt-CompCert/x86/Asmgenproof1.v",
@@ -66,6 +74,14 @@ def run_benchmarks(formatter: LmFormatter):
         one_file(file, formatter)
         end = time.time()
         print("{:30s}: {:.2f}".format(file, end - start))
+
+    # for file_info in reversed(data_split.get_file_list(Split.TRAIN)):
+    #     print(file_info.file + "       ", end="", flush=True)
+    #     start = time.time()
+    #     one_file(file_info.file, formatter)
+    #     end = time.time()
+    #     print(end - start)
+    #     #print("{:30s}: {:.2f}".format(file_info.file, end - start))
 
 
 def run_proof_ret_benchmark():
@@ -93,6 +109,7 @@ def run_select_benchmark():
 
 if __name__ == "__main__":
     #cProfile.run("run_benchmark()")
-    cProfile.run("run_select_benchmark()")
+    #cProfile.run("run_select_benchmark()")
+    cProfile.run("run_proof_ret_benchmark()")
 
 
