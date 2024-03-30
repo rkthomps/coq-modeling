@@ -52,12 +52,12 @@ class Sentence:
         line: int,
         db_idx: Optional[int] = None,
     ):
-        try:
-            assert text.strip().endswith(".")
-        except AssertionError:
-            if text.strip() not in self.bad_sentence_endings:
-                self.bad_sentence_endings.add(text.strip())
-                print(f"{file_path}:{line} Not Sentence: {text.strip()}")
+        # try:
+        #     assert text.strip().endswith(".")
+        # except AssertionError:
+        #     if text.strip() not in self.bad_sentence_endings:
+        #         self.bad_sentence_endings.add(text.strip())
+        #         print(f"{file_path}:{line} Not Sentence: {text.strip()}")
         self.text = text
         self.file_path = file_path
         self.module = module
@@ -89,6 +89,7 @@ class Sentence:
         )
 
     @classmethod
+    @functools.lru_cache(10000)
     def from_db_sentence(cls, db_sentence: DBSentence) -> Sentence:
         return Sentence(
             db_sentence.text,
@@ -126,7 +127,6 @@ class Sentence:
 
     @classmethod
     def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Sentence:
-        start = time.time()
         if json_data["type"] == "stored":
             db_sentence = sentence_db.retrieve(json_data["id"])
             sentence = cls.from_db_sentence(db_sentence)
@@ -144,8 +144,6 @@ class Sentence:
         module = json_data["module"]
         sentence_type = TermType[json_data["type"].split(".")[1]]
         line = json_data["line"]
-        end = time.time()
-        sentence_time += end - start
         return cls(text, file_path, module, sentence_type, line)
 
     @classmethod
@@ -378,7 +376,7 @@ class FileContext:
         return cls(metadata["file"], metadata["workspace"], metadata["repository"], [])
 
     @classmethod
-    @functools.lru_cache(maxsize=6000)
+    @functools.lru_cache(maxsize=50000)
     def context_from_line(cls, line: str, sentence_db: SentenceDB) -> Sentence:
         line_data = json.loads(line)
         return Sentence.from_json(line_data, sentence_db)
@@ -469,6 +467,7 @@ class DatasetFile:
         return dependencies
 
     @classmethod
+    @functools.cache
     def fix_path(cls, path: str) -> str:
         while path.startswith("../") or path.startswith("..\\"):
             path = path[3:]
@@ -486,18 +485,18 @@ class DatasetFile:
         can have file path /coq-dataset/....
         """
         oof_premises: set[Sentence] = set()
+        norm_file_path = self.fix_path(self.file_context.file)
         for premise in self.file_context.avail_premises:
             norm_prem_path = self.fix_path(premise.file_path)
-            norm_file_path = self.fix_path(self.file_context.file)
             if not self.__share_subpath(norm_prem_path, norm_file_path):
                 oof_premises.add(premise)
         return list(oof_premises)
 
     def __get_in_file_avail_premises(self) -> list[Sentence]:
         in_file_premises: set[Sentence] = set()
+        norm_file_path = self.fix_path(self.file_context.file)
         for premise in self.file_context.avail_premises:
             norm_prem_path = self.fix_path(premise.file_path)
-            norm_file_path = self.fix_path(self.file_context.file)
             if self.__share_subpath(norm_prem_path, norm_file_path):
                 in_file_premises.add(premise)
         return list(in_file_premises)

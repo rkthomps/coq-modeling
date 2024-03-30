@@ -3,6 +3,7 @@
 import time
 import os
 from data_management.dataset_file import DatasetFile
+from data_management.splits import DataSplit, Split
 from data_management.sentence_db import SentenceDB
 import cProfile
 
@@ -44,9 +45,20 @@ def run_benchmark() -> None:
         print("{:50s} {:10.2f}".format(file, end - start))
 
 
+
+def run_split() -> None:
+    sentences_db = SentenceDB.load(SENTENCES_DB_LOC)
+    data_split = DataSplit.load("splits/final-split.json")
+    data_loc = "raw-data/coq-dataset"
+    for split in Split:
+        for file_info in data_split.get_file_list(split):
+            print(f"Processing {file_info.file}")
+            file_info.get_dp(data_loc, sentences_db)
+
 if __name__ == "__main__":
     #cProfile.run("run_benchmark()")
-    run_benchmark()
+    cProfile.run("run_split()")
+    #run_benchmark()
 
 
 
