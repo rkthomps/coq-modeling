@@ -29,7 +29,7 @@ def one_file(
 ) -> list[LmExample]:
     file_info, split = file_from_split(file, data_split)
     file_dp = file_info.get_dp(data_loc, sentence_db)
-    print("Number of steps: ", count_steps(file_dp))
+    #print("Number of steps: ", count_steps(file_dp))
     examples: list[LmExample] = []
     for proof in file_dp.proofs:
         for i, step in enumerate(proof.steps):
@@ -46,7 +46,7 @@ def one_file(
                 cutoff_idx=None,
             )
             end = time.time()
-            print("Step time:", end - start)
+            #print("Step time:", end - start)
             examples.append(example)
     return examples
 
@@ -69,19 +69,18 @@ files = [
 
 
 def run_benchmarks(formatter: LmFormatter):
-    for file in files:
-        start = time.time()
-        one_file(file, formatter)
-        end = time.time()
-        print("{:30s}: {:.2f}".format(file, end - start))
-
-    # for file_info in reversed(data_split.get_file_list(Split.TRAIN)):
-    #     print(file_info.file + "       ", end="", flush=True)
+    # for file in files:
     #     start = time.time()
-    #     one_file(file_info.file, formatter)
+    #     one_file(file, formatter)
     #     end = time.time()
-    #     print(end - start)
-        #print("{:30s}: {:.2f}".format(file_info.file, end - start))
+    #     print("{:30s}: {:.2f}".format(file, end - start))
+
+    for file_info in reversed(data_split.get_file_list(Split.TRAIN)):
+        print(file_info.file + "       ", end="", flush=True)
+        start = time.time()
+        one_file(file_info.file, formatter)
+        end = time.time()
+        print("{:30s}: {:.2f}".format(file_info.file, end - start))
 
 
 def run_proof_ret_benchmark():
@@ -109,7 +108,7 @@ def run_select_benchmark():
 
 if __name__ == "__main__":
     #cProfile.run("run_benchmark()")
-    cProfile.run("run_select_benchmark()")
-    #cProfile.run("run_proof_ret_benchmark()")
+    #cProfile.run("run_select_benchmark()")
+    cProfile.run("run_proof_ret_benchmark()")
 
 

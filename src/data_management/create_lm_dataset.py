@@ -28,7 +28,7 @@ from data_management.samples import (
     CertainSteps,
 )
 from data_management.jsonl_utils import shuffle, deduplicate
-from util.util import get_basic_logger
+from util.util import get_basic_logger, DPStartLog, DPEndLog, DPLoadLog, print_info
 from util.constants import DATA_CONF_NAME
 
 _logger = get_basic_logger(__name__)
@@ -85,9 +85,7 @@ def writer(q: Queue[Optional[LmExample]], out_file: str) -> None:
                 case LmExample():
                     fout.write(json.dumps(example.to_json()) + "\n")
                     num_examples_written += 1
-                    print(f"\rNum Examples: {num_examples_written}", end="")
                 case None:
-                    print()
                     return
 
 
@@ -103,7 +101,9 @@ def examples_to_queue(
     cuda_str = f"cuda:{device_idx}"
     move_fmt_to(lm_formatter, cuda_str)
     sentence_db = SentenceDB.load(sentence_db_loc) 
+    print_info(DPStartLog(file_info.file), _logger)
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
+    print_info(DPLoadLog(file_info.file), _logger)
     match selected_steps:
         case AllSteps():
             for proof in dp_obj.proofs:
@@ -137,6 +137,7 @@ def examples_to_queue(
                     cutoff_idx=None,
                 )
                 q.put(example)
+    print_info(DPEndLog(file_info.file), _logger)
 
 
 __ArgTuple = tuple[
@@ -232,13 +233,11 @@ if __name__ == "__main__":
                     shuffled=True,
                     deduplicated=True,
                 )
-                print(f"Processing {split.name}...")
                 train_writer = pool.apply_async(writer, (q, raw_path))
                 pool.starmap(examples_to_queue, split_args)
                 q.put(None)
                 train_writer.wait()
                 num_duplicates = deduplicate(raw_path, deduped_path)
-                print(f"Num Duplicates: {num_duplicates}")
                 os.remove(raw_path)
                 shuffle(deduped_path, shuffled_path)
                 os.remove(deduped_path)

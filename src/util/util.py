@@ -1,8 +1,11 @@
 from __future__ import annotations
+from typing import Optional
 import logging
 import os
+import ipdb
 import re
 import datetime
+from dataclasses import dataclass
 
 from coqpyt.coq.base_file import CoqFile
 
@@ -55,36 +58,118 @@ def get_simple_steps(proof_text: str) -> list[str]:
     finally:
         os.remove(tmp_path)
 
+@dataclass
+class DPStartLog:
+    name: str
 
-class LogEntry:
-    log_pattern = re.compile(r"(.*?); (.*?); (.*?); (.*)")
-
-    def __init__(
-        self, time: datetime.datetime, name: str, entry_type: str, message: str
-    ) -> None:
-        self.time = time
-        self.name = name
-        self.entry_type = entry_type
-        self.message = message
-
+    def print(self) -> str:
+        return f"Starting {self.name}"
+    
     @classmethod
-    def from_line(cls, line: str) -> LogEntry:
-        log_match = cls.log_pattern.match(line)
-        if log_match is None:
-            raise ValueError(f"Could not parse log line {line}")
-        time_str, name, entry_type, message = log_match.groups()
-        time = datetime.datetime.strptime(time_str + "000", r"%Y-%m-%d %H:%M:%S,%f")
-        return cls(time, name, entry_type, message)
+    def recover(cls, s: str) -> DPStartLog:
+        prefix = "Starting "
+        assert s.startswith(prefix)
+        return DPStartLog(s[len(prefix):])
 
 
-def get_log_entries(file: str) -> list[LogEntry]:
-    log_entries: list[LogEntry] = []
-    with open(file, "r") as fin:
-        for line in fin:
-            try:
-                log_entry = LogEntry.from_line(line.strip())
-                log_entries.append(log_entry)
-            except ValueError:
-                _logger.debug(f"Could not parse line: {line}")
-                pass
-    return log_entries
+@dataclass
+class DPLoadLog:
+    name: str
+
+    def print(self) -> str:
+        return f"Loaded {self.name}"
+    
+    @classmethod
+    def recover(cls, s: str) -> DPLoadLog:
+        prefix = "Loaded "
+        assert s.startswith(prefix)
+        return DPLoadLog(s[len(prefix):])
+
+
+
+@dataclass
+class DPEndLog:
+    name: str
+
+    def print(self) -> str:
+        return f"Ending {self.name}"
+    
+    @classmethod
+    def recover(cls, s: str) -> DPEndLog:
+        prefix = "Ending "
+        assert s.startswith(prefix)
+        return DPEndLog(s[len(prefix):])
+
+
+Log = DPStartLog | DPLoadLog | DPEndLog
+
+def print_info(log: Log, logger: logging.Logger):
+    logger.info(log.print())
+
+_log_pattern = re.compile(r"(.*?); (.*?); (.*?); (.*)") 
+
+def parse_log(s: str) -> Optional[tuple[datetime.datetime, Log]]:
+    log_match = _log_pattern.match(s)
+    if log_match is None:
+        return None
+    time_str, _, _, msg = log_match.groups()
+    time = datetime.datetime.strptime(time_str + "000", r"%Y-%m-%d %H:%M:%S,%f")
+
+    if msg.startswith("Starting "):
+        return time, DPStartLog.recover(msg)
+    if msg.startswith("Loaded "):
+        return time, DPLoadLog.recover(msg)
+    if msg.startswith("Ending "):
+        return time, DPEndLog.recover(msg)
+    return None
+
+
+def parse_logs(path: str) -> list[tuple[datetime.datetime, Log]]:
+    logs: list[tuple[datetime.datetime, Log]] = []
+    with open(path, "r") as fin:
+        for line in fin.readlines():
+            parse_attempt = parse_log(line)
+            if parse_attempt:
+                time, log = parse_attempt
+                logs.append((time, log))
+    return logs
+
+
+def get_num_dps_processed(logs: list[tuple[datetime.datetime, Log]]) -> int:
+    num_processed = 0
+    for _, l in logs:
+        match l:
+            case DPEndLog():
+                num_processed += 1
+            case _:
+                continue
+    return num_processed
+
+
+def get_outstanding_dp_ends(logs: list[tuple[datetime.datetime, Log]]) -> list[tuple[str, datetime.datetime]]:
+    open_set: dict[str, datetime.datetime] = {} 
+    for t, log in logs:
+        match log:
+            case DPStartLog():
+                open_set[log.name] = t
+            case DPEndLog():
+                assert log.name in open_set
+                open_set.pop(log.name)
+            case _:
+                continue
+    return list(open_set.items())
+
+
+def get_outstanding_dp_loads(logs: list[tuple[datetime.datetime, Log]]) -> list[tuple[str, datetime.datetime]]:
+    open_set: dict[str, datetime.datetime] = {} 
+    for t, log in logs:
+        match log:
+            case DPStartLog():
+                open_set[log.name] = t
+            case DPLoadLog():
+                assert log.name in open_set
+                open_set.pop(log.name)
+            case _:
+                continue
+    return list(open_set.items())
+

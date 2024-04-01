@@ -22,6 +22,7 @@ sentences.db
 
 # Temporary
 test_size.py
+err.txt
 
 # Examples
 examples
