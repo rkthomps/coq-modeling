@@ -400,6 +400,7 @@ class LocalPremiseModelWrapper:
                 premise_matrix = self.encode_premises_one_by_one(premises)
         else:
             premise_matrix = self.encode_premises_one_by_one(premises)
+        # Prmise matrix going to wrong device
         similarities = torch.mm(context_encoding, premise_matrix.t())
         assert similarities.shape[0] == 1
         return similarities[0].tolist()
@@ -565,6 +566,8 @@ def move_prem_wrapper_to(
     match premise_model_wrapper:
         case LocalPremiseModelWrapper():
             premise_model_wrapper.retriever = premise_model_wrapper.retriever.to(device)
+            if premise_model_wrapper.vector_db:
+                premise_model_wrapper.vector_db.device = device
         case LocalRerankModelWrapper():
             premise_model_wrapper.reranker.to(device)
             move_prem_wrapper_to(premise_model_wrapper.base_wrapper, device)

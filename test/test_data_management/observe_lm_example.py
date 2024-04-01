@@ -81,7 +81,7 @@ def run_benchmarks(formatter: LmFormatter):
     #     one_file(file_info.file, formatter)
     #     end = time.time()
     #     print(end - start)
-    #     #print("{:30s}: {:.2f}".format(file_info.file, end - start))
+        #print("{:30s}: {:.2f}".format(file_info.file, end - start))
 
 
 def run_proof_ret_benchmark():
@@ -109,7 +109,7 @@ def run_select_benchmark():
 
 if __name__ == "__main__":
     #cProfile.run("run_benchmark()")
-    #cProfile.run("run_select_benchmark()")
-    cProfile.run("run_proof_ret_benchmark()")
+    cProfile.run("run_select_benchmark()")
+    #cProfile.run("run_proof_ret_benchmark()")
 
 

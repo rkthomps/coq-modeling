@@ -419,7 +419,7 @@ class ProofRetrievalFormatter:
 class FidPremiseFormatter:
     ALIAS = "fid-premise"
     REQUIRES_GPU = True
-    MAX_N_EXAMPLES = 100
+    MAX_N_EXAMPLES = 20
 
     def __init__(
         self,
@@ -1219,6 +1219,7 @@ def move_fmt_to(formatter: LmFormatter, device: str) -> None:
             | GroundTruthLeakFormatter()
             | StatementPremiseFormatter()
             | ProofRetrievalFormatter()
+            | ProofRetrievalFidFormatter()
             | OptimalPremiseFormatter()
             | ProofRetrievalOracleFormatter()
             | GoalFormatter()

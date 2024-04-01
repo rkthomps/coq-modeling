@@ -25,11 +25,12 @@ from util.util import get_basic_logger
 _logger = get_basic_logger(__name__) 
 
 @functools.lru_cache(50)
-def load_page(db_loc: str, page_idx: int) -> Optional[torch.Tensor]:
+def load_page(db_loc: str, page_idx: int, device: str) -> Optional[torch.Tensor]:
     page_loc = os.path.join(db_loc, f"{page_idx}.pt")
     if not os.path.exists(page_loc):
         return None
-    return torch.load(page_loc).to("cuda")
+    #return torch.load(page_loc).to("cuda")
+    return torch.load(page_loc).to(device)
 
 class PremiseVectorDB:
     hash_cache: dict[str, str] = {}
@@ -46,6 +47,7 @@ class PremiseVectorDB:
         self.page_size = page_size
         self.retriever_checkpoint_loc = retriever_checkpoint_loc
         self.sdb_hash = sdb_hash
+        self.device = "cpu"
     
     def page_loc(self, idx: int) -> str:
         return os.path.join(self.db_loc, f"{idx}.pt")
@@ -63,10 +65,11 @@ class PremiseVectorDB:
         page_groups = self.group_idxs(idxs)
         page_tensors: list[torch.Tensor] = []
         for pg_num, pg_idxs in page_groups.items():
-            page_tensor = load_page(self.db_loc, pg_num)
+            page_tensor = load_page(self.db_loc, pg_num, self.device)
             if page_tensor is None:
                 return None
-            indices = (torch.tensor(pg_idxs, device="cuda") % self.page_size)
+            #indices = (torch.tensor(pg_idxs, device="cuda") % self.page_size)
+            indices = (torch.tensor(pg_idxs, device=self.device) % self.page_size)
             page_tensors.append((page_tensor[indices]))
         return torch.cat(page_tensors)
 
