@@ -126,19 +126,22 @@ class Sentence:
                 }
 
     @classmethod
+    def from_idx(cls, idx: int, sentence_db: SentenceDB) -> Sentence:
+        db_sentence = sentence_db.retrieve(idx)
+        sentence = cls.from_db_sentence(db_sentence)
+        return Sentence(
+            sentence.text,
+            sentence.file_path,
+            sentence.module,
+            sentence.sentence_type,
+            sentence.line,
+            idx,
+        )
+
+    @classmethod
     def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Sentence:
         if json_data["type"] == "stored":
-            db_sentence = sentence_db.retrieve(json_data["id"])
-            sentence = cls.from_db_sentence(db_sentence)
-            return Sentence(
-                sentence.text,
-                sentence.file_path,
-                sentence.module,
-                sentence.sentence_type,
-                sentence.line,
-                json_data["id"],
-            )
-
+            return cls.from_idx(json_data["id"], sentence_db)
         text = json_data["text"]
         file_path = json_data["file_path"]
         module = json_data["module"]
@@ -382,7 +385,9 @@ class FileContext:
         return Sentence.from_json(line_data, sentence_db)
 
     @classmethod
-    def context_from_lines(cls, lines: list[str], sentence_db: SentenceDB) -> FileContext:
+    def context_from_lines(
+        cls, lines: list[str], sentence_db: SentenceDB
+    ) -> FileContext:
         empty_context = cls.empty_context_from_lines(lines)
         context_sentences: list[Sentence] = []
         for line in lines[1:]:
@@ -541,7 +546,9 @@ class DatasetFile:
                 json_data["file_context"]
             )
         else:
-            file_context = FileContext.context_from_lines(json_data["file_context"], sentence_db)
+            file_context = FileContext.context_from_lines(
+                json_data["file_context"], sentence_db
+            )
 
         proofs = [Proof.from_json(p, sentence_db) for p in json_data["proofs"]]
         return cls(file_context, proofs)

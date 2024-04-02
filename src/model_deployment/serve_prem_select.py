@@ -12,7 +12,7 @@ from model_deployment.serve_prem_utils import (
     FORMAT_ENDPOINT,
     PREMISE_ENDPOINT,
 )
-from model_deployment.premise_model_wrapper import LocalPremiseModelWrapper
+from model_deployment.premise_model_wrapper import SelectWrapper
 from data_management.create_premise_dataset import PREMISE_DATA_CONF_NAME
 
 from yaml import load, Loader
@@ -25,7 +25,7 @@ app = Flask(__name__)
 CHECKPOINT_LOC = "/home/kthompson/coq-modeling/models/prem-select/checkpoint-13683"
 
 
-model_wrapper = LocalPremiseModelWrapper.from_checkpoint(CHECKPOINT_LOC)
+model_wrapper = SelectWrapper.from_checkpoint(CHECKPOINT_LOC)
 
 
 @app.route(FORMAT_ENDPOINT, methods=["POST"])

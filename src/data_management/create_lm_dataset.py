@@ -13,7 +13,7 @@ import json
 from tqdm import tqdm
 import yaml
 
-from tactic_gen.lm_example import LmExample, LmFormatter, fmt_from_conf, move_fmt_to
+from tactic_gen.lm_example import LmExample, LmFormatter, fmt_from_conf
 from data_management.splits import (
     FileInfo,
     Split,
@@ -66,7 +66,12 @@ class LmExampleConfig:
         output_dataset_loc = config["output_dataset_loc"]
         lm_formatter = fmt_from_conf(config["lm_formatter"])
         return cls(
-            train_sample, val_sample, test_sample, sentence_db_loc, output_dataset_loc, lm_formatter
+            train_sample,
+            val_sample,
+            test_sample,
+            sentence_db_loc,
+            output_dataset_loc,
+            lm_formatter,
         )
 
     @classmethod
@@ -102,7 +107,7 @@ def examples_to_queue(
 ) -> None:
     cuda_str = f"cuda:{device_idx}"
     move_fmt_to(lm_formatter, cuda_str)
-    sentence_db = SentenceDB.load(sentence_db_loc) 
+    sentence_db = SentenceDB.load(sentence_db_loc)
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
     match selected_steps:
         case AllSteps():
@@ -140,7 +145,13 @@ def examples_to_queue(
 
 
 __ArgTuple = tuple[
-    ExampleSample, LmFormatter, FileInfo, str, SelectedSteps, int, Queue[Optional[LmExample]]
+    ExampleSample,
+    LmFormatter,
+    FileInfo,
+    str,
+    SelectedSteps,
+    int,
+    Queue[Optional[LmExample]],
 ]
 
 
@@ -155,7 +166,15 @@ def __get_split_transformation_args(
     for i, (file, selected_steps) in enumerate(example_sampler.step_generator()):
         device_idx = i % num_devices
         arg_list.append(
-            (example_sampler, formatter, file, sentence_db_loc, selected_steps, device_idx, q)
+            (
+                example_sampler,
+                formatter,
+                file,
+                sentence_db_loc,
+                selected_steps,
+                device_idx,
+                q,
+            )
         )
     return arg_list
 
@@ -168,15 +187,24 @@ def get_split_transformation_args(
     match split:
         case Split.TRAIN:
             return __get_split_transformation_args(
-                example_config.train_sample, example_config.lm_formatter, example_config.sentence_db_loc, q
+                example_config.train_sample,
+                example_config.lm_formatter,
+                example_config.sentence_db_loc,
+                q,
             )
         case Split.VAL:
             return __get_split_transformation_args(
-                example_config.val_sample, example_config.lm_formatter, example_config.sentence_db_loc, q
+                example_config.val_sample,
+                example_config.lm_formatter,
+                example_config.sentence_db_loc,
+                q,
             )
         case Split.TEST:
             return __get_split_transformation_args(
-                example_config.test_sample, example_config.lm_formatter, example_config.sentence_db_loc, q
+                example_config.test_sample,
+                example_config.lm_formatter,
+                example_config.sentence_db_loc,
+                q,
             )
 
 

@@ -8,7 +8,7 @@ from data_management.dataset_file import Sentence
 from data_management.create_lm_dataset import LmExampleConfig
 from tactic_gen.lm_example import BasicFormatter
 from model_deployment.premise_model_wrapper import (
-    LocalPremiseModelWrapper,
+    SelectWrapper,
     get_ranked_premise_generator,
 )
 from model_deployment.searcher import ProofManager
@@ -27,7 +27,7 @@ N = 20
 
 CHECKPOINT_LOC = "/home/kthompson/coq-modeling/models/prem-select/checkpoint-13683"
 
-premise_model = LocalPremiseModelWrapper.from_checkpoint(CHECKPOINT_LOC)
+premise_model = SelectWrapper.from_checkpoint(CHECKPOINT_LOC)
 TEST_FILE = "/home/ubuntu/coq-modeling/examples/Adding/add_2.v"
 
 

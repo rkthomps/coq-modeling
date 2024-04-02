@@ -1,8 +1,8 @@
 import ipdb
 from data_management.dataset_file import FocusedStep, Proof, Term, Sentence, Goal
 from model_deployment.premise_model_wrapper import (
-    LocalRerankModelWrapper,
-    LocalPremiseModelWrapper,
+    RerankWrapper,
+    SelectWrapper,
     get_ranked_premise_generator,
     TFIdf,
     BM25Okapi,
@@ -22,7 +22,7 @@ from coqpyt.coq.structs import TermType
 # pmw = LocalRerankModelWrapper.from_checkpoint(
 #     "/home/kthompson/coq-modeling/models/rerank-15-all/checkpoint-11500"
 # )
-pmw = LocalPremiseModelWrapper.from_checkpoint(
+pmw = SelectWrapper.from_checkpoint(
     "/home/kthompson/coq-modeling/models/prem-select-opt/checkpoint-2200"
 )
 

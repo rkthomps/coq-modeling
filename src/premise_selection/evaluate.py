@@ -22,8 +22,8 @@ from premise_selection.model import PremiseRetriever
 from model_deployment.premise_model_wrapper import (
     PremiseModelWrapper,
     PremiseServerModelWrapper,
-    LocalPremiseModelWrapper,
-    LocalRerankModelWrapper,
+    SelectWrapper,
+    RerankWrapper,
     get_ranked_premise_generator,
     move_prem_wrapper_to,
     premise_wrapper_from_conf,
@@ -195,9 +195,9 @@ if __name__ == "__main__":
     if args.checkpoint_loc == TFIdf.ALIAS or args.checkpoint_loc == BM25Okapi.ALIAS:
         model_wrapper = premise_wrapper_from_conf({"alias": args.checkpoint_loc})
     elif "rerank" in args.checkpoint_loc.lower():
-        model_wrapper = LocalRerankModelWrapper.from_checkpoint(args.checkpoint_loc)
+        model_wrapper = RerankWrapper.from_checkpoint(args.checkpoint_loc)
     else:
-        model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc, args.vdb)
+        model_wrapper = SelectWrapper.from_checkpoint(args.checkpoint_loc, args.vdb)
 
     move_prem_wrapper_to(model_wrapper, "cuda")
     sentence_db = SentenceDB.load(args.sentence_db_loc)
