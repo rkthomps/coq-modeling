@@ -3,20 +3,20 @@ from typing import Optional
 import sys, os
 import json
 import argparse
+import logging
 
 from flask import Flask, request
 
 from tactic_gen.lm_example import LmExample, fmt_get_conf
+from util.util import LOGGER
 from model_deployment.model_wrapper import (
     CodeLLamaLocalWrapper,
     FORMAT_NAME,
     INFERENCE_NAME,
     wrapper_from_conf,
 )
-from util.util import get_basic_logger
 
 app = Flask(__name__)
-_logger = get_basic_logger(__name__)
 
 # PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-tpe-1k-rnd-split-rnd-samp-pct-8/checkpoint-4133"
 # PRETRAINED_NAME = "/home/ubuntu/coq-modeling/models/codellama-7b-prf-oracle-rnd-split-rnd-samp-pct-8/checkpoint-4139"
@@ -41,7 +41,7 @@ def codellama() -> str:
     n = int(request.form["n"])
     example = LmExample.from_json(request.form)
     result = model_wrapper.get_recs(example, n)
-    _logger.debug(f"Input {example.input}")
+    LOGGER.debug(f"Input {example.input}")
     return json.dumps(result.to_json(), indent=2)
 
 

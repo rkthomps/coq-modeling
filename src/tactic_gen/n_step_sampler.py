@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from typing import Any
 from dataclasses import dataclass
 
@@ -7,10 +8,7 @@ from typeguard import typechecked
 from data_management.dataset_file import FocusedStep, Goal
 from tactic_gen.tactic_pair_encoding import TacticPairEncoding
 from tactic_gen.step_parser import normalize, lex, tokens2str, CoqParseError
-from util.util import get_basic_logger
 import random
-
-_logger = get_basic_logger(__name__)
 
 
 @dataclass

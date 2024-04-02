@@ -8,18 +8,19 @@ import csv
 import json
 import ipdb
 import multiprocessing as mp
+import logging
 from tqdm import tqdm
 
 from dataclasses import dataclass
 
-from util.util import get_basic_logger
+from util.util import LOGGER
+
 
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.context import FileContext
 from coqpyt.coq.structs import ProofTerm, Term
 
-_logger = get_basic_logger(__name__)
 
 
 def get_context(
@@ -55,7 +56,7 @@ def save_data_point(
         return
 
     file_folder = get_data_point_loc(project_name, valid_file, dp_dir)
-    _logger.info(f"Saving to folder: {file_folder}")
+    LOGGER.info(f"Saving to folder: {file_folder}")
     os.makedirs(file_folder, exist_ok=True)
 
 
@@ -179,13 +180,13 @@ def get_valid_files(repos_dir: str, project_name: str) -> list[ValidFile]:
 
 
 def process_file(repos_dir: str, project_name: str, dp_dir: str, file: ValidFile, pm: PathManager) -> None:
-    _logger.info(f"Processing {file.relpath}")
+    LOGGER.info(f"Processing {file.relpath}")
     if not could_have_proof(repos_dir, project_name, file):
-        _logger.info(f"{file.relpath} could not possibly have proofs. Continuing.")
+        LOGGER.info(f"{file.relpath} could not possibly have proofs. Continuing.")
         return 
     file_folder = get_data_point_loc(project_name, file, dp_dir)
     if os.path.exists(file_folder):
-        _logger.warning(f"{file_folder} exists. Continuing.")
+        LOGGER.warning(f"{file_folder} exists. Continuing.")
         return
 
     with ProofFile(
@@ -199,7 +200,7 @@ def process_file(repos_dir: str, project_name: str, dp_dir: str, file: ValidFile
         proofs = proof_file.proofs
 
         # TODO: ADD ERROR HANDLING
-        _logger.info(f"Saving {len(proofs)} proofs")
+        LOGGER.info(f"Saving {len(proofs)} proofs")
         save_data_point(
             context, proofs, pm, repos_dir, project_name, file, dp_dir
         )
@@ -212,13 +213,13 @@ def tolerant_process_file(repos_dir: str, project_name: str, dp_dir: str, file: 
         file_folder = get_data_point_loc(project_name, file, dp_dir)
         if os.path.exists(file_folder):
             shutil.rmtree(file_folder)
-        _logger.error(f"Trouble processing {file.relpath}")
+        LOGGER.error(f"Trouble processing {file.relpath}")
 
 
 
 def save_project_data_points(repos_dir: str, project_name: str, dp_dir: str, pm: PathManager) -> None:
     project_valid_files = get_valid_files(repos_dir, project_name)
-    _logger.info(f"Found {len(project_valid_files)} valid files.")
+    LOGGER.info(f"Found {len(project_valid_files)} valid files.")
     for valid_file in project_valid_files:
         tolerant_process_file(repos_dir, project_name, dp_dir, valid_file, pm)
 
@@ -253,10 +254,10 @@ if __name__ == "__main__":
     })
 
     if args.n_procs is None:
-        _logger.info("Processing with a single process.")
+        LOGGER.info("Processing with a single process.")
         save_project_data_points(abs_repos, args.project_name, args.dp_dir, pm)
     else:
-        _logger.info(f"Processing with a {args.n_procs} processes.")
+        LOGGER.info(f"Processing with a {args.n_procs} processes.")
         file_args = get_project_multiprocessing_args(abs_repos, args.project_name, args.dp_dir, pm)
         with mp.Pool(args.n_procs) as pool:
             pool.starmap(tolerant_process_file, file_args)

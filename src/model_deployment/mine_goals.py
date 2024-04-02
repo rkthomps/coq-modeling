@@ -11,6 +11,7 @@ import time
 import traceback
 import argparse
 import json
+import logging
 
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.structs import Step, GoalAnswer
@@ -33,9 +34,8 @@ from model_deployment.transform_ast import (
     StrTree,
 )
 from util.coqpyt_utils import get_all_goals
-from util.util import get_fresh_path, get_basic_logger
+from util.util import LOGGER
 
-_logger = get_basic_logger(__name__)
 
 
 def get_contents(file: str) -> str:
@@ -239,7 +239,7 @@ def get_goal_record(
     try:
         term = term_from_ast(get_body_from_definition(new_ast.spans[-2].span))
     except TypeError:
-        _logger.error("Typeerror in file")
+        LOGGER.error("Typeerror in file")
         raise TypeError("typerror")
 
     return GoalRecord(step_idx, subproof, pretty_goal, term.to_strtree()), doc_version
@@ -295,15 +295,15 @@ def compute_file_goals(
 ) -> None:
     save_name = os.path.join(save_loc, file_info.dp_name)
     if os.path.exists(save_name):
-        _logger.info(f"{save_name} exists. Continuing")
+        LOGGER.info(f"{save_name} exists. Continuing")
         return
-    _logger.info(f"Processing {file_info.dp_name}")
+    LOGGER.info(f"Processing {file_info.dp_name}")
 
     file_loc = os.path.abspath(os.path.join(data_loc, file_info.file))
     workspace_loc = os.path.abspath(os.path.join(data_loc, file_info.workspace))
     with CoqFile(file_loc, workspace=workspace_loc, timeout=timeout) as coq_file:
         if not coq_file.is_valid:
-            _logger.warning(f"{file_info.file} not valid.")
+            LOGGER.warning(f"{file_info.file} not valid.")
             return
         num_steps = len(coq_file.steps)
 
@@ -315,11 +315,11 @@ def compute_file_goals(
     goal_thread.join(timeout * num_steps)
     if ret_obj.file_goals:
         if len(ret_obj.file_goals.records) == 0:
-            _logger.debug(f"Empty set of records for file: {file_info.file}")
+            LOGGER.debug(f"Empty set of records for file: {file_info.file}")
         else:
             ret_obj.file_goals.save(save_name)
     else:
-        _logger.debug(f"Timeout or error when processing {file_info.file}")
+        LOGGER.debug(f"Timeout or error when processing {file_info.file}")
 
 
 __ARG = tuple[str, FileInfo, str, int]

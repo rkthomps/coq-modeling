@@ -8,6 +8,7 @@ import argparse
 import shutil
 import traceback
 from threading import Thread
+import logging
 
 from typeguard import typechecked
 from yaml import load, Loader
@@ -28,10 +29,8 @@ from model_deployment.proof_manager import (
 )
 from model_deployment.model_wrapper import ModelWrapper, wrapper_from_conf
 from model_deployment.node_score import NodeScore, NODE_SCORE_ALIASES
+from util.util import LOGGER
 
-from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
 
 
 @typechecked
@@ -220,7 +219,7 @@ class Evaluator:
             proof_gen = self.eval_set.get_proof_gen(file)
         except:
             error_str = traceback.format_exc()
-            _logger.error(f"Could not evaluate {file.file} with error: {error_str}")
+            LOGGER.error(f"Could not evaluate {file.file} with error: {error_str}")
             return
         while True:
             try:
@@ -229,7 +228,7 @@ class Evaluator:
                 break
             except:
                 error_str = traceback.format_exc()
-                _logger.error(
+                LOGGER.error(
                     f"Trouble getting next proof in file {file.file} with error {error_str}"
                 )
                 continue
@@ -237,7 +236,7 @@ class Evaluator:
                 file.dp_name, proof.idx, self.results_loc
             )
             if os.path.exists(save_path):
-                _logger.info(f"{save_path} exists. Continuing.")
+                LOGGER.info(f"{save_path} exists. Continuing.")
                 continue
             statement = proof.statement()
             ground_truth = proof.ground_truth_steps()
@@ -277,9 +276,9 @@ class Evaluator:
                     self.timeout * 1.5 * self.eval_set.rough_proof_count(file)
                 )
             except FileNotFoundError:
-                _logger.warning(f"{file.file} not found.")
+                LOGGER.warning(f"{file.file} not found.")
                 continue
-            _logger.debug(f"Giving {file.file} {file_timeout} seconds.")
+            LOGGER.debug(f"Giving {file.file} {file_timeout} seconds.")
             thread_result = ThreadReturnObj(0, 0, 0)
             search_thread = Thread(
                 target=self.search_thread, args=(file, thread_result)
@@ -290,9 +289,9 @@ class Evaluator:
             num_proof_attempts += thread_result.num_proofs_attempted
             num_errors += thread_result.num_errors
 
-            _logger.info(f"Correct Proofs: {num_correct_proofs}")
-            _logger.info(f"Proof Attempts: {num_proof_attempts}")
-            _logger.info(f"Num Errors: {num_errors}")
+            LOGGER.info(f"Correct Proofs: {num_correct_proofs}")
+            LOGGER.info(f"Proof Attempts: {num_proof_attempts}")
+            LOGGER.info(f"Num Errors: {num_errors}")
 
 
 def evaluate(evaluate_conf_loc: str) -> None:

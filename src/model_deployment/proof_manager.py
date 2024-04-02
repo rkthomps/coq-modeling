@@ -6,6 +6,7 @@ import sys, os
 from enum import Enum
 import ipdb
 import time
+import logging
 
 from typeguard import typechecked
 
@@ -34,7 +35,7 @@ from model_deployment.fast_client import FastLspClient, ClientWrapper
 from model_deployment.mine_goals import get_goal_record, GoalRecord
 from model_deployment.step_separator import separate_steps
 from util.coqpyt_utils import get_all_goals
-from util.util import get_basic_logger
+from util.util import LOGGER
 
 from coqpyt.lsp.client import LspClient
 from coqpyt.coq.lsp.client import (
@@ -60,8 +61,6 @@ from coqpyt.lsp.structs import (
     Range,
 )
 
-
-_logger = get_basic_logger(__name__)
 
 
 class TacticResult(Enum):
@@ -345,7 +344,7 @@ class ProofManager:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        _logger.debug("Restoring proof file.")
+        LOGGER.debug("Restoring proof file.")
         # if os.path.exists(self.aux_file_path):
         #     os.remove(self.aux_file_path)
         # self.aux_client.close()

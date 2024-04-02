@@ -7,6 +7,7 @@ import argparse
 import pdb
 import json
 import re
+import logging
 
 import torch
 from transformers import ByT5Tokenizer, T5EncoderModel
@@ -30,11 +31,7 @@ from model_deployment.premise_model_wrapper import (
     TFIdf,
     BM25Okapi,
 )
-
-from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
-
+from util.util import LOGGER
 
 class EvalResult:
     def __init__(
@@ -163,7 +160,7 @@ class Evaluator:
                         EvalResult(num_avail_premises, hits_on, num_positive_premises)
                     )
             tmp_data = EvalData(num_steps, eval_results)
-            _logger.info(
+            LOGGER.info(
                 f"Recalls: @1: {tmp_data.recall_at(1)}; @10: {tmp_data.recall_at(10)}; @100: {tmp_data.recall_at(100)}"
             )
         return EvalData(num_steps, eval_results)

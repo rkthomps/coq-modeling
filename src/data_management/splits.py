@@ -19,6 +19,7 @@ from enum import Enum
 from dataclasses import dataclass
 import functools
 import yaml
+import logging
 
 import ipdb
 import argparse
@@ -34,11 +35,10 @@ from data_management.dataset_file import (
     Proof,
 )
 from data_management.sentence_db import SentenceDB
+from util.util import LOGGER
 
 from coqpyt.coq.structs import TermType
-from util.util import get_basic_logger
 
-_logger = get_basic_logger(__name__)
 
 
 REPOS_NAME = "repos"
@@ -309,10 +309,10 @@ class EvalProjects:
     def get_projects(self, data_loc: str, project_names: list[str], thm_map: ThmMap) -> list[Project]:
         projects: list[Project] = []
         for project_name in project_names:
-            _logger.info(f"Gathering project: {project_name}")
+            LOGGER.info(f"Gathering project: {project_name}")
             project_files = DataSplit.find_files(data_loc, project_name, thm_map)
             if len(project_files) == 0:
-                _logger.warning(f"Evaluation project {project_name} has no files.")
+                LOGGER.warning(f"Evaluation project {project_name} has no files.")
             projects.append(Project(project_name, project_files))
         return projects
 
@@ -457,7 +457,7 @@ class DataSplit:
 
         print("Creating Project List...")
         for repo in tqdm(os.listdir(repos_loc)):
-            _logger.info(f"Gathering project: {repo}")
+            LOGGER.info(f"Gathering project: {repo}")
             repo_files = cls.find_files(data_loc, repo, thm_map)
             if len(repo_files) == 0:
                 continue
@@ -558,7 +558,7 @@ class DataSplit:
             val_projects.append(clean_project)
             val_thms |= clean_project.get_thms(data_loc, thm_map)
 
-        _logger.info("Creating Train Split")
+        LOGGER.info("Creating Train Split")
         train_projects: list[Project] = []
         candidate_train_projects = cls.__create_project_list(data_loc, thm_map)
         for project in tqdm(candidate_train_projects):

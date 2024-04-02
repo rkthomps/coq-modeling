@@ -14,6 +14,7 @@ import argparse
 import multiprocessing as mp
 from parsy import ParseError
 import traceback
+import logging
 
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.lsp.structs import Goal, Hyp, GoalAnswer
@@ -23,7 +24,7 @@ from data_management.splits import DataSplit, FileInfo
 from data_management.splits import FileInfo, DataSplit, Split, split2str, str2split
 from model_deployment.parse_goal_term import term_p
 from model_deployment.goal_term import Term, term_size, term_to_json, term_from_json
-from util.util import get_fresh_path, get_basic_logger
+from util.util import get_fresh_path, LOGGER
 from util.coqpyt_utils import (
     get_proof_indices,
     replace_proof_with_admitted_stub,
@@ -33,7 +34,6 @@ from util.coqpyt_utils import (
     get_all_goals,
 )
 
-_logger = get_basic_logger(__name__)
 
 
 class EmptyFgGoalError(Exception):
@@ -252,7 +252,7 @@ class GoalTermDB:
                 page_loc = os.path.join(load_dir, filename)
                 pages[page_num] = GoalTermDBPage.load(page_loc)
             else:
-                _logger.warning(
+                LOGGER.warning(
                     f"Unexpected file found in GoalTermDB directory: ", {filename}
                 )
         return cls(pages, completed_coqfiles)
@@ -453,7 +453,7 @@ def mine_file_goals(
                     db.add_record(record)
                 db.thump_completed_coqfile(file_info, save_loc)
             except:
-                _logger.warning(
+                LOGGER.warning(
                     f"Trouble processing {file_info.file} of n steps {len(coq_file.steps)}"
                 )
     finally:

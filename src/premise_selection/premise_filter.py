@@ -6,13 +6,11 @@ from dataclasses import dataclass
 from typeguard import typechecked
 
 import sys, os
+import logging
 
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
 from coqpyt.coq.structs import TermType
-
-from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
+from util.util import LOGGER
 
 
 @dataclass
@@ -44,19 +42,19 @@ class PremiseFilter:
 
     def __print_warnings(self) -> None:
         if len(self.coq_excludes) > 0:
-            _logger.info(
+            LOGGER.info(
                 (
                     f"Excluding term types {self.coq_excludes} for premise selection "
                     "if they come from the coq standard library."
                 )
             )
         if len(self.non_coq_excludes) > 0:
-            _logger.info(
+            LOGGER.info(
                 f"Excluding term types {self.non_coq_excludes} for premise selection "
                 "if they do not come from the coq standard library."
             )
         if len(self.general_excludes) > 0:
-            _logger.info(
+            LOGGER.info(
                 f"Excluding term types {self.non_coq_excludes} for premise selection."
             )
 
@@ -116,11 +114,11 @@ class PremiseFilter:
             if passes_filter and premise_available and premise_in_context:
                 filtered_positive_candidates.append(pos_premise)
             if passes_filter and not premise_available:
-                _logger.warning(
+                LOGGER.warning(
                     f"Same file positive premise not available at {pos_premise.file_path}:{pos_premise.line}",
                 )
             if passes_filter and not premise_in_context:
-                _logger.warning(
+                LOGGER.warning(
                     f"Positive premise not in context at {pos_premise.file_path}:{pos_premise.line}",
                 )
 

@@ -42,7 +42,6 @@ from model_deployment.codellama_utils import (
 )
 
 
-@typechecked
 class ModelResult:
     def __init__(
         self,

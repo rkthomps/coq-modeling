@@ -14,10 +14,8 @@ from dataclasses import dataclass
 from data_management.dataset_file import Sentence, DatasetFile, Proof
 from data_management.splits import DataSplit, Split, FileInfo, str2split
 from model_deployment.model_wrapper import ModelWrapper, wrapper_from_conf
+from util.util import LOGGER
 
-from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
 
 ATTEMPTS_NAME = "files"
 
@@ -285,7 +283,7 @@ def evaluate(conf: StepEvalConf) -> None:
                     os.path.join(conf.save_loc, ATTEMPTS_NAME, file_info.dp_name)
                 )
         except FileNotFoundError:
-            _logger.warning(f"Could not find file: {file_info.file}")
+            LOGGER.warning(f"Could not find file: {file_info.file}")
 
 
 if __name__ == "__main__":

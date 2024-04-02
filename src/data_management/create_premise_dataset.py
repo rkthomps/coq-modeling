@@ -8,6 +8,7 @@ import shutil
 import argparse
 from queue import Queue
 import multiprocessing as mp
+import logging
 
 from yaml import load, Loader
 
@@ -27,11 +28,9 @@ from data_management.splits import (
 )
 from data_management.jsonl_utils import shuffle, deduplicate
 from data_management.sentence_db import SentenceDB
-from util.util import get_basic_logger
 from util.constants import PREMISE_DATA_CONF_NAME
+from util.util import LOGGER
 
-
-_logger = get_basic_logger(__name__)
 
 
 @typechecked
@@ -96,7 +95,7 @@ def get_examples_from_file(
     try:
         file_obj = file_info.get_dp(premise_conf.data_loc, sentence_db)
     except FileNotFoundError:
-        _logger.error(f"Could not find file: {file_info.file}")
+        LOGGER.error(f"Could not find file: {file_info.file}")
         return
     for proof in file_obj.proofs:
         for step in proof.steps:
@@ -113,6 +112,7 @@ def get_examples_from_file(
             )
             for example in step_examples:
                 q.put(example)
+    sentence_db.close()
 
 
 PremiseArgs = tuple[
@@ -134,7 +134,7 @@ def get_dataset_args(
 
 def writer(q: Queue[Optional[PremiseTrainingExample]], out_file: str) -> None:
     num_examples_written = 0
-    _logger.debug(f"Opening {out_file}")
+    LOGGER.debug(f"Opening {out_file}")
     with open(out_file, "w") as fout:
         while True:
             example = q.get()

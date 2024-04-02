@@ -21,11 +21,11 @@ if __name__ == "__main__":
 
     waiting_loads = get_outstanding_dp_loads(logs)
     print("Outstading loads:")
-    for f_name, t in waiting_loads:
-        print("\t{:70s}; {:.2f}".format(f_name, (datetime.datetime.now() - t).total_seconds()))
+    for f_name in waiting_loads:
+        print(f_name)
 
     waiting_lms = get_outstanding_dp_ends(logs)
     print("Outstading lm_examples:")
-    for f_name, t in waiting_lms:
-        print("\t{:70s}; {:.2f}".format(f_name, (datetime.datetime.now() - t).total_seconds()))
+    for f_name in waiting_lms:
+        print(f_name)
 

@@ -6,6 +6,7 @@ import ipdb
 import re
 
 import sys, os
+import logging
 
 from coqpyt.coq.lsp.structs import Goal
 from util.coqpyt_utils import get_all_goals
@@ -16,14 +17,13 @@ from model_deployment.model_node_scorer import ModelNodeScorer
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import SearchNode, SearchTree
 from model_deployment.goal_comparer import AlphaGoalComparer 
-from util.util import get_basic_logger
+
 
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Proof
+from util.util import LOGGER
 
 from typeguard import typechecked
-
-_logger = get_basic_logger(__name__)
 
 
 @typechecked
@@ -176,7 +176,7 @@ class SearchTreeManager:
                 break
             if len(self.frontier) == 0:
                 break
-            _logger.info(f"Beginning iteration {i + 1} of search.")
+            LOGGER.info(f"Beginning iteration {i + 1} of search.")
             possible_complete_node = self.search_step(i, start, print_proofs)
             if print_trees:
                 self.search_tree.pretty_print(verbose=True)
@@ -307,7 +307,7 @@ class SearchTreeManager:
         start_time = time.time_ns()
         result = self.model_wrapper.get_recs(example, self.max_branch)
         end_time = time.time_ns()
-        _logger.info(f"Model time: {(end_time - start_time) / 1e9}")
+        LOGGER.info(f"Model time: {(end_time - start_time) / 1e9}")
         children: list[SearchNode] = []
         next_frontier_pool: list[SearchNode] = []
         next_frontier_goals: list[list[Goal]] = []
@@ -320,7 +320,7 @@ class SearchTreeManager:
                 proof_script, leaf_subtree.proof.theorem
             )
             end_time = time.time_ns()
-            _logger.info(f"Check time: {(end_time - start_time) / 1e9}")
+            LOGGER.info(f"Check time: {(end_time - start_time) / 1e9}")
             node_score = self.score_type.from_unit_score(
                 score, num_tokens, self.max_branch
             )

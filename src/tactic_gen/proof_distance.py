@@ -10,10 +10,7 @@ import os
 import sys
 import json
 from tqdm import tqdm
-
-from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
+import logging
 
 from data_management.splits import (
     DataSplit,
@@ -24,7 +21,7 @@ from data_management.splits import (
 )
 from data_management.dataset_file import Proof
 
-from util.util import get_simple_steps
+from util.util import get_simple_steps, LOGGER
 from tactic_gen.tactic_pair_encoding import TacticPairEncoding
 from tactic_gen.step_parser import CoqParseError
 
@@ -289,7 +286,7 @@ class SortedProofs:
         if prf1_step_str == prf2_step_str:
             file_line1 = f"{new_stripped.file.file}:{new_stripped.line}"
             file_line2 = f"{nearest_one[0].proof.file.file}:{nearest_one[0].proof.line}"
-            _logger.warning(f"Proofs from {file_line1} and {file_line2} are the same.")
+            LOGGER.warning(f"Proofs from {file_line1} and {file_line2} are the same.")
         return nearest_one[0]
 
     def nearest_n(

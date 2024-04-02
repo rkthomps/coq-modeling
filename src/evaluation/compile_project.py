@@ -5,9 +5,8 @@ import logging
 import json
 
 from data_management.splits import REPOS_NAME
-from util import util
+from util.util import LOGGER
 
-_logger = util.get_basic_logger(__name__)
 
 COQ_CRAWLER_LOC = "coq-crawler"
 if not COQ_CRAWLER_LOC in sys.path:
@@ -41,12 +40,12 @@ def dot_v_to_json(filename: str) -> str:
 
 def compile_project(raw_data_loc: str, project_name: str, build_save_loc: str) -> None:
     project_loc = os.path.join(raw_data_loc, REPOS_NAME, project_name)
-    _logger.debug(f"Compiling: {project_loc}")
+    LOGGER.debug(f"Compiling: {project_loc}")
     project_save_loc = os.path.join(build_save_loc, REPOS_NAME, project_name)
     os.makedirs(project_save_loc, exist_ok=True)
     project_files = os.listdir(project_loc)
     if len(project_files) == 0:
-        _logger.warning(f"Project {project_loc} has no files.")
+        LOGGER.warning(f"Project {project_loc} has no files.")
         return
     random_file = project_files[0]
     # Have to pass in a file of the project -- not the project itself.
@@ -58,14 +57,14 @@ def compile_project(raw_data_loc: str, project_name: str, build_save_loc: str) -
         relpath_as_json = dot_v_to_json(valid_file.relpath)
         file_save_loc = os.path.join(project_save_loc, relpath_as_json)
         os.makedirs(os.path.dirname(file_save_loc), exist_ok=True)
-        _logger.debug(f"File save loc: {file_save_loc}")
+        LOGGER.debug(f"File save loc: {file_save_loc}")
         with open(file_save_loc, "w") as fout:
             fout.write(json.dumps(valid_file_json, indent=2))
 
 
 if __name__ == "__main__":
     sys.setrecursionlimit(1500)
-    _logger.warning(
+    LOGGER.warning(
         "You should change the cwd so that compiling doesn't throw up in your repo."
     )
     parser = argparse.ArgumentParser(
@@ -76,5 +75,5 @@ if __name__ == "__main__":
     parser.add_argument("build_save_loc", help="Directory to save building metadata.")
     args = parser.parse_args(sys.argv[1:])
     compile_project(args.raw_data_loc, args.project_name, args.build_save_loc)
-    _logger.debug("Done.")
+    LOGGER.debug("Done.")
     os._exit(os.EX_OK)

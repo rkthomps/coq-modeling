@@ -1,19 +1,19 @@
 from __future__ import annotations
+import os
 from typing import Any, Optional
 from dataclasses import dataclass
 from typeguard import typechecked
 import json
 import ipdb
 import functools
+import logging
 from edist import ted, seted, sed
 
 
 import numpy as np
 import numpy.typing as npt
 
-from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
+from util.util import LOGGER
 
 
 @typechecked
@@ -1022,7 +1022,7 @@ def term_from_ast(ast: Any) -> Term:
         case _:
             term_size = len(json.dumps(ast))
             raise ValueError(f"Unhandled Term Type: {term[0]} of size {term_size}")
-            _logger.warning(
+            LOGGER.warning(
                 f"Unhandled Term Type: {term[0]} of size {term_size}. Inserting unknown tree."
             )
             return UnknownT()

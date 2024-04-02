@@ -29,8 +29,9 @@ def one_file(
 ) -> list[LmExample]:
     file_info, split = file_from_split(file, data_split)
     file_dp = file_info.get_dp(data_loc, sentence_db)
-    #print("Number of steps: ", count_steps(file_dp))
+    print("Number of steps: ", count_steps(file_dp))
     examples: list[LmExample] = []
+    cur_step = 0
     for proof in file_dp.proofs:
         for i, step in enumerate(proof.steps):
             start = time.time()
@@ -46,11 +47,13 @@ def one_file(
                 cutoff_idx=None,
             )
             end = time.time()
-            #print("Step time:", end - start)
+            cur_step += 1
+            print(cur_step, "Step time:", end - start)
             examples.append(example)
     return examples
 
 files = [
+    "repos/coq-community-gaia/theories/sets/sset9.v",
     "repos/coq-community-corn/reals/stdlib/ConstructiveUniformCont.v",
     "repos/AbsInt-CompCert/x86/Asm.v",
     "repos/AbsInt-CompCert/x86/Asmgenproof.v",
@@ -69,18 +72,18 @@ files = [
 
 
 def run_benchmarks(formatter: LmFormatter):
-    # for file in files:
-    #     start = time.time()
-    #     one_file(file, formatter)
-    #     end = time.time()
-    #     print("{:30s}: {:.2f}".format(file, end - start))
-
-    for file_info in reversed(data_split.get_file_list(Split.TRAIN)):
-        print(file_info.file + "       ", end="", flush=True)
+    for file in files:
         start = time.time()
-        one_file(file_info.file, formatter)
+        one_file(file, formatter)
         end = time.time()
-        print("{:30s}: {:.2f}".format(file_info.file, end - start))
+        print("{:30s}: {:.2f}".format(file, end - start))
+
+    # for file_info in reversed(data_split.get_file_list(Split.TRAIN)):
+    #     print(file_info.file + "       ", end="", flush=True)
+    #     start = time.time()
+    #     one_file(file_info.file, formatter)
+    #     end = time.time()
+    #     print("{:30s}: {:.2f}".format(file_info.file, end - start))
 
 
 def run_proof_ret_benchmark():

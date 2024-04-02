@@ -8,6 +8,7 @@ import functools
 import hashlib
 import json
 import argparse
+import logging
 
 import torch
 from transformers import GPT2Tokenizer
@@ -20,9 +21,8 @@ from premise_selection.datamodule import tokenize_strings
 from premise_selection.premise_formatter import PremiseFormat, PREMISE_ALIASES
 from util.train_utils import get_required_arg 
 from util.constants import PREMISE_DATA_CONF_NAME, TRAINING_CONF_NAME
-from util.util import get_basic_logger
+from util.util import LOGGER
 
-_logger = get_basic_logger(__name__) 
 
 @functools.lru_cache(50)
 def load_page(db_loc: str, page_idx: int, device: str) -> Optional[torch.Tensor]:
@@ -203,7 +203,7 @@ class PremiseVectorDB:
             assert len(page_embs) == len(sentence_texts)
             num_written += len(sentence_texts)
             cur_page += 1
-            _logger.info(f"Processed {num_written} out of {sdb_size}")
+            LOGGER.info(f"Processed {num_written} out of {sdb_size}")
         return PremiseVectorDB(db_loc, page_size, select_checkpoint, sdb, sdb_hash)
 
 

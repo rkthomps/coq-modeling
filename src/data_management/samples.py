@@ -8,14 +8,12 @@ import argparse
 import random
 import json
 
-from typeguard import typechecked
 import yaml
 from tqdm import tqdm
 
 from data_management.splits import FileInfo, DataSplit, Split, split2str, str2split
 
 
-@typechecked
 class StepIndex:
     def __init__(self, proof_idx: int, step_idx: int) -> None:
         self.proof_idx = proof_idx
@@ -46,7 +44,6 @@ class CertainSteps:
 SelectedSteps = AllSteps | CertainSteps
 
 
-@typechecked
 class CompleteSample:
     ALIAS = "CompleteSample"
 
@@ -89,7 +86,6 @@ class CompleteSample:
         return cls.__create(data_split, split, data_loc)
 
 
-@typechecked
 class RandomSample:
     ALIAS = "RandomSample"
 

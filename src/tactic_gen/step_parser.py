@@ -1,12 +1,12 @@
 from __future__ import annotations
+import os
 from typing import Any, Optional, Union, Callable
 from dataclasses import dataclass
 import re
 from enum import Enum
+import logging
 
-from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
+from util.util import LOGGER
 
 
 class CoqParseError(Exception):
@@ -307,7 +307,7 @@ def lex(s: str) -> list[Token]:
         return __post_process(__lex([ch for ch in s]))
     except RecursionError:
         msg = f"Could not parse step: {s}"
-        _logger.info(f"Could not parse step: {s}")
+        LOGGER.info(f"Could not parse step: {s}")
         raise CoqParseError(msg)
 
 

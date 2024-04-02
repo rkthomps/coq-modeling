@@ -9,6 +9,7 @@ from tqdm import tqdm
 import sys
 import os
 import shutil
+import logging
 import ipdb
 import argparse
 import multiprocessing as mp
@@ -26,7 +27,7 @@ from model_deployment.transform_ast import (
     term_from_ast,
     get_body_from_definition,
 )
-from util.util import get_fresh_path, get_basic_logger
+from util.util import get_fresh_path, LOGGER
 from util.coqpyt_utils import (
     get_proof_indices,
     replace_proof_with_admitted_stub,
@@ -36,7 +37,6 @@ from util.coqpyt_utils import (
     get_all_goals,
 )
 
-_logger = get_basic_logger(__name__)
 
 
 class EmptyFgGoalError(Exception):
@@ -255,7 +255,7 @@ class GoalTermDB:
                 page_loc = os.path.join(load_dir, filename)
                 pages[page_num] = GoalTermDBPage.load(page_loc)
             else:
-                _logger.warning(
+                LOGGER.warning(
                     f"Unexpected file found in GoalTermDB directory: ", {filename}
                 )
         return cls(pages, completed_coqfiles)
@@ -438,7 +438,7 @@ def mine_coq_file_goals(
                     num_proof_steps += 1
                     continue
                 except Exception as e:
-                    _logger.warning(
+                    LOGGER.warning(
                         f"Trouble processing {file_info.file} of n steps {len(coq_file.steps)} with exception {e.__class__}"
                     )
                     yield None
@@ -448,7 +448,7 @@ def mine_coq_file_goals(
                     break
                 stree, goal = stree_w_goal
                 if stree.has_unknown():
-                    _logger.warning(f"AST Transform error in: {file_info.file}")
+                    LOGGER.warning(f"AST Transform error in: {file_info.file}")
                 record = GoalTermRecord(
                     stree, goal, subproof, file_info, split, proof_start_idx
                 )
@@ -467,7 +467,7 @@ def mine_file_goals(
     workspace_loc = os.path.abspath(os.path.join(data_loc, file_info.workspace))
     with CoqFile(file_loc, workspace=workspace_loc) as coq_file:
         if not coq_file.is_valid:
-            _logger.warning(f"File {file_info.file} started invalid.")
+            LOGGER.warning(f"File {file_info.file} started invalid.")
             return
         try:
             files_records = mine_coq_file_goals(coq_file, file_info, split, data_loc)
@@ -487,7 +487,7 @@ def mine_file_goals(
                 db.thump_completed_coqfile(file_info, save_loc)
         except Exception as e:
             traceback.print_exc()
-            _logger.warning(
+            LOGGER.warning(
                 f"Trouble processing {file_info.file} of n steps {len(coq_file.steps)} with exception {e.__class__}"
             )
 

@@ -4,6 +4,7 @@ import subprocess
 import traceback
 import csv
 import ipdb
+from util.util import LOGGER
 
 from dataclasses import dataclass
 from coqpyt.coq.base_file import CoqFile
@@ -16,10 +17,7 @@ COQ_PYT_LOC = os.path.join("coqpyt", "coqpyt")
 if not COQ_PYT_LOC in sys.path:
     sys.path.insert(0, COQ_PYT_LOC)
 
-from util.util import get_basic_logger
 from project import Project, ValidFile
-
-_logger = get_basic_logger(__name__)
 
 
 def print_command_error(cmd: list[str]) -> None:
@@ -100,10 +98,10 @@ class TestProject:
                         if is_valid:
                             valid_files.append(ValidFile(relpath, abs_repo))
                         else:
-                            _logger.warning(f"File {relpath} was not valid.")
+                            LOGGER.warning(f"File {relpath} was not valid.")
                     except:
                         traceback.print_exc()
-                        _logger.warning(f"File {relpath} got timeout or oom error.")
+                        LOGGER.warning(f"File {relpath} got timeout or oom error.")
 
         return valid_files
 

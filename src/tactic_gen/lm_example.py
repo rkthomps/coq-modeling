@@ -24,11 +24,9 @@ from model_deployment.premise_model_wrapper import (
 )
 from model_deployment.mine_goals import FileGoals, GoalRecord
 from model_deployment.transform_ast import AdjTree
-from util.util import get_basic_logger
 
 from coqpyt.coq.structs import TermType
 
-_logger = get_basic_logger(__name__)
 
 GOAL_SEP = "<G>"
 PREM_SEP = "<P>"
@@ -1045,10 +1043,7 @@ class ProofRetrievalOracleFormatter:
                 norm_steps,
                 split,
             )
-            start = time.time()
             similar_proof = self.sorted_proofs.nearest(stripped_proof).proof
-            end = time.time()
-            _logger.debug("Retrieved proof in {:5.3f} seconds".format(end - start))
             self.__cached_similar_proofs[proof_key] = similar_proof
 
         new_input = (
@@ -1059,7 +1054,6 @@ class ProofRetrievalOracleFormatter:
     @classmethod
     def from_conf(cls, conf: Any) -> ProofRetrievalOracleFormatter:
         tmp_basic_formatter = BasicFormatter.from_conf(conf)
-        _logger.debug("Loading similar proof database.")
         sorted_proofs = SortedProofs.load(conf["sorted_proof_loc"])
         return cls(
             tmp_basic_formatter.n_step_sampler,

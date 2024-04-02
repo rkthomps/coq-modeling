@@ -18,9 +18,6 @@ from coqpyt.coq.structs import TermType
 from premise_selection.premise_filter import PremiseFilter
 from data_management.dataset_file import DatasetFile, Sentence, data_shape_expected
 from data_management.splits import DATA_POINTS_NAME
-from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
 
 
 def remove_comments(step_text: str) -> str:

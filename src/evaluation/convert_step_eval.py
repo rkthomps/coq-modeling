@@ -3,16 +3,16 @@ import sys
 import argparse
 import shutil
 import time
+import logging
 
 from tqdm import tqdm
 
 from data_management.dataset_file import DatasetFile
 from data_management.splits import DataSplit, Split, FileInfo
 from evaluation.step_eval import ATTEMPTS_NAME, FileEval, FileEvalOld
+from util.util import LOGGER
 
-from util.util import get_basic_logger
 
-_logger = get_basic_logger(__name__)
 
 
 bank: dict[FileInfo, DatasetFile] = {}
@@ -56,7 +56,7 @@ def convert_evals(
 ) -> None:
     os.makedirs(new_dir)
     for eval in os.listdir(old_dir):
-        _logger.info(f"Converting {eval}")
+        LOGGER.info(f"Converting {eval}")
         convert_eval(
             data_loc,
             data_split,

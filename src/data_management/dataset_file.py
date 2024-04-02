@@ -16,9 +16,6 @@ from data_management.sentence_db import SentenceDB, DBSentence
 
 from coqpyt.coq.structs import TermType
 
-# from util.util import get_basic_logger
-
-# _logger = get_basic_logger(__name__)
 
 
 STEPS_NAME = "steps.jsonl"

@@ -2,6 +2,7 @@ from typing import Any, Optional
 import sys, os
 import requests
 import json
+import logging
 import pdb
 
 from data_management.splits import FileInfo, Split
@@ -30,13 +31,13 @@ from model_deployment.node_score import (
     BreadthFirstScore,
 )
 from data_management.sentence_db import SentenceDB
-from util.util import get_basic_logger
+from util.util import LOGGER
 
 from coqpyt.coq.structs import Step, TermType
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
 
-_logger = get_basic_logger(__name__)
+
 
 # WRAPPER = GPT4Wrapper()
 # EXAMPLE_TYPE = GPT4BasicLmExample
@@ -103,7 +104,7 @@ def do_search(file_context: FileContext, initial_steps: list[Step], proof_point:
             WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, DEPTH_LIMIT, TIMEOUT, MODEL_SCORER 
     )
 
-        _logger.debug("Beginning Proof Search")
+        LOGGER.debug("Beginning Proof Search")
         result = tree_manager.search(print_proofs=True, print_trees=True)
         with open("proof-tree.json", "w") as fout:
             json_proof_tree = result.search_tree.to_json(proof_manager.sentence_db)

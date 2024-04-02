@@ -28,10 +28,8 @@ from data_management.samples import (
     CertainSteps,
 )
 from data_management.jsonl_utils import shuffle, deduplicate
-from util.util import get_basic_logger, DPStartLog, DPEndLog, DPLoadLog, print_info
+from util.util import LOGGER, DPStartLog, DPEndLog, DPLoadLog, print_info
 from util.constants import DATA_CONF_NAME
-
-_logger = get_basic_logger(__name__)
 
 
 @typechecked
@@ -86,7 +84,9 @@ def writer(q: Queue[Optional[LmExample]], out_file: str) -> None:
                     fout.write(json.dumps(example.to_json()) + "\n")
                     num_examples_written += 1
                 case None:
+                    print("Stopping queue")
                     return
+            
 
 
 def examples_to_queue(
@@ -101,9 +101,9 @@ def examples_to_queue(
     cuda_str = f"cuda:{device_idx}"
     move_fmt_to(lm_formatter, cuda_str)
     sentence_db = SentenceDB.load(sentence_db_loc) 
-    print_info(DPStartLog(file_info.file), _logger)
+    print_info(DPStartLog(file_info.file), LOGGER)
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
-    print_info(DPLoadLog(file_info.file), _logger)
+    print_info(DPLoadLog(file_info.file), LOGGER)
     match selected_steps:
         case AllSteps():
             for proof in dp_obj.proofs:
@@ -120,7 +120,8 @@ def examples_to_queue(
                         key_record=None,
                         cutoff_idx=None,
                     )
-                    q.put(example)
+                    assert example is not None
+                    q.put_nowait(example)
         case CertainSteps(steps=step_idxs):
             for step_idx in step_idxs:
                 proof = dp_obj.proofs[step_idx.proof_idx]
@@ -136,8 +137,10 @@ def examples_to_queue(
                     key_record=None,
                     cutoff_idx=None,
                 )
-                q.put(example)
-    print_info(DPEndLog(file_info.file), _logger)
+                assert example is not None
+                q.put_nowait(example)
+    sentence_db.close()
+    print_info(DPEndLog(file_info.file), LOGGER)
 
 
 __ArgTuple = tuple[

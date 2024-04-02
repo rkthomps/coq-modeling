@@ -29,6 +29,7 @@ from util.constants import RERANK_DATA_CONF_NAME
 import multiprocessing as mp
 
 
+
 @typechecked
 class ReRankExampleConfig:
     FORMATTER_KEY = "rerank_formatter"
@@ -127,6 +128,7 @@ def examples_to_queue(
                 )
                 for example in examples:
                     q.put(example)
+    sentence_db.close()
 
 
 __ArgTuple = tuple[

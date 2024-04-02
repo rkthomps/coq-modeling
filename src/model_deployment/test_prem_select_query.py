@@ -2,6 +2,7 @@ from typing import Optional
 
 import requests
 import json
+import logging
 
 from data_management.splits import FileInfo, Split
 from data_management.dataset_file import Sentence
@@ -12,13 +13,11 @@ from model_deployment.premise_model_wrapper import (
     get_ranked_premise_generator,
 )
 from model_deployment.searcher import ProofManager
+from util.util import LOGGER
 
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.proof_file import ProofFile
 
-from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
 
 # FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min_superlist.v"
 # FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
@@ -50,12 +49,12 @@ assert last is not None
 
 dummy_formatter = BasicFormatter()
 
-_logger.debug("Creating Proof File")
+LOGGER.debug("Creating Proof File")
 with ProofFile(
     TEST_FILE, workspace=dummy_file_info.workspace, timeout=60
 ) as proof_file:
     proof_point = last
-    _logger.debug("Creating Proof Manager")
+    LOGGER.debug("Creating Proof Manager")
     with ProofManager(
         TEST_FILE,
         proof_file,
