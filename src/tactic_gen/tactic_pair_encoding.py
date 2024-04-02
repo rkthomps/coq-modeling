@@ -8,8 +8,8 @@ import csv
 
 
 from tqdm import tqdm
-from typeguard import typechecked
 
+from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, FocusedStep, data_shape_expected
 from data_management.splits import DataSplit, Split
 from tactic_gen.step_parser import (
@@ -23,7 +23,6 @@ from tactic_gen.step_parser import (
 STEP_DELIM = " <++> "
 
 
-@typechecked
 class TacticPairEncoding:
     def __init__(self, vocab: dict[str, int]) -> None:
         assert type(vocab) == dict
@@ -153,13 +152,13 @@ class TacticPairEncoding:
 
     @classmethod
     def create(
-        cls, data_split: DataSplit, data_loc: str, n_merges: int
+        cls, data_split: DataSplit, data_loc: str, n_merges: int, sentence_db: SentenceDB, 
     ) -> TacticPairEncoding:
         step_lists: list[list[str]] = []
         print("Gathering Steps...")
         for project in tqdm(data_split.get_project_list(Split.TRAIN)):
             for file_info in project.files:
-                for proof in file_info.get_proofs(data_loc):
+                for proof in file_info.get_proofs(data_loc, sentence_db):
                     try:
                         str_step_list = [
                             cls.normalize_step(s.step.text) for s in proof.steps
@@ -190,34 +189,6 @@ class TacticPairEncoding:
         return cls(step_vocab)
 
 
-def step_list_iterator(train_dataset_loc: str) -> Iterable[list[FocusedStep]]:
-    assert data_shape_expected(train_dataset_loc)
-    for dirname in os.listdir(train_dataset_loc):
-        dir_loc = os.path.join(train_dataset_loc, dirname)
-        dset_obj = DatasetFile.from_directory(dir_loc)
-        for proof in dset_obj.proofs:
-            yield proof.steps
-
-
-def step_iterator(train_dataset_loc: str) -> Iterable[FocusedStep]:
-    for step_list in step_list_iterator(train_dataset_loc):
-        for step in step_list:
-            yield step
-
-
-def get_id_freq(train_dataset_loc: str) -> dict[str, int]:
-    id_table: dict[str, int] = {}
-    for step in step_iterator(train_dataset_loc):
-        try:
-            id_strs = get_id_strs(lex(step.step.text))
-        except:
-            continue
-        for id_str in id_strs:
-            if id_str not in id_table:
-                id_table[id_str] = 0
-            id_table[id_str] += 1
-    return id_table
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -225,9 +196,11 @@ if __name__ == "__main__":
     parser.add_argument("data_loc", help="Location of raw data.")
     parser.add_argument("n_merges", type=int, help="Number of merges to use.")
     parser.add_argument("save_loc", help="Where to save the tactic pair encoding.")
+    parser.add_argument("sentence_db_loc", help="Location of the sentence database.")
     args = parser.parse_args(sys.argv[1:])
 
     data_split = DataSplit.load(args.data_split_loc)
-    tpe = TacticPairEncoding.create(data_split, args.data_loc, args.n_merges)
+    sentence_db = SentenceDB.load(args.sentence_db_loc)
+    tpe = TacticPairEncoding.create(data_split, args.data_loc, args.n_merges, sentence_db)
     tpe.print_report()
     tpe.save(args.save_loc)

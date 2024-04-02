@@ -464,7 +464,7 @@ class DatasetFile:
         return dependencies
 
     @classmethod
-    @functools.cache
+    @functools.lru_cache(10000)
     def fix_path(cls, path: str) -> str:
         while path.startswith("../") or path.startswith("..\\"):
             path = path[3:]

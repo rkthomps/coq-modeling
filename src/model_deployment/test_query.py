@@ -1,6 +1,7 @@
 from typing import Any, Optional
 import sys, os
 import requests
+import cProfile
 import json
 import logging
 import pdb
@@ -75,12 +76,14 @@ WRAPPER = FidT5LocalWrapper.from_conf(
         # "alias": "fid-local",
         # "pretrained_name": "/home/ubuntu/coq-modeling/models/t5-fid-small-basic-rnd-split-rnd-samp-pct-8/checkpoint-8000"
         "pretrained-name": "/home/ubuntu/coq-modeling/models/t5-fid-base-basic-final/checkpoint-110500"
+        #"pretrained-name": "/home/ubuntu/coq-modeling/models/t5-fid-small-basic-final/checkpoint-110500"
     }
 )
 NODE_SCORE_TYPE = TokenLengthNormalizedScore
 #NODE_SCORE_TYPE = ModelScore 
 TIMEOUT = 600
-BRANCH = 32
+#BRANCH = 256
+BRANCH = 64 
 DEPTH_LIMIT=300
 EXPANSIONS = 500
 #MODEL_SCORER = ModelNodeScorer.from_name("codellama/CodeLlama-7b-hf")
@@ -105,7 +108,7 @@ def do_search(file_context: FileContext, initial_steps: list[Step], proof_point:
     )
 
         LOGGER.debug("Beginning Proof Search")
-        result = tree_manager.search(print_proofs=True, print_trees=True)
+        result = tree_manager.search(print_proofs=True, print_trees=False)
         with open("proof-tree.json", "w") as fout:
             json_proof_tree = result.search_tree.to_json(proof_manager.sentence_db)
             fout.write(json.dumps(json_proof_tree, indent=2))
@@ -145,4 +148,4 @@ def do_proof_file_search():
     ## TODO
     pass
 
-do_coq_file_search()
+cProfile.run("do_coq_file_search()")

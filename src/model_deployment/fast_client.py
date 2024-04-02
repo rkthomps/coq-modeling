@@ -138,7 +138,6 @@ class FastLspClient(LspClient):
             "proof/goals", textDocument=textDocument, position=position,
         )
         end = time.time()
-        print('goal time str: ', end - start)
         parsed_goals = GoalAnswer.parse(result_dict)
         return parsed_goals
 

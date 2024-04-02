@@ -282,7 +282,7 @@ class ProofManager:
         t2 = time.time()
 
         self.fast_client.client.lsp_endpoint.timeout = 0.5
-        print("New check time:", t2 - t1)
+        #print("New check time:", t2 - t1)
 
         # try:
         #     assert "".join(partial_steps) == partial_proof

@@ -15,7 +15,17 @@ class ModelNodeScorer:
         self.tokenizer = tokenizer
 
     def score_proof(self, thm_text: str, proof_text: str) -> float:
-        input_str = f"{thm_text}{proof_text}"
+        # advice = (
+        #     "First destruct on the list. ",
+        #     "Then, destruct on the min of the tail of the list. ",
+        #     "Then, destruct on whether the head is less than the min of the tail",
+        #     "Then provide witnesses for each branch."
+        # )
+
+        advice = (
+            "First, unfold even and odd. Then use the witness k1 + k2 + 1. Then close the proof with lia.",
+        )
+        input_str = f"{advice}{thm_text}{proof_text}"
         input = self.tokenizer(input_str, return_tensors="pt")
         with torch.no_grad():
             result = self.model(

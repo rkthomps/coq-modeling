@@ -23,10 +23,7 @@ from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Proof
 from util.util import LOGGER
 
-from typeguard import typechecked
 
-
-@typechecked
 class SuccessfulSearch:
     ALIAS = "success"
 
@@ -50,7 +47,6 @@ class SuccessfulSearch:
         return cls(search_tree, qed_node)
 
 
-@typechecked
 class FailedSearch:
     ALIAS = "failure"
 
@@ -66,7 +62,6 @@ class FailedSearch:
         return cls(search_tree)
 
 
-@typechecked
 class ErroredSearch:
     ALIAS = "error"
 
@@ -106,7 +101,6 @@ def search_result_from_json(
             raise ValueError(f"Unknown search result alias: f{a}")
 
 
-@typechecked
 class SearchTreeManager:
     def __init__(
         self,
@@ -297,7 +291,7 @@ class SearchTreeManager:
         the proof search tree."""
         leaf_subtree, _ = heapq.heappop(self.frontier)
         if print_proofs:
-            print(leaf_subtree.score.compute())
+            #print(leaf_subtree.score.compute())
             print("".join(leaf_subtree.combined_proof_steps))
         leaf_subtree.set_expanded_num(step_num)
         assert leaf_subtree.proof is not None

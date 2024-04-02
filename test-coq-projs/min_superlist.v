@@ -5,7 +5,7 @@ Require Import Nat.
 Require Import Bool.
 
 
-Fixpoint remove_nth_error {X : Type} (l : list X) (n : nat) : option (list X) :=
+(* Fixpoint remove_nth_error {X : Type} (l : list X) (n : nat) : option (list X) :=
     (** Remove the nth element in the list *)
     match l with
     | nil => None 
@@ -275,7 +275,7 @@ Proof.
     - split.
       + intros H. reflexivity.
       + intros H. reflexivity. 
-  Qed. 
+  Qed.  *)
 
 (* Theorem min_superlist_less: forall (l : (list nat)) (n1 n2 x1 x2: nat),
     min (n2 :: l) = Some x1 -> 
@@ -286,14 +286,18 @@ Proof.
     destruct (n1 <? x1) eqn:E.
     - injection H0 as H0. rewrite H0 in E. <prove> *)
 
+Fixpoint min (l : (list nat)) : option nat := 
+    match l with
+    | nil => None
+    | h :: tl => match (min tl) with
+        | None => Some h 
+        | Some m => if (h <? m) then (Some h) else (Some m)
+        end
+    end.
+
 Theorem min_superlist_less: forall (l : (list nat)) (n1 n2 x1 x2: nat),
     min (n2 :: l) = Some x1 -> 
     min (n1 :: n2 :: l) = Some x2 ->
     x2 <=? x1 = true. 
 Proof. 
-    intros. rewrite min_rewrite in H0. rewrite H in H0.  
-    destruct (n1 <? x1) eqn:E.
-    - injection H0 as H0. rewrite H0 in E. apply if_ltb_then_leb.  
-      apply E. 
-    - injection H0 as H0. rewrite H0. apply leb_refl. 
-Qed. 
+Admitted.

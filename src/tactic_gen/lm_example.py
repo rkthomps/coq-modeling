@@ -3,6 +3,7 @@ from typing import Any, Optional
 import time
 import datetime
 import random
+import functools
 import os
 import ipdb
 import heapq
@@ -155,20 +156,17 @@ class ProofRetrievalFidFormatter:
     ) -> None:
         self.proof_bank_loc = proof_bank_loc
         self.n_proofs = n_proofs
-        self.__proof_bank: dict[str, FileGoals] = {}
         self.n_step_sampler = n_step_sampler
         self.direct_num_steps = direct_num_steps
         self.conf = conf
         self.basic_formatter = BasicFormatter(self.n_step_sampler, self.direct_num_steps, conf)
 
+    @functools.lru_cache(128)
     def __get_file_goals(self, key: str) -> Optional[FileGoals]:
-        if key in self.__proof_bank:
-            return self.__proof_bank[key]
         goal_loc = os.path.join(self.proof_bank_loc, key)
         if not os.path.exists(goal_loc):
             return None
         goals = FileGoals.load(goal_loc)
-        self.__proof_bank[key] = goals
         return goals
 
     def get_record_and_cutoff_index(
