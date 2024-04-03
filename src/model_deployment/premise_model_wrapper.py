@@ -40,12 +40,13 @@ from model_deployment.serve_prem_utils import (
     PremiseResponse,
 )
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
-from data_management.create_premise_dataset import (
-    PREMISE_DATA_CONF_NAME,
-)
 
 from util.train_utils import get_required_arg
-from util.constants import TRAINING_CONF_NAME, RERANK_DATA_CONF_NAME
+from util.constants import (
+    TRAINING_CONF_NAME,
+    RERANK_DATA_CONF_NAME,
+    PREMISE_DATA_CONF_NAME,
+)
 
 
 class RoundRobinCache:

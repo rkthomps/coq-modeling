@@ -28,6 +28,8 @@ from data_management.samples import (
     CertainSteps,
 )
 from data_management.jsonl_utils import shuffle, deduplicate
+from premise_selection.premise_example import PremiseTrainingExample
+from premise_selection.create_premise_example import premise_training_examples_from_step
 from util.util import LOGGER, DPStartLog, DPEndLog, DPLoadLog, print_info
 from util.constants import DATA_CONF_NAME
 
@@ -64,7 +66,12 @@ class LmExampleConfig:
         output_dataset_loc = config["output_dataset_loc"]
         lm_formatter = fmt_from_conf(config["lm_formatter"])
         return cls(
-            train_sample, val_sample, test_sample, sentence_db_loc, output_dataset_loc, lm_formatter
+            train_sample,
+            val_sample,
+            test_sample,
+            sentence_db_loc,
+            output_dataset_loc,
+            lm_formatter,
         )
 
     @classmethod
@@ -86,7 +93,6 @@ def writer(q: Queue[Optional[LmExample]], out_file: str) -> None:
                 case None:
                     print("Stopping queue")
                     return
-            
 
 
 def examples_to_queue(
@@ -100,7 +106,7 @@ def examples_to_queue(
 ) -> None:
     cuda_str = f"cuda:{device_idx}"
     move_fmt_to(lm_formatter, cuda_str)
-    sentence_db = SentenceDB.load(sentence_db_loc) 
+    sentence_db = SentenceDB.load(sentence_db_loc)
     print_info(DPStartLog(file_info.file), LOGGER)
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
     print_info(DPLoadLog(file_info.file), LOGGER)
@@ -144,7 +150,13 @@ def examples_to_queue(
 
 
 __ArgTuple = tuple[
-    ExampleSample, LmFormatter, FileInfo, str, SelectedSteps, int, Queue[Optional[LmExample]]
+    ExampleSample,
+    LmFormatter,
+    FileInfo,
+    str,
+    SelectedSteps,
+    int,
+    Queue[Optional[LmExample]],
 ]
 
 
@@ -159,7 +171,15 @@ def __get_split_transformation_args(
     for i, (file, selected_steps) in enumerate(example_sampler.step_generator()):
         device_idx = i % num_devices
         arg_list.append(
-            (example_sampler, formatter, file, sentence_db_loc, selected_steps, device_idx, q)
+            (
+                example_sampler,
+                formatter,
+                file,
+                sentence_db_loc,
+                selected_steps,
+                device_idx,
+                q,
+            )
         )
     return arg_list
 
@@ -172,15 +192,24 @@ def get_split_transformation_args(
     match split:
         case Split.TRAIN:
             return __get_split_transformation_args(
-                example_config.train_sample, example_config.lm_formatter, example_config.sentence_db_loc, q
+                example_config.train_sample,
+                example_config.lm_formatter,
+                example_config.sentence_db_loc,
+                q,
             )
         case Split.VAL:
             return __get_split_transformation_args(
-                example_config.val_sample, example_config.lm_formatter, example_config.sentence_db_loc, q
+                example_config.val_sample,
+                example_config.lm_formatter,
+                example_config.sentence_db_loc,
+                q,
             )
         case Split.TEST:
             return __get_split_transformation_args(
-                example_config.test_sample, example_config.lm_formatter, example_config.sentence_db_loc, q
+                example_config.test_sample,
+                example_config.lm_formatter,
+                example_config.sentence_db_loc,
+                q,
             )
 
 
