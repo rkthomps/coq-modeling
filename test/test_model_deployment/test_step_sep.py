@@ -4,10 +4,6 @@ from data_management.dataset_file import Proof, DatasetFile
 from data_management.splits import DATA_POINTS_NAME
 from data_management.sentence_db import SentenceDB
 from model_deployment.step_separator import separate_steps
-from util.util import get_basic_logger
-
-
-_logger = get_basic_logger(__name__)
 
 unit1 = """
 Proof.
@@ -29,8 +25,6 @@ class TestStepSep:
                     actual = separate_steps("".join(expected))
                     assert expected == actual
                     num_steps_tested += 1
-        # _logger.error(f"Tested {num_steps_tested} steps.")
-        # assert False
 
     def test_proof_split_unit1(self) -> None:
         expected = ["\nProof.", "\nProof.", "\n  induction n.", "\n  -"]
@@ -43,7 +37,9 @@ class TestStepSep:
         cls.proofs: list[Proof] = []
         sentence_db_loc = "./sentences.db"
         if not os.path.exists(sentence_db_loc):
-            raise ValueError(f"Could not find sentence db. Expected at {sentence_db_loc}")
+            raise ValueError(
+                f"Could not find sentence db. Expected at {sentence_db_loc}"
+            )
         sentence_db = SentenceDB.load(sentence_db_loc)
         if not os.path.exists(cls.RAW_DATA_LOC):
             raise FileNotFoundError(

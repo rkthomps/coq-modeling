@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import Iterable, Any, Optional
 
+
+import random
 import time
 import sys, os
 import json
@@ -23,7 +25,7 @@ from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
     CONTEXT_ALIASES,
 )
-from premise_selection.premise_vector_db import PremiseVectorDB 
+from premise_selection.premise_vector_db import PremiseVectorDB
 from premise_selection.model import PremiseRetriever
 from premise_selection.premise_filter import PremiseFilter
 from premise_selection.rerank_model import PremiseReranker
@@ -79,8 +81,8 @@ class LocalRerankModelWrapper:
         base_wrapper: PremiseModelWrapper,
         tokenizer: GPT2Tokenizer,
         max_seq_len: int,
-        batch_size: int = 32,
-        rerank_k: int = 256,
+        batch_size: int = 64,
+        rerank_k: int = 64,
     ) -> None:
         self.reranker = reranker
         self.base_wrapper = base_wrapper
@@ -163,6 +165,10 @@ class LocalRerankModelWrapper:
         reranker = PremiseReranker.from_pretrained(checkpoint_loc)
         return cls(reranker, base_wrapper, tokenizer, max_seq_len)
 
+    @classmethod
+    def from_conf(cls, conf: Any) -> LocalPremiseModelWrapper:
+        return cls.from_checkpoint(conf["checkpoint_loc"])
+
 
 class BM25Okapi:
     ALIAS = "bm25"
@@ -223,6 +229,55 @@ class BM25Okapi:
                 )
                 doc_similarity += query_idf * doc_term_num / doc_term_denom
             similarities.append(doc_similarity)
+        return similarities
+
+
+class Random:
+    ALIAS = "random"
+
+    def __init__(self) -> None:
+        self.premise_filter = PremiseFilter(
+            coq_excludes=[TermType.NOTATION, TermType.TACTIC]
+        )
+        self.premise_format = BasicPremiseFormat
+        self.context_format = BasicContextFormat
+
+    def get_premise_scores_from_strings(
+        self, context_str: str, premises: list[Sentence]
+    ) -> list[float]:
+        premise_strs = [self.premise_format.format(p) for p in premises]
+        similarities = [random.random() for _ in premise_strs]
+        return similarities
+
+
+class InFileReverse:
+    ALIAS = "in-file"
+
+    def __init__(self) -> None:
+        self.premise_filter = PremiseFilter(
+            coq_excludes=[TermType.NOTATION, TermType.TACTIC]
+        )
+        self.premise_format = BasicPremiseFormat
+        self.context_format = BasicContextFormat
+
+    def __fix_path(self, p: str) -> str:
+        while p.startswith("../") or p.startswith("..\\"):
+            p = p[3:]
+        return p
+
+    def get_premise_scores(
+        self, context: Sentence, premises: list[Sentence]
+    ) -> list[float]:
+        similarities: list[float] = []
+        context_norm_path = self.__fix_path(context.file_path)
+        for p in premises:
+            fixed_path = self.__fix_path(p.file_path)
+            if fixed_path.endswith(context_norm_path) or context_norm_path.endswith(
+                fixed_path
+            ):
+                similarities.append(-1 * (p.line - context.line))
+            else:
+                similarities.append(0)
         return similarities
 
 
@@ -363,15 +418,14 @@ class LocalPremiseModelWrapper:
         if self.hits + self.misses == 0:
             return None
         return self.hits / (self.hits + self.misses)
-    
+
     def get_premise_idxs(self, premises: list[Sentence]) -> Optional[list[int]]:
         idxs: list[int] = []
         for p in premises:
             if p.db_idx is None:
-                return None 
+                return None
             idxs.append(p.db_idx)
         return idxs
-
 
     def encode_premises_one_by_one(self, premises: list[Sentence]) -> torch.Tensor:
         encodings: list[torch.Tensor] = []
@@ -381,7 +435,9 @@ class LocalPremiseModelWrapper:
         return torch.cat(encodings)
 
     def get_premise_scores_from_strings(
-        self, context_str: str, premises: list[Sentence],
+        self,
+        context_str: str,
+        premises: list[Sentence],
     ) -> list[float]:
         if len(premises) == 0:
             return []
@@ -392,10 +448,12 @@ class LocalPremiseModelWrapper:
                 context_inputs.input_ids, context_inputs.attention_mask
             ).to(device)
 
-        start = time.time()
         all_indices = self.get_premise_idxs(premises)
         if all_indices is not None and self.vector_db:
-            premise_matrix = self.vector_db.get_embs(all_indices) 
+            premise_matrix = self.vector_db.get_embs(all_indices)
+            # assert premise_matrix is not None
+            # premise_matrix2 = self.encode_premises_one_by_one(premises)
+            # assert torch.allclose(premise_matrix, premise_matrix2)
             if premise_matrix is None:
                 premise_matrix = self.encode_premises_one_by_one(premises)
         else:
@@ -422,7 +480,9 @@ class LocalPremiseModelWrapper:
         return cls.from_checkpoint(checkpoint_loc)
 
     @classmethod
-    def from_checkpoint(cls, checkpoint_loc: str, vector_db_loc: Optional[str]=None) -> LocalPremiseModelWrapper:
+    def from_checkpoint(
+        cls, checkpoint_loc: str, vector_db_loc: Optional[str] = None
+    ) -> LocalPremiseModelWrapper:
         model_loc = os.path.dirname(checkpoint_loc)
         data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
         with open(data_preparation_conf, "r") as fin:
@@ -513,21 +573,25 @@ PremiseModelWrapper = (
     | LocalRerankModelWrapper
     | TFIdf
     | BM25Okapi
+    | Random
+    | InFileReverse
 )
 
 
 def get_premise_scores(
     premise_model: (
-        LocalPremiseModelWrapper | PremiseServerModelWrapper | TFIdf | BM25Okapi
+        LocalPremiseModelWrapper
+        | PremiseServerModelWrapper
+        | TFIdf
+        | BM25Okapi
+        | Random
     ),
     step: FocusedStep,
     proof: Proof,
     premises: list[Sentence],
 ) -> list[float]:
     formatted_context = premise_model.context_format.format(step, proof)
-    return premise_model.get_premise_scores_from_strings(
-        formatted_context, premises 
-    )
+    return premise_model.get_premise_scores_from_strings(formatted_context, premises)
 
 
 def get_ranked_premise_generator(
@@ -542,8 +606,19 @@ def get_ranked_premise_generator(
             | PremiseServerModelWrapper()
             | TFIdf()
             | BM25Okapi()
+            | Random()
         ):
             premise_scores = get_premise_scores(premise_model, step, proof, premises)
+            num_premises = len(premise_scores)
+            arg_sorted_premise_scores = sorted(
+                range(num_premises), key=lambda idx: -1 * premise_scores[idx]
+            )
+            for idx in arg_sorted_premise_scores:
+                yield premises[idx]
+        case InFileReverse():
+            premise_scores = premise_model.get_premise_scores(
+                proof.theorem.term, premises
+            )
             num_premises = len(premise_scores)
             arg_sorted_premise_scores = sorted(
                 range(num_premises), key=lambda idx: -1 * premise_scores[idx]
@@ -580,12 +655,18 @@ def premise_wrapper_from_conf(conf: Any) -> PremiseModelWrapper:
     match attempted_alias:
         case LocalPremiseModelWrapper.ALIAS:
             return LocalPremiseModelWrapper.from_conf(conf)
+        case LocalRerankModelWrapper.ALIAS:
+            return LocalRerankModelWrapper.from_conf(conf)
         case PremiseServerModelWrapper.ALIAS:
             return PremiseServerModelWrapper.from_conf(conf)
         case TFIdf.ALIAS:
             return TFIdf()
         case BM25Okapi.ALIAS:
             return BM25Okapi()
+        case Random.ALIAS:
+            return Random()
+        case InFileReverse.ALIAS:
+            return InFileReverse()
         case _:
             raise PremiseModelNotFound(
                 f"Could not find premise model wrapper: {attempted_alias}"

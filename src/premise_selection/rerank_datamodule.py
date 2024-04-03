@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
 import jsonlines
-from transformers import AutoTokenizer, GPT2Tokenizer
+from transformers import AutoTokenizer, GPT2TokenizerFast
 from torch.utils.data import Dataset, DataLoader
 import torch
 
@@ -15,7 +15,7 @@ from premise_selection.rerank_example import RerankExample
 
 
 def tokenize_strings(
-    tokenizer: GPT2Tokenizer, strings: list[str], max_seq_len: int
+    tokenizer: GPT2TokenizerFast, strings: list[str], max_seq_len: int
 ) -> Any:
     return tokenizer(
         strings,
@@ -27,19 +27,19 @@ def tokenize_strings(
 
 
 def allocate_tokens(
-    tokenizer: GPT2Tokenizer, s: str, allowance: int, truncate_front: bool = True
+    tokenizer: GPT2TokenizerFast, s: str, allowance: int, truncate_front: bool = True
 ) -> tuple[str, int]:
-    tokens = tokenizer.encode(s)
+    tokens = tokenizer.tokenize(s)
     if truncate_front:
         to_add = tokens[(-1 * allowance) :]
     else:
         to_add = tokens[:allowance]
-    return tokenizer.decode(to_add, skip_special_tokens=True), len(to_add)
+    return tokenizer.convert_tokens_to_string(to_add), len(to_add)
 
 
 def collate_examples(
     examples: list[RerankExample],
-    tokenizer: GPT2Tokenizer,
+    tokenizer: GPT2TokenizerFast,
     max_seq_len: int,
 ) -> Any:
     input_strs: list[str] = []
@@ -73,7 +73,7 @@ class RerankDataset(Dataset):
     def __init__(
         self,
         rerank_file_path: str,
-        tokenizer: GPT2Tokenizer,
+        tokenizer: GPT2TokenizerFast,
         max_seq_len: int,
         max_num_examples: Optional[int] = None,
     ) -> None:

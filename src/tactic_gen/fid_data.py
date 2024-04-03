@@ -48,17 +48,19 @@ class FidDataset(torch.utils.data.Dataset):
         return self.raw_examples[idx]
 
     def get_example_inputs(self, example: LmExample) -> list[str]:
-        if example.passages is None:
-            passage_inputs = []
-        elif len(example.passages) == 0:
+        if (
+            example.passages is None
+            or len(example.passages) == 0
+            or self.max_num_passages == 0
+        ):
             passage_inputs = [f"{example.input}"]
         else:
             passage_inputs = [
-                f"{example.input} {p}" for p in example.passages[: self.max_num_passages]
+                f"{example.input} {p}"
+                for p in example.passages[: self.max_num_passages]
             ]
         padding = ["" for _ in range(self.max_num_passages - len(passage_inputs))]
         return passage_inputs + padding
-
 
     def collate(self, examples: list[LmExample]) -> Any:
         targets = [e.output for e in examples]
