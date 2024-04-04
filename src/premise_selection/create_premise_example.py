@@ -36,12 +36,13 @@ def premise_training_examples_from_step(
 
     training_examples: list[PremiseTrainingExample] = []
     for pos_prem in formatted_pos_prems:
-        if num_negatives < len(negatives):
+        if len(negatives) < num_negatives:
             example_negatives = negatives
         else:
             example_negatives = np.random.choice(
-                negatives, num_negatives, p=negative_np_dist
+                negatives, size=num_negatives, p=negative_np_dist
             )
+        assert len(example_negatives) <= num_negatives
         formatted_negatives = [
             base_model.premise_format.format(n) for n in example_negatives
         ]
