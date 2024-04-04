@@ -1,69 +1,83 @@
 from typing import Iterable
 import sys, os
 import argparse
+import random
 import math
+import requests
 
+from data_management.sentence_db import SentenceDB 
 from data_management.dataset_file import FocusedStep, Proof, Sentence
 from premise_selection.premise_formatter import ContextFormat, PremiseFormat
 from premise_selection.premise_filter import PremiseFilter
 from premise_selection.premise_vector_db import PremiseVectorDB
 
 
-class RerankPremiseClient:
-    def __init__(
-        self,
-        url: str,
-        context_format: type[ContextFormat],
-        premise_format: type[PremiseFormat],
-        premise_filter: PremiseFilter,
-    ):
-        self.url = url
-        self.context_format = context_format
-        self.premise_format = premise_format
-        self.premise_filter = premise_filter
-
-    def get_ranked_premise_generator(
-        self, step: FocusedStep, proof: Proof, premises: list[Sentence]
-    ) -> Iterable[Sentence]:
-        idx_premises: list[Sentence] = []
-        idxs: list[int] = []
-        other_premises: list[Sentence] = []
-        for p in premises:
-            if p.db_idx is not None:
-                idx_premises.append(p)
-                idxs.append(p.db_idx)
-            else:
-                other_premises.append(p)
-
-
 class SelectPremiseClient:
     def __init__(
         self,
-        url: str,
+        urls: list[str],
         context_format: type[ContextFormat],
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
+        sentence_db: SentenceDB
     ):
-        self.url = url
+        self.urls = urls 
         self.context_format = context_format
         self.premise_format = premise_format
         self.premise_filter = premise_filter
+        self.sentence_db = sentence_db
+
+    def get_premise_scores_from_strings(
+        self, context_str: str, premises: list[Sentence]
+    ) -> list[float]:
+        idxs: list[int] = []
+        orig_idxs: list[int] = []
+        orig_idxs_other: list[int] = []
+        other_premises: list[Sentence] = []
+        for i, p in enumerate(premises):
+            if p.db_idx is not None:
+                idxs.append(p.db_idx)
+                orig_idxs.append(i)
+            else:
+                other_premises.append(p)
+                orig_idxs_other.append(i)
+
+        other_premises_json = [s.to_json(self.sentence_db, False) for s in other_premises]
+        request_data = {
+            "method": "get_scores",
+            "params": [context_str, idxs, other_premises_json],
+            "jsonrpc": "2.0",
+            "id": 0, 
+        }
+        request_url = random.choice(self.urls) 
+        response = requests.post(request_url, json=request_data).json()
+
+        orig_idxs = orig_idxs + orig_idxs_other
+        new_order = sorted(range(len(orig_idxs)), key=lambda idx: orig_idxs[idx]) 
+        scores: list[float] = []
+        for new_idx in new_order:
+            scores.append(response[new_idx])
+        return scores
+
 
     def get_ranked_premise_generator(
         self, step: FocusedStep, proof: Proof, premises: list[Sentence]
     ) -> Iterable[Sentence]:
-        idx_premises: list[Sentence] = []
-        idxs: list[int] = []
-        other_premises: list[Sentence] = []
-        for p in premises:
-            if p.db_idx is not None:
-                idx_premises.append(p)
-                idxs.append(p.db_idx)
-            else:
-                other_premises.append(p)
+        formatted_context = self.context_format.format(step, proof)
+        premise_scores = self.get_premise_scores_from_strings(
+            formatted_context, premises
+        )
+        num_premises = len(premise_scores)
+        arg_sorted_premise_scores = sorted(
+            range(num_premises), key=lambda idx: -1 * premise_scores[idx]
+        )
+        for idx in arg_sorted_premise_scores:
+            yield premises[idx]
+        
 
 
 class TFIdfClient:
+    ALIAS = "tfidf"
     def __init__(
         self,
         context_format: type[ContextFormat],

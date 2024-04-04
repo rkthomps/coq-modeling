@@ -1,5 +1,7 @@
 from typing import Optional, Any
 import argparse
+import sys, os
+
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
 
@@ -31,4 +33,9 @@ def application(request: requests.models.Response):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("checkpoint_loc", help="Location of select model checkpoint.")
+    parser.add_argument("--vector_db_loc", help="Location of vector database.")
+    args = parser.parse_args(sys.argv[1:])
+    wrapper = SelectWrapper.from_checkpoint(args.checkpoint_loc, args.vector_db_loc)
     run_simple("localhost", 4000, application)

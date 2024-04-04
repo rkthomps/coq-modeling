@@ -153,11 +153,13 @@ class SelectWrapper:
     ) -> torch.Tensor:
         if self.vector_db is not None:
             index_embs = self.vector_db.get_embs(indices)
-            if index_embs is None:
+            if index_embs is None or len(index_embs) == 0:
                 return self.encode_all(indices, non_indices)
             to_encode = non_indices
             to_encode_strs = [self.premise_format.format(s) for s in to_encode]
             non_index_embs = self.get_premise_embs(to_encode_strs)
+            if len(non_index_embs) == 0:
+                return index_embs
             return torch.cat((index_embs, non_index_embs), 0)
         return self.encode_all(indices, non_indices)
 
