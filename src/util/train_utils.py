@@ -99,7 +99,7 @@ def get_training_args(
         per_device_eval_batch_size=get_required_arg("per_device_eval_batch_size", conf),
         eval_accumulation_steps=get_optional_arg("eval_accumulation_steps", conf, 1),
         load_best_model_at_end=True,
-        weight_decay=get_optional_arg("weight_decay", conf, 0.0)
+        weight_decay=get_optional_arg("weight_decay", conf, 0.0),
         # deepspeed=__get_required_arg("deepspeed", conf),
         local_rank=(local_rank if local_rank else -1),
         ddp_find_unused_parameters=False,

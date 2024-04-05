@@ -97,6 +97,7 @@ def get_trainer(
 
     print("\n\nBuilding Training Config...")
     training_args = get_training_args(conf, local_rank)
+    print("weight decay:", training_args.weight_decay)
     print("\n\nRetrieving Tokenizer...")
     tokenizer = get_tokenizer(conf)
 

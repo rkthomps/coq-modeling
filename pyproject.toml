@@ -18,6 +18,8 @@ dependencies = [
     "accelerate",
     "bitsandbytes",
     "scipy",
+    "scikit-learn",
+    "tsnecuda",
     "pyyaml",
     "flask",
     "pytest",
