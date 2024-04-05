@@ -6,7 +6,7 @@ import json
 import logging
 import pdb
 
-from data_management.splits import FileInfo, Split
+from data_management.splits import FileInfo, Split, DataSplit, file_from_split
 from data_management.dataset_file import FileContext, Term, Sentence
 from model_deployment.searcher import (
     SearchTreeManager,
@@ -32,7 +32,9 @@ from model_deployment.node_score import (
     BreadthFirstScore,
 )
 from data_management.sentence_db import SentenceDB
-from util.util import LOGGER
+
+logging.basicConfig(level=logging.WARNING)
+LOGGER = logging.getLogger(__name__)
 
 from coqpyt.coq.structs import Step, TermType
 from coqpyt.coq.proof_file import ProofFile
@@ -49,24 +51,31 @@ from coqpyt.coq.base_file import CoqFile
 # EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
 # NODE_SCORE_TYPE = CodeLLamaNodeScore
 
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/examples/Adding/add_2.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min_superlist.v"
+#TEST_FILE = "test-coq-projs/even_odd.v"
+#TEST_FILE = "test-coq-projs/harder_example.v"
+#TEST_FILE = "test-coq-projs/example.v"
+#TEST_FILE = "test-coq-projs/min.v"
+#TEST_FILE = "test-coq-projs/lt_impl.v"
+#TEST_FILE = "test-coq-projs/lt_trans.v"
+# TEST_FILE = "examples/Adding/add_2.v"
+#TEST_FILE = "test-coq-projs/min_superlist.v"
+TEST_FILE = "repos/coq-community-sudoku/theories/Sudoku.v"
 
 
-dummy_file_info = FileInfo(
-    "hi-dog",
-    TEST_FILE,
-    "/home/ubuntu/coq-modeling/test-coq-projs",
-    "/home/ubuntu/coq-modeling/test-coq-projs",
-)
-dummy_split = Split.TEST
-dummy_data_loc = "/"
+DATA_SPLIT_LOC = os.path.join("splits", "final-split.json")
+
+data_loc = os.path.join("raw-data", "coq-dataset") 
+data_split = DataSplit.load(DATA_SPLIT_LOC) 
+file_info, split = file_from_split(TEST_FILE, data_split)
+# try:
+# except ValueError:
+#     file_info = FileInfo(
+#         "hi-dog",
+#         TEST_FILE,
+#         "test-coq-projs",
+#         "test-coq-projs",
+#     )
+#     split = Split.TEST
 
 sentence_db = SentenceDB.load("./sentences.db") 
 
@@ -75,7 +84,8 @@ WRAPPER = FidT5LocalWrapper.from_conf(
     {
         # "alias": "fid-local",
         # "pretrained_name": "/home/ubuntu/coq-modeling/models/t5-fid-small-basic-rnd-split-rnd-samp-pct-8/checkpoint-8000"
-        "pretrained-name": "/home/ubuntu/coq-modeling/models/t5-fid-base-basic-final/checkpoint-110500"
+        #"pretrained-name": "/home/ubuntu/coq-modeling/models/t5-fid-base-basic-final/checkpoint-110500"
+        "pretrained-name": "/home/ubuntu/coq-modeling/models/t5-fid-small-proof-ret-final/checkpoint-107500"
         #"pretrained-name": "/home/ubuntu/coq-modeling/models/t5-fid-small-basic-final/checkpoint-110500"
     }
 )
@@ -83,11 +93,13 @@ NODE_SCORE_TYPE = TokenLengthNormalizedScore
 #NODE_SCORE_TYPE = ModelScore 
 TIMEOUT = 600
 #BRANCH = 256
-BRANCH = 64 
+#BRANCH = 64 
+BRANCH = 32 
 DEPTH_LIMIT=300
 EXPANSIONS = 500
 #MODEL_SCORER = ModelNodeScorer.from_name("codellama/CodeLlama-7b-hf")
 MODEL_SCORER = None
+THEOREM_NAME: Optional[str] = "cross2_correct" 
 
 
 def do_search(file_context: FileContext, initial_steps: list[Step], proof_point: int, proof_term: Term):
@@ -98,10 +110,10 @@ def do_search(file_context: FileContext, initial_steps: list[Step], proof_point:
         initial_steps,
         proof_point,
         WRAPPER.formatter,
-        dummy_file_info,
+        file_info,
         sentence_db,
-        dummy_split,
-        dummy_data_loc,
+        split,
+        data_loc,
     ) as proof_manager:
         tree_manager = SearchTreeManager(
             WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, DEPTH_LIMIT, TIMEOUT, MODEL_SCORER 
@@ -128,18 +140,21 @@ def do_search(file_context: FileContext, initial_steps: list[Step], proof_point:
 
 
 def do_coq_file_search():
-    file = os.path.abspath(dummy_file_info.file)
-    workspace = os.path.abspath(dummy_file_info.workspace)
-    file_context = FileContext(file, workspace, dummy_file_info.repository, [])
-    with CoqFile(TEST_FILE, workspace=dummy_file_info.workspace) as coq_file:
+    file_loc = os.path.abspath(os.path.join(data_loc, file_info.file))
+    workspace = os.path.abspath(os.path.join(data_loc, file_info.workspace))
+    file_dp = file_info.get_dp(data_loc, sentence_db)
+    file_context = file_dp.file_context 
+    with CoqFile(file_loc, workspace=workspace) as coq_file:
         print("Initially valid: ", coq_file.is_valid)
         last: Optional[int] = None
         for i, step in enumerate(coq_file.steps):
             if "Theorem" in step.text or "Lemma" in step.text:
                 last = i
+                if THEOREM_NAME is not None and THEOREM_NAME in step.text:
+                    break
         assert last is not None
         initial_steps = coq_file.steps[:(last + 1)]
-    theorem_sentence = Sentence(initial_steps[-1].text, file, [], TermType.LEMMA, initial_steps[-1].ast.range.start.line)
+    theorem_sentence = Sentence(initial_steps[-1].text, file_loc, [], TermType.LEMMA, initial_steps[-1].ast.range.start.line)
     term = Term(theorem_sentence, [])
     do_search(file_context, initial_steps, last, term)
 
@@ -148,4 +163,5 @@ def do_proof_file_search():
     ## TODO
     pass
 
-cProfile.run("do_coq_file_search()")
+#cProfile.run("do_coq_file_search()")
+do_coq_file_search()
