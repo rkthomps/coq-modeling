@@ -19,6 +19,7 @@ from enum import Enum
 from dataclasses import dataclass
 import functools
 import yaml
+from pathlib import Path
 
 import ipdb
 import argparse
@@ -83,17 +84,17 @@ class FileInfo:
         except:
             return INVALID_DATE
 
-    def get_dp(self, data_loc: str, sentence_db: SentenceDB) -> DatasetFile:
-        dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
+    def get_dp(self, data_loc: Path, sentence_db: SentenceDB) -> DatasetFile:
+        dp_loc = data_loc / DATA_POINTS_NAME / self.dp_name
         return DatasetFile.load(dp_loc, sentence_db)
 
-    def get_proofs(self, data_loc: str, sentence_db: SentenceDB) -> list[Proof]:
-        dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, self.dp_name)
+    def get_proofs(self, data_loc: Path, sentence_db: SentenceDB) -> list[Proof]:
+        dp_loc = data_loc / DATA_POINTS_NAME / self.dp_name
         dset_file = DatasetFile.load(dp_loc, sentence_db, metadata_only=True)
         return dset_file.proofs
 
     @functools.cache
-    def get_theorems(self, data_loc: str, sentence_db: SentenceDB) -> set[str]:
+    def get_theorems(self, data_loc: Path, sentence_db: SentenceDB) -> set[str]:
         thms: set[str] = set()
         for proof in self.get_proofs(data_loc, sentence_db):
             if proof.theorem.term.sentence_type == TermType.DEFINITION:
@@ -131,11 +132,11 @@ class FileInfo:
 
 class ThmMap:
     def __init__(self, sentence_db: SentenceDB) -> None:
-        self.thm_map: dict[str, tuple[FileInfo, set[str]]] = {}
+        self.thm_map: dict[Path, tuple[FileInfo, set[str]]] = {}
         self.sentence_db = sentence_db
 
-    def lookup(self, data_loc: str, dp_name: str) -> tuple[FileInfo, set[str]]:
-        dp_loc = os.path.join(data_loc, DATA_POINTS_NAME, dp_name)
+    def lookup(self, data_loc: Path, dp_name: str) -> tuple[FileInfo, set[str]]:
+        dp_loc = data_loc / DATA_POINTS_NAME / dp_name  
         if dp_loc in self.thm_map:
             return self.thm_map[dp_loc]
         dp_obj = DatasetFile.load(dp_loc, self.sentence_db, metadata_only=True)
@@ -156,7 +157,6 @@ class ThmMap:
         self.thm_map[dp_loc] = file_info, thms
         return file_info, thms
 
-@typechecked
 class Project:
     def __init__(self, repo_name: str, files: list[FileInfo]) -> None:
         self.repo_name = repo_name
@@ -170,7 +170,7 @@ class Project:
     def to_json(self) -> Any:
         return {"repo_name": self.repo_name, "files": [f.to_json() for f in self.files]}
 
-    def filter(self, forbidden_thms: set[str], data_loc: str) -> list[FileInfo]:
+    def filter(self, forbidden_thms: set[str], data_loc: Path) -> list[FileInfo]:
         good_files: list[FileInfo] = []
         for file in self.files:
             file_thms = file.get_theorems(data_loc)
@@ -178,16 +178,16 @@ class Project:
                 good_files.append(file)
         return good_files
 
-    def get_thms(self, data_loc: str, thm_map: ThmMap) -> set[str]:
+    def get_thms(self, data_loc: Path, thm_map: ThmMap) -> set[str]:
         thms: set[str] = set()
         for file in self.files:
             _, file_thms = thm_map.lookup(data_loc, file.dp_name)
             thms |= file_thms
         return thms
 
-    def get_creation_time(self, workspace: str) -> datetime.datetime:
+    def get_creation_time(self, workspace: Path) -> datetime.datetime:
         try:
-            repo_path = os.path.join(workspace, REPOS_NAME, self.repo_name)
+            repo_path = workspace / REPOS_NAME / self.repo_name
             repo = git.Repo(repo_path)
             fst, *_ = repo.iter_commits(reverse=True)
             return fst.committed_datetime
@@ -268,13 +268,11 @@ def split2str(sp: Split) -> str:
 
 
 def split_file_path(
-    parent_dir: str, split: Split, shuffled: bool = True, deduplicated: bool = True
-) -> str:
+    parent_dir: Path, split: Split, shuffled: bool = True, deduplicated: bool = True
+) -> Path:
     shuffled_str = "shuffled" if shuffled else "unshuffled"
     deduped_str = "deduplicated" if deduplicated else "undeduplicated"
-    return os.path.join(
-        parent_dir, f"{split2str(split)}-{deduped_str}-{shuffled_str}.jsonl"
-    )
+    return parent_dir / f"{split2str(split)}-{deduped_str}-{shuffled_str}.jsonl"
 
 
 def file_from_split(file: str, data_split: DataSplit) -> tuple[FileInfo, Split]:
@@ -285,7 +283,6 @@ def file_from_split(file: str, data_split: DataSplit) -> tuple[FileInfo, Split]:
     raise ValueError(f"Could not find file {file} in split.")
 
 
-@typechecked
 class EvalProjects:
     def __init__(
         self, validation_projects: list[str], testing_projects: list[str]
@@ -306,7 +303,7 @@ class EvalProjects:
         self._verify_format(self.testing_projects)
         self._verify_format(self.testing_projects)
 
-    def get_projects(self, data_loc: str, project_names: list[str], thm_map: ThmMap) -> list[Project]:
+    def get_projects(self, data_loc: Path, project_names: list[str], thm_map: ThmMap) -> list[Project]:
         projects: list[Project] = []
         for project_name in project_names:
             _logger.info(f"Gathering project: {project_name}")
@@ -323,10 +320,10 @@ class EvalProjects:
             return False
         return True
 
-    def get_testing_projects(self, data_loc: str, thm_map: ThmMap) -> list[Project]:
+    def get_testing_projects(self, data_loc: Path, thm_map: ThmMap) -> list[Project]:
         return self.get_projects(data_loc, self.get_testing_names(), thm_map)
 
-    def get_validation_projects(self, data_loc: str, thm_map: ThmMap) -> list[Project]:
+    def get_validation_projects(self, data_loc: Path, thm_map: ThmMap) -> list[Project]:
         return self.get_projects(data_loc, self.get_validation_names(), thm_map)
 
     def get_testing_names(self) -> list[str]:
@@ -342,7 +339,6 @@ class EvalProjects:
         return cls(val_projects, test_projects)
 
 
-@typechecked
 class DataSplit:
     def __init__(
         self,
@@ -419,8 +415,8 @@ class DataSplit:
         return cls(train_projects, val_projects, test_projects)
 
     @classmethod
-    def load(cls, path: str) -> DataSplit:
-        with open(path, "r") as fin:
+    def load(cls, path: Path) -> DataSplit:
+        with path.open("r") as fin:
             json_data = json.load(fin)
         return cls.from_json(json_data)
 
@@ -430,7 +426,7 @@ class DataSplit:
         return os.path.relpath(path, prefix)
 
     @classmethod
-    def find_files(cls, data_loc: str, repo_name: str, thm_map: ThmMap) -> list[FileInfo]:
+    def find_files(cls, data_loc: Path, repo_name: str, thm_map: ThmMap) -> list[FileInfo]:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME)
         repo_qualified_name = os.path.join(REPOS_NAME, repo_name)
         files: list[FileInfo] = []
@@ -451,7 +447,7 @@ class DataSplit:
         return files
 
     @classmethod
-    def __create_project_list(cls, data_loc: str, thm_map: ThmMap) -> list[Project]:
+    def __create_project_list(cls, data_loc: Path, thm_map: ThmMap) -> list[Project]:
         repos_loc = os.path.join(data_loc, REPOS_NAME)
         projects: list[Project] = []
 
@@ -466,7 +462,7 @@ class DataSplit:
 
     @classmethod
     def __get_ordered_project_list(
-        cls, data_loc: str, time_sorted: bool, thm_map: ThmMap
+        cls, data_loc: Path, time_sorted: bool, thm_map: ThmMap
     ) -> list[Project]:
         project_list = cls.__create_project_list(data_loc, thm_map)
         print("Sorting Project List...")
@@ -484,7 +480,7 @@ class DataSplit:
 
     @classmethod
     def __assign_projects(
-        cls, data_loc: str, project_list: list[Project], thm_map: ThmMap, train_cutoff: float = 0.8
+        cls, data_loc: Path, project_list: list[Project], thm_map: ThmMap, train_cutoff: float = 0.8
     ) -> DataSplit:
         """
         Train gets first 80% of projects, and any projects with interecting
@@ -523,7 +519,7 @@ class DataSplit:
         return cls([], [], [])
 
     @classmethod
-    def create(cls, data_loc: str, sentence_db: SentenceDB, time_sorted: bool) -> DataSplit:
+    def create(cls, data_loc: Path, sentence_db: SentenceDB, time_sorted: bool) -> DataSplit:
         thm_map = ThmMap(sentence_db)
         ordered_project_list = cls.__get_ordered_project_list(data_loc, time_sorted, thm_map)
         data_split = cls.__assign_projects(data_loc, ordered_project_list, thm_map)
@@ -539,7 +535,7 @@ class DataSplit:
         return data_split
 
     @classmethod
-    def create_from_list(cls, data_loc: str, sentence_db: SentenceDB, eval_projects: EvalProjects) -> DataSplit:
+    def create_from_list(cls, data_loc: Path, sentence_db: SentenceDB, eval_projects: EvalProjects) -> DataSplit:
         thm_map = ThmMap(sentence_db)
         test_thms: set[str] = set()
         test_projects = eval_projects.get_testing_projects(data_loc, thm_map)

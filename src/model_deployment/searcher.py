@@ -10,8 +10,9 @@ import sys, os
 from coqpyt.coq.lsp.structs import Goal
 from util.coqpyt_utils import get_all_goals
 
-from model_deployment.model_wrapper import ModelWrapper, ModelResult
-from model_deployment.node_score import NodeScore, ModelScore
+from model_deployment.model_result import ModelResult
+from model_deployment.tactic_gen_client import TacticGenClient
+from model_deployment.node_score import NodeScore
 from model_deployment.model_node_scorer import ModelNodeScorer
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import SearchNode, SearchTree
@@ -106,27 +107,24 @@ def search_result_from_json(
             raise ValueError(f"Unknown search result alias: f{a}")
 
 
-@typechecked
 class SearchTreeManager:
     def __init__(
         self,
-        model_wrapper: ModelWrapper,
+        tactic_client: TacticGenClient,
         proof_manager: ProofManager,
         score_type: type[NodeScore],
         max_branch: int,
         max_num_leaf_expansions: int,
         depth_limit: int,
         timeout: int,
-        model_scorer: Optional[ModelNodeScorer] = None,
     ) -> None:
-        self.model_wrapper = model_wrapper
+        self.tactic_client = tactic_client 
         self.proof_manager = proof_manager
         self.score_type = score_type
         self.max_branch = max_branch
         self.max_num_leaf_expansions = max_num_leaf_expansions
         self.depth_limit = depth_limit
         self.timeout = timeout
-        self.model_scorer = model_scorer
         initial_validity = True
         final_tactic = False
         makes_progress = True
@@ -305,7 +303,7 @@ class SearchTreeManager:
         example = self.proof_manager.get_example(dset_file, leaf_subtree.goal_record)
         leaf_subtree.set_model_input(example.input)
         start_time = time.time_ns()
-        result = self.model_wrapper.get_recs(example, self.max_branch)
+        result = self.tactic_client.get_recs(example, self.max_branch)
         end_time = time.time_ns()
         _logger.info(f"Model time: {(end_time - start_time) / 1e9}")
         children: list[SearchNode] = []
@@ -367,12 +365,6 @@ class SearchTreeManager:
         
         for next_canidate, next_goals in zip(next_frontier_pool, next_frontier_goals):
             next_frontier: list[tuple[SearchNode, list[Goal]]] = []
-            if self.model_scorer:
-                assert next_canidate.proof is not None
-                proof_script = next_canidate.proof.proof_text_to_string(include_theorem=False)
-                model_score = self.model_scorer.score_proof(leaf_subtree.proof.theorem.term.text, proof_script)
-                node_score = ModelScore.from_unit_score(model_score, -1, -1)
-                next_canidate.score = node_score
             heapq.heappush(next_frontier, (next_canidate, next_goals))
             self.seen_goals.append(next_goals)
             self.seen_goals_nodes.append(next_canidate)
@@ -386,17 +378,3 @@ class SearchTreeManager:
 
         leaf_subtree.children = children
         return None
-
-    @staticmethod
-    def __is_first_proof_tactic(proof_script: str, tactic: str) -> bool:
-        proof_pattern = r"Proof."
-        proof_in_script = re.search(proof_pattern, proof_script) is not None
-        proof_in_tactic = re.search(proof_pattern, tactic) is not None
-        return proof_in_tactic and (not proof_in_script)
-
-    @staticmethod
-    def __is_bullet(tactic: str) -> bool:
-        bullet_in_tactic = re.search(r"\s+[-+*]+", tactic) is not None
-        if "in *" in tactic:
-            return False
-        return bullet_in_tactic

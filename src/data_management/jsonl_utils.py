@@ -7,19 +7,20 @@ import json
 import random
 import os
 import shutil
+from pathlib import Path
 from tqdm import tqdm
 
 
-def count_lines(jsonl_file: str) -> int:
+def count_lines(jsonl_file: Path) -> int:
     num_lines = 0
-    with open(jsonl_file, "r") as fin:
+    with jsonl_file.open("r") as fin:
         for _ in fin:
             num_lines += 1
     return num_lines
 
 
 def __write_range(
-    in_file: str, out_file: str, start_num: int, end_num: int, mapping: list[int]
+    in_file: Path, out_file: Path, start_num: int, end_num: int, mapping: list[int]
 ) -> None:
     # buffer = SortedBuffer()
     buffer_size = end_num - start_num
@@ -40,7 +41,7 @@ def __write_range(
                     fout.write(out_str)
 
 
-def shuffle(in_file: str, out_file: str, buffer_size: int = 100000) -> None:
+def shuffle(in_file: Path, out_file: Path, buffer_size: int = 100000) -> None:
     assert not (in_file == out_file)
     assert not os.path.exists(out_file)
     if buffer_size < 1:
@@ -60,7 +61,7 @@ def shuffle(in_file: str, out_file: str, buffer_size: int = 100000) -> None:
         __write_range(in_file, out_file, start_idx, end_idx, assignment)
 
 
-def __load_cmp_chunk(in_file: str, start: int, end: int) -> tuple[set[str], int]:
+def __load_cmp_chunk(in_file: Path, start: int, end: int) -> tuple[set[str], int]:
     chunk_set: set[str] = set()
     num_duplicates = 0
     with open(in_file, "r") as fin:
@@ -75,7 +76,7 @@ def __load_cmp_chunk(in_file: str, start: int, end: int) -> tuple[set[str], int]
     return chunk_set, num_duplicates
 
 
-def __vet_chunk(chunk: set[str], in_file: str, vet_start: int) -> int:
+def __vet_chunk(chunk: set[str], in_file: Path, vet_start: int) -> int:
     chunk_num_duplicates = 0
     with open(in_file, "r") as fin:
         for i, line in enumerate(fin):
@@ -89,15 +90,15 @@ def __vet_chunk(chunk: set[str], in_file: str, vet_start: int) -> int:
     return chunk_num_duplicates
 
 
-def __write_chunk(chunk: set[str], out_file: str) -> None:
-    with open(out_file, "a") as fout:
+def __write_chunk(chunk: set[str], out_file: Path) -> None:
+    with out_file.open("a") as fout:
         for line in chunk:
             fout.write(line)
 
 
-def deduplicate(in_file: str, out_file: str, buffer_size: int = 100000) -> int:
+def deduplicate(in_file: Path, out_file: Path, buffer_size: int = 100000) -> int:
     assert not (in_file == out_file)
-    assert not os.path.exists(out_file)
+    assert not out_file.exists()
     if buffer_size < 1:
         raise ValueError("Buffer size cannot be less than one.")
     input_num_lines = count_lines(in_file)

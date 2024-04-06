@@ -133,11 +133,7 @@ class FidT5LocalWrapper:
         local_dset = FidDataset(
             None, tokenizer, max_encode_len, max_decode_len, max_num_passages
         )
-        conf_loc = os.path.join(model_loc, DATA_CONF_NAME)
-        with open(conf_loc, "r") as fin:
-            conf = yaml.load(fin, Loader=yaml.Loader)
-        formatter = fmt_from_conf(conf[LmExampleConfig.FORMATTER_KEY])
-        return cls(model, tokenizer, formatter, local_dset)
+        return cls(model, tokenizer, local_dset)
 
     @classmethod
     def from_conf(cls, json_data: Any) -> ModelWrapper:
@@ -255,11 +251,3 @@ def wrapper_from_conf(conf: Any) -> ModelWrapper:
             raise WrapperNotFoundError(
                 f"Could not find model wrapper: {attempted_alias}"
             )
-
-
-def wrapper_to_device(wrapper: ModelWrapper, device: str) -> None:
-    match wrapper:
-        case CodeLLamaLocalWrapper():
-            wrapper.to_device(device)
-        case _:
-            pass

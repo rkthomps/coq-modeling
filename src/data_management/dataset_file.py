@@ -10,6 +10,7 @@ import argparse
 import time
 import functools
 import multiprocessing as mp
+from pathlib import Path
 
 
 from data_management.sentence_db import SentenceDB, DBSentence
@@ -530,9 +531,9 @@ class DatasetFile:
 
     @classmethod
     def load(
-        cls, path: str, sentence_db: SentenceDB, metadata_only: bool = False
+        cls, path: Path, sentence_db: SentenceDB, metadata_only: bool = False
     ) -> DatasetFile:
-        with open(path, "r") as fin:
+        with path.open("r") as fin:
             json_data = json.load(fin)
         ret_obj = cls.from_json(json_data, sentence_db, metadata_only)
         return ret_obj
@@ -601,7 +602,7 @@ class DatasetFile:
         return cls(file_context, proofs)
 
 
-def process_dp(orig_dp_loc: str, new_dp_loc: str, sentence_db_loc: str) -> None:
+def process_dp(orig_dp_loc: str, new_dp_loc: str, sentence_db_loc: Path) -> None:
     sentence_db = SentenceDB.load(sentence_db_loc)
     t1 = time.time()
     dp = DatasetFile.from_directory(orig_dp_loc, sentence_db)
@@ -613,7 +614,7 @@ def process_dp(orig_dp_loc: str, new_dp_loc: str, sentence_db_loc: str) -> None:
     sentence_db.close()
 
 
-def process_dps(orig_dp_dir: str, new_dp_dir: str, sentence_db_loc: str) -> None:
+def process_dps(orig_dp_dir: str, new_dp_dir: str, sentence_db_loc: Path) -> None:
     sentence_db = SentenceDB.load(sentence_db_loc)
     for dp_name in os.listdir(orig_dp_dir):
         old_loc = os.path.join(orig_dp_dir, dp_name)

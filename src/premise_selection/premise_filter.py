@@ -11,8 +11,22 @@ from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Senten
 from coqpyt.coq.structs import TermType
 
 from util.util import get_basic_logger
-
 _logger = get_basic_logger(__name__)
+
+
+@dataclass
+class PremiseFilterConf:
+    coq_excludes: list[str]
+    non_coq_excludes: list[str]
+    general_excludes: list[str]
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> PremiseFilterConf:
+        return cls(
+            yaml_data["coq_excludes"],
+            yaml_data["non_coq_excludes"],
+            yaml_data["general_excludes"],
+        )
 
 
 @dataclass
@@ -138,28 +152,19 @@ class PremiseFilter:
         )
         return FilteredResult(filtered_pos_candidates, filtered_avail_candidates)
 
-    def to_json(self) -> Any:
-        return {
-            "coq_excludes": [t.name for t in self.coq_excludes],
-            "non_coq_excludes": [t.name for t in self.non_coq_excludes],
-            "general_excludes": [t.name for t in self.general_excludes],
-        }
 
     @classmethod
-    def from_json(cls, conf: Any) -> PremiseFilter:
-        coq_exclude_data = conf["coq_excludes"]
+    def from_conf(cls, conf: PremiseFilterConf) -> PremiseFilter:
         coq_excludes: list[TermType] = []
-        for exclude in coq_exclude_data:
+        for exclude in conf.coq_excludes:
             coq_excludes.append(TermType[exclude])
 
-        non_coq_exclude_data = conf["non_coq_excludes"]
         non_coq_excludes: list[TermType] = []
-        for exclude in non_coq_exclude_data:
+        for exclude in conf.non_coq_excludes:
             non_coq_excludes.append(TermType[exclude])
 
-        general_exclude_data = conf["general_excludes"]
         general_excludes: list[TermType] = []
-        for exclude in general_exclude_data:
+        for exclude in conf.general_excludes:
             general_excludes.append(TermType[exclude])
 
         return cls(coq_excludes, non_coq_excludes, general_excludes)

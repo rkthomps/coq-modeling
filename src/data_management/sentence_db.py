@@ -3,6 +3,7 @@ from typing import Optional
 import sys, os
 import time
 import ipdb
+from pathlib import Path
 import functools
 
 from dataclasses import dataclass
@@ -135,8 +136,8 @@ class SentenceDB:
         self.connection.close()
 
     @classmethod
-    def load(cls, db_path: str) -> SentenceDB:
-        if not os.path.exists(db_path):
+    def load(cls, db_path: Path) -> SentenceDB:
+        if not db_path.exists():
             raise ValueError(f"Database {db_path} does not exis does not exist.")
         con = connect(
             db_path,
@@ -145,8 +146,8 @@ class SentenceDB:
         return cls(con, cur)
 
     @classmethod
-    def create(cls, db_path: str) -> SentenceDB:
-        if os.path.exists(db_path):
+    def create(cls, db_path: Path) -> SentenceDB:
+        if db_path.exists():
             raise ValueError(f"DB {db_path} already exists")
         con = connect(db_path)
         cur = con.cursor()

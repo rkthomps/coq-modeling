@@ -1,24 +1,24 @@
 from __future__ import annotations
-from typeguard import typechecked
 from typing import Any, Optional
 
 import sys, os
 import json
 import shutil
 import argparse
+from pathlib import Path
 from queue import Queue
 import multiprocessing as mp
+from dataclasses import dataclass
 
 from yaml import load, Loader
 
 from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
     CONTEXT_ALIASES,
-    ContextFormat,
-    PremiseFormat,
 )
 from premise_selection.premise_example import PremiseTrainingExample
-from premise_selection.premise_filter import PremiseFilter
+from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
+from premise_selection.premise_formatter import PREMISE_ALIASES, CONTEXT_ALIASES
 from data_management.splits import (
     FileInfo,
     DataSplit,
@@ -33,63 +33,38 @@ from util.constants import PREMISE_DATA_CONF_NAME
 
 _logger = get_basic_logger(__name__)
 
-
-@typechecked
-class PremiseDataConfig:
-    def __init__(
-        self,
-        data_split: DataSplit,
-        data_loc: str,
-        sentence_db_loc: str, 
-        output_dataset_loc: str,
-        num_negatives_per_positive: int,
-        num_in_file_negatives_per_positive: int,
-        context_format_type: type[ContextFormat],
-        premise_format_type: type[PremiseFormat],
-        premise_filter: PremiseFilter,
-    ) -> None:
-        self.data_split = data_split
-        self.data_loc = data_loc
-        self.sentence_db_loc = sentence_db_loc
-        self.output_dataset_loc = output_dataset_loc
-        self.num_negatives_per_positive = num_negatives_per_positive
-        self.num_in_file_negatives_per_positive = num_in_file_negatives_per_positive
-        self.context_format_type = context_format_type
-        self.premise_format_type = premise_format_type
-        self.premise_filter = premise_filter
+@dataclass
+class SelectDataConfig:
+    data_split_loc: Path 
+    data_loc: Path 
+    sentence_db_loc: Path 
+    output_dataset_loc: Path 
+    num_negatives_per_positive: int
+    num_in_file_negatives_per_positive: int
+    context_format_type_alias: str
+    premise_format_type_alias: str
+    premise_filter_conf: PremiseFilterConf 
 
     @classmethod
-    def from_config(cls, config: Any) -> PremiseDataConfig:
-        data_split = DataSplit.load(config["data_split"])
-        data_loc = config["data_loc"]
-        sentence_db_loc = config["sentence_db_loc"]
-        output_dataset_loc = config["output_dataset_loc"]
-        num_negatives_per_positive = config["num_negatives_per_positive"]
-        num_in_file_negatives_per_positive = config[
-            "num_in_file_negatives_per_positive"
-        ]
-        context_format_alias = config["context_format_alias"]
-        context_format_type = CONTEXT_ALIASES[context_format_alias]
-        premise_format_alias = config["premise_format_alias"]
-        premise_format_type = PREMISE_ALIASES[premise_format_alias]
-        premise_filter = PremiseFilter.from_json(config["premise_filter"])
+    def from_yaml(cls, yaml_data: Any) -> SelectDataConfig: 
         return cls(
-            data_split,
-            data_loc,
-            sentence_db_loc,
-            output_dataset_loc,
-            num_negatives_per_positive,
-            num_in_file_negatives_per_positive,
-            context_format_type,
-            premise_format_type,
-            premise_filter,
+            Path(yaml_data["data_split_loc"]),
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            Path(yaml_data["output_dataset_loc"]),
+            yaml_data["num_negatives_per_positive"],
+            yaml_data["num_in_file_negatives_per_positive"],
+            yaml_data["context_format_type_alias"],
+            yaml_data["premise_format_type_alias"],
+            PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
         )
+
 
 
 def get_examples_from_file(
     file_info: FileInfo,
     split: Split,
-    premise_conf: PremiseDataConfig,
+    premise_conf: SelectDataConfig,
     q: Queue[Optional[PremiseTrainingExample]],
 ) -> None:
     sentence_db = SentenceDB.load(premise_conf.sentence_db_loc)
@@ -98,6 +73,9 @@ def get_examples_from_file(
     except FileNotFoundError:
         _logger.error(f"Could not find file: {file_info.file}")
         return
+    premise_format_type = PREMISE_ALIASES[premise_conf.premise_format_type_alias]
+    contex_format_type = CONTEXT_ALIASES[premise_conf.context_format_type_alias]
+    filter = PremiseFilter.from_conf(premise_conf.premise_filter_conf)
     for proof in file_obj.proofs:
         for step in proof.steps:
             step_examples = PremiseTrainingExample.from_focused_step(
@@ -106,9 +84,9 @@ def get_examples_from_file(
                 file_obj,
                 premise_conf.num_negatives_per_positive,
                 premise_conf.num_in_file_negatives_per_positive,
-                premise_conf.context_format_type,
-                premise_conf.premise_format_type,
-                premise_conf.premise_filter,
+                contex_format_type,
+                premise_format_type,
+                filter,
                 split,
             )
             for example in step_examples:
@@ -116,17 +94,18 @@ def get_examples_from_file(
 
 
 PremiseArgs = tuple[
-    FileInfo, Split, PremiseDataConfig, Queue[Optional[PremiseTrainingExample]]
+    FileInfo, Split, SelectDataConfig, Queue[Optional[PremiseTrainingExample]]
 ]
 
 
 def get_dataset_args(
-    premise_conf: PremiseDataConfig,
+    premise_conf: SelectDataConfig,
     split: Split,
     q: Queue[Optional[PremiseTrainingExample]],
 ) -> list[PremiseArgs]:
     argument_list: list[PremiseArgs] = []
-    for project in premise_conf.data_split.get_project_list(split):
+    data_split = DataSplit.load(premise_conf.data_split_loc)
+    for project in data_split.get_project_list(split):
         for file in project.files:
             argument_list.append((file, split, premise_conf, q))
     return argument_list
@@ -175,7 +154,7 @@ if __name__ == "__main__":
     with open(args.yaml_config, "r") as fin:
         conf = load(fin, Loader=Loader)
 
-    premise_config = PremiseDataConfig.from_config(conf)
+    premise_config = SelectDataConfig.from_yaml(conf)
 
     if os.path.exists(premise_config.output_dataset_loc):
         raise FileExistsError(f"{premise_config.output_dataset_loc}")

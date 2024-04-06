@@ -1,15 +1,109 @@
-from typing import Iterable
+from __future__ import annotations
+from typing import Iterable, Any, Optional
 import sys, os
 import argparse
+from pathlib import Path
 import random
 import math
 import requests
+from dataclasses import dataclass
 
 from data_management.sentence_db import SentenceDB 
 from data_management.dataset_file import FocusedStep, Proof, Sentence
-from premise_selection.premise_formatter import ContextFormat, PremiseFormat
-from premise_selection.premise_filter import PremiseFilter
+from premise_selection.premise_formatter import ContextFormat, PremiseFormat, CONTEXT_ALIASES, PREMISE_ALIASES
+from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
 from premise_selection.premise_vector_db import PremiseVectorDB
+
+
+@dataclass
+class SelectConf:
+    ALIAS = "select"
+    checkpoint_loc: Path 
+    vector_db_loc: Optional[str]
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> SelectConf:
+        return cls(Path(yaml_data["checkpoint_loc"]), yaml_data["vector_db_loc"])
+
+
+@dataclass
+class TFIdfConf:
+    ALIAS = "tfidf"
+    context_format_alias: str
+    premise_format_alias: str
+    premise_filter_conf: PremiseFilterConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> TFIdfConf:
+        return cls(
+            yaml_data["context_format_alias"],
+            yaml_data["premise_format_alias"],
+            PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
+        )
+
+@dataclass
+class BM250OkapiConf:
+    ALIAS = "bm25"
+    context_format_alias: str
+    premise_format_alias: str
+    premise_filter_conf: PremiseFilterConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> BM250OkapiConf:
+        return cls(
+            yaml_data["context_format_alias"],
+            yaml_data["premise_format_alias"],
+            PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
+        )
+
+
+@dataclass
+class SelectClientConf:
+    ALIAS = "select-client"
+    urls: list[str]
+    context_format_alias: str
+    premise_format_alias: str
+    premise_filter_conf: PremiseFilterConf
+    sentence_db_loc: Path 
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> SelectClientConf:
+        return cls(
+            yaml_data["urls"],
+            yaml_data["context_format_alias"],
+            yaml_data["premise_format_alias"],
+            PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
+            Path(yaml_data["sentence_db_loc"]),
+        )
+
+PremiseConf = SelectConf | SelectClientConf | TFIdfConf | BM250OkapiConf
+
+
+def premise_conf_from_yaml(yaml_data: Any) -> PremiseConf:
+    match yaml_data["alias"]:
+        case "select":
+            return SelectConf.from_yaml(yaml_data)
+        case "tfidf":
+            return TFIdfConf.from_yaml(yaml_data)
+        case "bm25":
+            return BM250OkapiConf.from_yaml(yaml_data)
+        case "select-client":
+            return SelectClientConf.from_yaml(yaml_data)
+        case _:
+            raise ValueError("Unknown Configuration")
+
+
+def premise_client_from_conf(conf: PremiseConf) -> PremiseClient:
+    match conf:
+        case SelectConf():
+            raise ValueError("Select Conf Cannot be directly converted into a client.")
+        case SelectClientConf():
+            return SelectPremiseClient.from_conf(conf)
+        case TFIdfConf():
+            return TFIdfClient.from_conf(conf)
+        case BM250OkapiConf():
+            return BM25OkapiClient.from_conf(conf)
+
 
 
 class SelectPremiseClient:
@@ -73,6 +167,16 @@ class SelectPremiseClient:
         )
         for idx in arg_sorted_premise_scores:
             yield premises[idx]
+    
+    @classmethod
+    def from_conf(cls, conf: SelectClientConf) -> SelectPremiseClient:
+        return cls(
+            conf.urls,
+            CONTEXT_ALIASES[conf.context_format_alias],
+            PREMISE_ALIASES[conf.premise_format_alias],
+            PremiseFilter.from_conf(conf.premise_filter_conf),
+            SentenceDB.load(conf.sentence_db_loc),
+        )
         
 
 
@@ -173,6 +277,14 @@ class TFIdfClient:
         )
         for idx in arg_sorted_premise_scores:
             yield premises[idx]
+    
+    @classmethod
+    def from_conf(cls, conf: TFIdfConf) -> TFIdfClient:
+        return TFIdfClient(
+            CONTEXT_ALIASES[conf.context_format_alias],
+            PREMISE_ALIASES[conf.premise_format_alias],
+            PremiseFilter.from_conf(conf.premise_filter_conf),
+        )
 
 
 class BM25OkapiClient:
@@ -254,8 +366,17 @@ class BM25OkapiClient:
         )
         for idx in arg_sorted_premise_scores:
             yield premises[idx]
+        
+    
+    @classmethod
+    def from_conf(cls, conf: BM250OkapiConf) -> BM25OkapiClient:
+        return cls(
+            CONTEXT_ALIASES[conf.context_format_alias],
+            PREMISE_ALIASES[conf.premise_format_alias],
+            PremiseFilter.from_conf(conf.premise_filter_conf),
+        )
 
 
 PremiseClient = (
-    RerankPremiseClient | SelectPremiseClient | TFIdfClient | BM25OkapiClient
+    SelectPremiseClient | TFIdfClient | BM25OkapiClient
 )

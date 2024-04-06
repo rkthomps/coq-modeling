@@ -5,15 +5,15 @@ import shutil
 import argparse
 import multiprocessing as mp
 from queue import Queue
+from dataclasses import dataclass
+from pathlib import Path 
 
 
-import torch
-from typeguard import typechecked
 import json
 from tqdm import tqdm
 import yaml
 
-from tactic_gen.lm_example import LmExample, LmFormatter, fmt_from_conf
+from tactic_gen.lm_example import LmExample, LmFormatter, FormatterConf, formatter_from_conf , formatter_conf_from_yaml
 from data_management.splits import (
     FileInfo,
     Split,
@@ -34,51 +34,25 @@ from util.constants import DATA_CONF_NAME
 _logger = get_basic_logger(__name__)
 
 
-@typechecked
-class LmExampleConfig:
-    FORMATTER_KEY = "lm_formatter"
-
-    def __init__(
-        self,
-        train_sample: ExampleSample,
-        val_sample: ExampleSample,
-        test_sample: ExampleSample,
-        sentence_db_loc: str,
-        output_dataset_loc: str,
-        lm_formatter: LmFormatter,
-    ) -> None:
-        self.train_sample = train_sample
-        self.val_sample = val_sample
-        self.test_sample = test_sample
-        self.sentence_db_loc = sentence_db_loc
-        self.output_dataset_loc = output_dataset_loc
-        self.lm_formatter = lm_formatter
+@dataclass
+class LmDatasetConf:
+    train_sample_loc: Path 
+    val_sample_loc: Path 
+    test_sample_loc: Path 
+    sentence_db_loc: Path 
+    output_dataset_loc: Path 
+    lm_formatter_conf: FormatterConf
 
     @classmethod
-    def from_config(cls, config: Any) -> LmExampleConfig:
-        train_sample_loc = config["train_sample_loc"]
-        train_sample = load_sample(train_sample_loc)
-        val_sample_loc = config["val_sample_loc"]
-        val_sample = load_sample(val_sample_loc)
-        test_sample_loc = config["test_sample_loc"]
-        test_sample = load_sample(test_sample_loc)
-        sentence_db_loc = config["sentence_db_loc"]
-        output_dataset_loc = config["output_dataset_loc"]
-        lm_formatter = fmt_from_conf(config["lm_formatter"])
+    def from_yaml(cls, yaml_data: Any) -> LmDatasetConf:
         return cls(
-            train_sample,
-            val_sample,
-            test_sample,
-            sentence_db_loc,
-            output_dataset_loc,
-            lm_formatter,
+            Path(yaml_data["train_sample_loc"]),
+            Path(yaml_data["val_sample_loc"]),
+            Path(yaml_data["test_sample_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            Path(yaml_data["output_dataset_loc"]),
+            formatter_conf_from_yaml(yaml_data["lm_formatter"]),
         )
-
-    @classmethod
-    def load(cls, path: str) -> LmExampleConfig:
-        with open(path, "r") as fin:
-            yaml_conf = yaml.load(fin, Loader=yaml.Loader)
-        return cls.from_config(yaml_conf)
 
 
 def writer(q: Queue[Optional[LmExample]], out_file: str) -> None:
@@ -100,13 +74,11 @@ def examples_to_queue(
     example_sample: ExampleSample,
     lm_formatter: LmFormatter,
     file_info: FileInfo,
-    sentence_db_loc: str,
+    sentence_db_loc: Path,
     selected_steps: SelectedSteps,
     device_idx: int,
     q: Queue[Optional[LmExample]],
 ) -> None:
-    cuda_str = f"cuda:{device_idx}"
-    move_fmt_to(lm_formatter, cuda_str)
     sentence_db = SentenceDB.load(sentence_db_loc)
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
     match selected_steps:
@@ -148,9 +120,8 @@ __ArgTuple = tuple[
     ExampleSample,
     LmFormatter,
     FileInfo,
-    str,
+    Path,
     SelectedSteps,
-    int,
     Queue[Optional[LmExample]],
 ]
 
@@ -158,13 +129,11 @@ __ArgTuple = tuple[
 def __get_split_transformation_args(
     example_sampler: ExampleSample,
     formatter: LmFormatter,
-    sentence_db_loc: str,
+    sentence_db_loc: Path,
     q: Queue[LmExample | None],
 ) -> list[__ArgTuple]:
-    num_devices = torch.cuda.device_count()
     arg_list: list[__ArgTuple] = []
-    for i, (file, selected_steps) in enumerate(example_sampler.step_generator()):
-        device_idx = i % num_devices
+    for file, selected_steps in example_sampler.step_generator():
         arg_list.append(
             (
                 example_sampler,
@@ -172,7 +141,6 @@ def __get_split_transformation_args(
                 file,
                 sentence_db_loc,
                 selected_steps,
-                device_idx,
                 q,
             )
         )
@@ -180,32 +148,25 @@ def __get_split_transformation_args(
 
 
 def get_split_transformation_args(
-    example_config: LmExampleConfig,
+    data_config: LmDatasetConf,
     split: Split,
     q: Queue[Optional[LmExample]],
 ) -> list[__ArgTuple]:
     match split:
         case Split.TRAIN:
-            return __get_split_transformation_args(
-                example_config.train_sample,
-                example_config.lm_formatter,
-                example_config.sentence_db_loc,
-                q,
-            )
+            sample = load_sample(data_config.train_sample_loc)
         case Split.VAL:
-            return __get_split_transformation_args(
-                example_config.val_sample,
-                example_config.lm_formatter,
-                example_config.sentence_db_loc,
-                q,
-            )
+            sample = load_sample(data_config.val_sample_loc)
         case Split.TEST:
-            return __get_split_transformation_args(
-                example_config.test_sample,
-                example_config.lm_formatter,
-                example_config.sentence_db_loc,
-                q,
-            )
+            sample = load_sample(data_config.test_sample_loc)
+
+    lm_formatter = formatter_from_conf(data_config.lm_formatter_conf)
+    return __get_split_transformation_args(
+        sample,
+        lm_formatter,
+        data_config.sentence_db_loc,
+        q,
+    )
 
 
 if __name__ == "__main__":
@@ -230,32 +191,34 @@ if __name__ == "__main__":
         num_procs = args.num_procs
         if num_procs < 2:
             raise ValueError("Data processing needs at least 2 processes.")
+    
+    with open(args.lm_data_config_loc, "r") as fin:
+        yaml_data = yaml.load(fin, Loader=yaml.Loader)
+        data_conf = LmDatasetConf.from_yaml(yaml_data)
 
-    example_config = LmExampleConfig.load(args.lm_data_config_loc)
-
-    if os.path.exists(example_config.output_dataset_loc):
-        raise FileExistsError(f"{example_config.output_dataset_loc}")
-    os.makedirs(example_config.output_dataset_loc)
+    if os.path.exists(data_conf.output_dataset_loc):
+        raise FileExistsError(f"{data_conf.output_dataset_loc}")
+    os.makedirs(data_conf.output_dataset_loc)
 
     with mp.Manager() as manager:
         q: Queue[Optional[LmExample]] = manager.Queue()
         with mp.Pool(num_procs) as pool:
             for split in [Split.TEST, Split.VAL, Split.TRAIN]:
-                split_args = get_split_transformation_args(example_config, split, q)
+                split_args = get_split_transformation_args(data_conf, split, q)
                 raw_path = split_file_path(
-                    example_config.output_dataset_loc,
+                    data_conf.output_dataset_loc,
                     split,
                     shuffled=False,
                     deduplicated=False,
                 )
                 deduped_path = split_file_path(
-                    example_config.output_dataset_loc,
+                    data_conf.output_dataset_loc,
                     split,
                     shuffled=False,
                     deduplicated=True,
                 )
                 shuffled_path = split_file_path(
-                    example_config.output_dataset_loc,
+                    data_conf.output_dataset_loc,
                     split,
                     shuffled=True,
                     deduplicated=True,
@@ -271,5 +234,5 @@ if __name__ == "__main__":
                 shuffle(deduped_path, shuffled_path)
                 os.remove(deduped_path)
 
-    conf_out_loc = os.path.join(example_config.output_dataset_loc, DATA_CONF_NAME)
+    conf_out_loc = os.path.join(data_conf.output_dataset_loc, DATA_CONF_NAME)
     shutil.copy(args.lm_data_config_loc, conf_out_loc)

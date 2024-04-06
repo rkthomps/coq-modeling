@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any, Generator
 from dataclasses import dataclass
+from pathlib import Path
 
 import os
 import sys
@@ -8,14 +9,12 @@ import argparse
 import random
 import json
 
-from typeguard import typechecked
 import yaml
 from tqdm import tqdm
 
 from data_management.splits import FileInfo, DataSplit, Split, split2str, str2split
 
 
-@typechecked
 class StepIndex:
     def __init__(self, proof_idx: int, step_idx: int) -> None:
         self.proof_idx = proof_idx
@@ -46,11 +45,10 @@ class CertainSteps:
 SelectedSteps = AllSteps | CertainSteps
 
 
-@typechecked
 class CompleteSample:
     ALIAS = "CompleteSample"
 
-    def __init__(self, data_split: DataSplit, split: Split, data_loc: str) -> None:
+    def __init__(self, data_split: DataSplit, split: Split, data_loc: Path) -> None:
         self.data_split = data_split
         self.split = split
         self.data_loc = data_loc
@@ -77,7 +75,7 @@ class CompleteSample:
 
     @classmethod
     def __create(
-        cls, data_split: DataSplit, split: Split, data_loc: str
+        cls, data_split: DataSplit, split: Split, data_loc: Path 
     ) -> CompleteSample:
         return cls(data_split, split, data_loc)
 
@@ -89,7 +87,6 @@ class CompleteSample:
         return cls.__create(data_split, split, data_loc)
 
 
-@typechecked
 class RandomSample:
     ALIAS = "RandomSample"
 
@@ -98,7 +95,7 @@ class RandomSample:
         steps_by_file: list[tuple[FileInfo, list[StepIndex]]],
         data_split: DataSplit,
         split: Split,
-        data_loc: str,
+        data_loc: Path,
         seed: int,
         prop: float,
     ) -> None:
@@ -132,7 +129,7 @@ class RandomSample:
             "steps_by_file": self.__steps_by_file_to_json(),
             "data_split": self.data_split.to_json(),
             "split": split2str(self.split),
-            "data_loc": self.data_loc,
+            "data_loc": str(self.data_loc),
             "seed": self.seed,
             "prop": self.prop,
         }
@@ -148,7 +145,7 @@ class RandomSample:
         steps_by_file = cls.__steps_by_file_from_json(json_data["steps_by_file"])
         data_split = DataSplit.from_json(json_data["data_split"])
         split = str2split(json_data["split"])
-        data_loc = json_data["data_loc"]
+        data_loc = Path(json_data["data_loc"])
         seed = json_data["seed"]
         prop = json_data["prop"]
         return cls(steps_by_file, data_split, split, data_loc, seed, prop)
@@ -158,7 +155,7 @@ class RandomSample:
         cls,
         data_split: DataSplit,
         split: Split,
-        data_loc: str,
+        data_loc: Path,
         sample_prop: float,
         seed: int,
     ) -> RandomSample:
@@ -217,8 +214,8 @@ def save_sample(sample: ExampleSample, save_path: str) -> None:
         fout.write(json.dumps(json_obj, indent=2))
 
 
-def load_sample(load_path: str) -> ExampleSample:
-    with open(load_path, "r") as fin:
+def load_sample(load_path: Path) -> ExampleSample:
+    with load_path.open("r") as fin:
         json_data = json.load(fin)
     return sample_from_json(json_data)
 
@@ -253,8 +250,8 @@ def create(conf: Any) -> ExampleSample:
             raise SampleTypeNotFoundError(f"Unknown Sample type: {alias_attempt}")
 
 
-def __load_config(config_loc: str) -> Any:
-    with open(config_loc, "r") as fin:
+def __load_config(config_loc: Path) -> Any:
+    with config_loc.open("r") as fin:
         return yaml.load(fin, Loader=yaml.Loader)
 
 

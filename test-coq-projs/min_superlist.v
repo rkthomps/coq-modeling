@@ -1,9 +1,8 @@
 
 
-Require Import List.
-Require Import Nat. 
-Require Import Bool.
-
+Require Export List.
+Require Export Nat. 
+Require Export Bool.
 
 Fixpoint remove_nth_error {X : Type} (l : list X) (n : nat) : option (list X) :=
     (** Remove the nth element in the list *)
@@ -190,7 +189,7 @@ Lemma min_rewrite: forall (n : nat) (l : (list nat)),
         | Some m => if (n <? m) then (Some n) else (Some m)
     end.
 Proof. 
-    intros n l. reflexivity. Qed.
+    Admitted.
 
 Lemma leb_sym_backward: forall (n1 n2 : nat),
     (n1 <? n2 = false) -> (n2 <=? n1 = true).

@@ -1,8 +1,11 @@
+from __future__ import annotations
 from typing import Any, Optional
-import sys, os
-import requests
+import os
 import json
 import pdb
+from dataclasses import dataclass
+from pathlib import Path
+
 
 from data_management.splits import FileInfo, Split
 from data_management.dataset_file import FileContext, Term, Sentence
@@ -12,23 +15,10 @@ from model_deployment.searcher import (
     SuccessfulSearch,
     FailedSearch,
 )
+from model_deployment.tactic_gen_client import TacticGenClientConf
 from model_deployment.proof_manager import ProofManager
-from model_deployment.model_node_scorer import ModelNodeScorer
-from model_deployment.model_wrapper import (
-    CodeLLamaServer,
-    FidT5LocalWrapper,
-    ModelWrapper,
-    GPT4Wrapper,
-)
-from model_deployment.node_score import (
-    TokenLengthNormalizedScore,
-    ModelScore,
-    TokenSumScore,
-    BranchNormalizedScore,
-    LastTacGreedyScore,
-    DepthFirstScore,
-    BreadthFirstScore,
-)
+from model_deployment.node_score import NODE_SCORE_ALIASES
+
 from data_management.sentence_db import SentenceDB
 from util.util import get_basic_logger
 
@@ -37,6 +27,32 @@ from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
 
 _logger = get_basic_logger(__name__)
+
+
+@dataclass
+class TestProofConf:
+    test_file: Path
+    node_score_alias: str
+    timeout: int
+    branching_factor: int
+    depth_limit: int
+    max_exapansions: int
+    tactic_client_conf: TacticGenClientConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> TestProofConf:
+        return cls(
+            Path(yaml_data["test_file"]),
+            yaml_data["node_score_alias"],
+            yaml_data["timeout"],
+            yaml_data["branching_factor"],
+            yaml_data["depth_limit"],
+            yaml_data["max_exapansions"],
+            TacticGenClientConf.from_yaml(yaml_data["tactic_client_conf"]),
+        )
+
+
+def test_proof(conf: TestProofConf):
 
 # WRAPPER = GPT4Wrapper()
 # EXAMPLE_TYPE = GPT4BasicLmExample
@@ -77,13 +93,11 @@ WRAPPER = FidT5LocalWrapper.from_conf(
     }
 )
 NODE_SCORE_TYPE = TokenLengthNormalizedScore
-#NODE_SCORE_TYPE = ModelScore 
 TIMEOUT = 600
 BRANCH = 32
 DEPTH_LIMIT=300
 EXPANSIONS = 500
-#MODEL_SCORER = ModelNodeScorer.from_name("codellama/CodeLlama-7b-hf")
-MODEL_SCORER = None
+
 
 
 def do_search(file_context: FileContext, initial_steps: list[Step], proof_point: int, proof_term: Term):
