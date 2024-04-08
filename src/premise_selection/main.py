@@ -90,6 +90,44 @@ class CrossEntTrainer(Trainer):
         return loss
 
 
+class DualObjective(Trainer):
+    def get_similarity_loss(self, outputs: dict[str, Any]):
+        temp = 0.1
+        similarities = outputs["similarities"]
+        cooled_dots = similarities / temp
+        pos_mask = -1e9 * (1 - cuda_label)
+        pos_weight = torch.logsumexp(cooled_dots + pos_mask, dim=1)
+        total_weight = torch.logsumexp(cooled_dots, dim=1)
+        diffs = pos_weight - total_weight
+        assert (diffs <= 0).all()
+        num_posities = cuda_label.sum(axis=1)
+        pos_avg = diffs / num_posities
+        batch_avg = pos_avg.mean()
+        loss = -1 * batch_avg
+        return loss
+
+    def get_reconstruction_loss(
+        self, inputs: torch.Tensor, input_mask: torch.Tensor, logits: torch.Tensor
+    ):
+        loss = torch.nn.CrossEntropyLoss()
+        return loss(logits, inputs)
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        cuda_label = inputs["label"].to(model.device)
+        outputs = model(**inputs)
+        similarity_loss = self.get_similarity_loss(outputs)
+        premise_reconstruction_loss = self.get_reconstruction_loss(
+            inputs["premise_ids"], inputs["premise_mask"], outputs["premise_logits"]
+        )
+        context_reconstruction_loss = self.get_reconstruction_loss(
+            inputs["context_ids"], inputs["context_mask"], outputs["context_logits"]
+        )
+        loss = 0.5 * similarity_loss + 0.25 * premise_reconstruction_loss + 0.25 * context_reconstruction_loss
+        if return_outputs:
+            return loss, outputs
+        return loss
+
+
 def get_trainer(
     conf: dict[str, Any], local_rank: Optional[int], checkpoint_name: Optional[str]
 ) -> Trainer:
