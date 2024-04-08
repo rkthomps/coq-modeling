@@ -8,7 +8,7 @@ import requests
 from jsonrpc import JSONRPCResponseManager, dispatcher
 
 from tactic_gen.lm_example import LmExample
-from model_deployment.model_wrapper import ModelWrapper, StubWrapper
+from model_deployment.model_wrapper import ModelWrapper, StubWrapper, wrapper_from_conf
 from model_deployment.model_result import ModelResult
 
 wrapper: ModelWrapper = StubWrapper()

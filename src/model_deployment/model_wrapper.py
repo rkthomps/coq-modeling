@@ -19,13 +19,10 @@ from transformers import (
 import torch
 import openai
 
-from data_management.create_lm_dataset import LmExampleConfig, DATA_CONF_NAME
 from util.train_utils import get_required_arg
 
 from tactic_gen.lm_example import (
     LmExample,
-    LmFormatter,
-    fmt_from_conf,
 )
 from tactic_gen.train_codellama import (
     TRAINING_CONF_NAME,

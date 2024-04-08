@@ -10,10 +10,8 @@ import sys, os
 from coqpyt.coq.lsp.structs import Goal
 from util.coqpyt_utils import get_all_goals
 
-from model_deployment.model_result import ModelResult
 from model_deployment.tactic_gen_client import TacticGenClient
 from model_deployment.node_score import NodeScore
-from model_deployment.model_node_scorer import ModelNodeScorer
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import SearchNode, SearchTree
 from model_deployment.goal_comparer import AlphaGoalComparer 
