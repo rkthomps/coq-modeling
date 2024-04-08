@@ -92,8 +92,9 @@ class CrossEntTrainer(Trainer):
 
 class DualObjective(Trainer):
 
-    def __init__(self, mask_prob: int, **kwargs: Any):
+    def __init__(self, sim_weight: float, mask_prob: int, **kwargs: Any):
         super(DualObjective, self).__init__(**kwargs)
+        self.sim_weight = sim_weight
         self.mask_prob = mask_prob
 
     def get_similarity_loss(self, label: torch.Tensor, outputs: dict[str, Any]):
@@ -178,10 +179,11 @@ class DualObjective(Trainer):
         #     "ctxt",
         #     context_reconstruction_loss,
         # )
+        reconstruct_weight = (1 - self.sim_weight) / 2
         loss = (
-            0.5 * similarity_loss
-            + 0.25 * premise_reconstruction_loss
-            + 0.25 * context_reconstruction_loss
+            self.sim_weight * similarity_loss
+            + reconstruct_weight * premise_reconstruction_loss
+            + reconstruct_weight * context_reconstruction_loss
         )
         if return_outputs:
             return loss, outputs
@@ -219,6 +221,7 @@ def get_trainer(
         )
     elif loss_fn == "dual":
         mask_prob = get_optional_arg("mask_prob", conf, 0.15)
+        sim_weight = get_optional_arg("sim_weight", conf, 0.8)
         return DualObjective(
             model=model,
             args=training_args,
@@ -227,6 +230,7 @@ def get_trainer(
             data_collator=train_dataset.collate,
             tokenizer=tokenizer,
             mask_prob=mask_prob,
+            sim_weight=sim_weight,
         )
     else:
         return MSETrainer(
