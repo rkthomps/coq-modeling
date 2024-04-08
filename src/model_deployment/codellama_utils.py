@@ -12,12 +12,10 @@ from transformers.generation.utils import SampleDecoderOnlyOutput
 import torch
 from torch import LongTensor, FloatTensor
 from torch.nn import functional as F
-from typeguard import typechecked
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-@typechecked
 class SampleResult:
     def __init__(
         self, tactics: list[str], scores: list[float], num_tokens: list[int]

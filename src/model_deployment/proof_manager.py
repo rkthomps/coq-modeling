@@ -70,7 +70,6 @@ class TacticResult(Enum):
     INVALID = 3
 
 
-@typechecked
 class ProofCheckResult:
     def __init__(
         self,
@@ -101,7 +100,6 @@ class ProofCheckResult:
 
 
 
-@typechecked
 class ProofManager:
     TIMEOUT = 60
 

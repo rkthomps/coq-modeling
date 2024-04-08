@@ -31,7 +31,6 @@ def strip_def(s: str) -> Optional[str]:
     return None
 
 
-@typechecked
 class ParsedHyp:
     def __init__(self, ids: list[str], ast: Any, text: str) -> None:
         self.ids = ids
@@ -44,7 +43,6 @@ class ParsedHyp:
         return ", ".join(self.ids) + ": " + text
 
 
-@typechecked
 class ParsedObligation:
     def __init__(self, hyps: list[ParsedHyp], goal_ast: Any, text: str) -> None:
         self.hyps = hyps
@@ -166,7 +164,6 @@ class ParsedObligation:
         return hyps_covered
 
 
-@typechecked
 class ParsedObligations:
     def __init__(self, obligations: list[ParsedObligation]) -> None:
         self.obligations = obligations
@@ -216,7 +213,6 @@ class CoqName:
                 )
 
 
-@typechecked
 class CoqQualId:
     def __init__(self, dirpath: list[list[str]], id: str) -> None:
         self.dirpath = dirpath

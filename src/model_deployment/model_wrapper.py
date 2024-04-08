@@ -72,7 +72,6 @@ def filter_recs(
     return ModelResult(final_tactics, final_scores, final_num_tokens)
 
 
-@typechecked
 class FidT5LocalWrapper:
     ALIAS = "fid-local"
 
@@ -141,7 +140,6 @@ class FidT5LocalWrapper:
         return cls.from_checkpoint(name)
 
 
-@typechecked
 class CodeLLamaLocalWrapper:
     ALIAS = "local"
 
