@@ -23,7 +23,7 @@ from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
     CONTEXT_ALIASES,
 )
-from premise_selection.premise_vector_db import PremiseVectorDB 
+from premise_selection.premise_vector_db import PremiseVectorDB
 from premise_selection.model import PremiseRetriever
 from premise_selection.premise_filter import PremiseFilter
 from premise_selection.rerank_model import PremiseReranker
@@ -363,15 +363,14 @@ class LocalPremiseModelWrapper:
         if self.hits + self.misses == 0:
             return None
         return self.hits / (self.hits + self.misses)
-    
+
     def get_premise_idxs(self, premises: list[Sentence]) -> Optional[list[int]]:
         idxs: list[int] = []
         for p in premises:
             if p.db_idx is None:
-                return None 
+                return None
             idxs.append(p.db_idx)
         return idxs
-
 
     def encode_premises_one_by_one(self, premises: list[Sentence]) -> torch.Tensor:
         encodings: list[torch.Tensor] = []
@@ -381,21 +380,24 @@ class LocalPremiseModelWrapper:
         return torch.cat(encodings)
 
     def get_premise_scores_from_strings(
-        self, context_str: str, premises: list[Sentence],
+        self,
+        context_str: str,
+        premises: list[Sentence],
     ) -> list[float]:
         if len(premises) == 0:
             return []
         device = self.retriever.device
         context_inputs = self.get_input(context_str)
         with torch.no_grad():
-            context_encoding = self.retriever.encode_context(
+            context_encoding, _ = self.retriever.encode_context(
                 context_inputs.input_ids, context_inputs.attention_mask
-            ).to(device)
+            )
+            context_encoding = context_encoding.to(device)
 
         start = time.time()
         all_indices = self.get_premise_idxs(premises)
         if all_indices is not None and self.vector_db:
-            premise_matrix = self.vector_db.get_embs(all_indices) 
+            premise_matrix = self.vector_db.get_embs(all_indices)
             if premise_matrix is None:
                 premise_matrix = self.encode_premises_one_by_one(premises)
         else:
@@ -422,7 +424,9 @@ class LocalPremiseModelWrapper:
         return cls.from_checkpoint(checkpoint_loc)
 
     @classmethod
-    def from_checkpoint(cls, checkpoint_loc: str, vector_db_loc: Optional[str]=None) -> LocalPremiseModelWrapper:
+    def from_checkpoint(
+        cls, checkpoint_loc: str, vector_db_loc: Optional[str] = None
+    ) -> LocalPremiseModelWrapper:
         model_loc = os.path.dirname(checkpoint_loc)
         data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
         with open(data_preparation_conf, "r") as fin:
@@ -525,9 +529,7 @@ def get_premise_scores(
     premises: list[Sentence],
 ) -> list[float]:
     formatted_context = premise_model.context_format.format(step, proof)
-    return premise_model.get_premise_scores_from_strings(
-        formatted_context, premises 
-    )
+    return premise_model.get_premise_scores_from_strings(formatted_context, premises)
 
 
 def get_ranked_premise_generator(
