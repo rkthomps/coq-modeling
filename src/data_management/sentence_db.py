@@ -71,7 +71,7 @@ class SentenceDB:
         raise ValueError(f"DB has more than one instance of {sentence}")
 
 
-    @functools.cache
+    @functools.lru_cache(10000)
     def insert_sentence(self, sentence: DBSentence) -> int:
         found_id = self.find_sentence(sentence)
         if found_id is not None:
@@ -113,7 +113,7 @@ class SentenceDB:
         return count
 
 
-    @functools.cache
+    @functools.lru_cache(10000)
     def retrieve(self, id: int) -> DBSentence:
         result = self.cursor.execute(
             f"""

@@ -16,7 +16,6 @@ import numpy.typing as npt
 from util.util import LOGGER
 
 
-@typechecked
 class Name:
     def __init__(self, id: str) -> None:
         self.id = id
@@ -49,7 +48,6 @@ class Name:
         raise ValueError(f"Unexpected Name in {ast}")
 
 
-@typechecked
 class StringT:
     def __init__(self, val: str) -> None:
         self.val = val
@@ -71,7 +69,6 @@ class StringT:
         return cls(ast[1])
 
 
-@typechecked
 class NumberT:
     def __init__(self, num: str, frac: str, exp: str) -> None:
         self.num = num
@@ -133,7 +130,6 @@ def prim_from_ast(ast: Any) -> PrimT:
             raise ValueError(f"unrecognized primative: {ast[1][0]}")
 
 
-@typechecked
 class QualIdT:
     def __init__(self, quals: list[str], id: str) -> None:
         self.quals = quals
@@ -179,7 +175,6 @@ class QualIdT:
         return cls.from_ast_qual(ast[1])
 
 
-@typechecked
 class Binder:
     def __init__(self, names: list[Name], ty: Term) -> None:
         self.names = names
@@ -208,7 +203,6 @@ class Binder:
         return cls(names, ty)
 
 
-@typechecked
 class FunT:
     def __init__(self, binders: list[Binder], body: Term) -> None:
         self.binders = binders
@@ -243,7 +237,6 @@ class FunT:
         return cls(binders, body)
 
 
-@typechecked
 class ProdT:
     def __init__(self, binders: list[Binder], body: Term) -> None:
         self.binders = binders
@@ -278,7 +271,6 @@ class ProdT:
         return cls(binders, body)
 
 
-@typechecked
 class PatCAlias:
     def __init__(self, pattern: Pattern, name: Name) -> None:
         self.pattern = pattern
@@ -310,7 +302,6 @@ class PatCAlias:
         return cls(pattern, name)
 
 
-@typechecked
 class PatCstr:
     def __init__(self, first: QualIdT, rest: list[Pattern]) -> None:
         self.first = first
@@ -341,7 +332,6 @@ class PatCstr:
         return cls(first, rest)
 
 
-@typechecked
 class PatAtom:
     def __init__(self, val: Optional[QualIdT]):
         self.val = val
@@ -365,7 +355,6 @@ class PatAtom:
         return cls(qualid)
 
 
-@typechecked
 class PatPrim:
     def __init__(self, val: PrimT) -> None:
         self.val = val
@@ -435,7 +424,6 @@ def pattern_from_ast(ast: Any) -> Pattern:
             raise ValueError(f"Unknown pattern: {ast_list[0]}")
 
 
-@typechecked
 class MatchCase:
     def __init__(
         self, term: Term, name: Optional[Name], pattern: Optional[Pattern]
@@ -473,7 +461,6 @@ class MatchCase:
         return cls(term, name, pattern)
 
 
-@typechecked
 class MatchBranch:
     def __init__(self, lhs: list[list[Pattern]], rhs: Term) -> None:
         self.lhs = lhs
@@ -798,7 +785,6 @@ class IfT:
         return cls(guard, then_branch, else_branch)
 
 
-@typechecked
 class SortT:
     def __init__(self, sort_name: str) -> None:
         self.sort_name = sort_name
@@ -1039,16 +1025,8 @@ class AdjTree:
     def fast_distance(self, other: AdjTree) -> int:
         return seted.standard_seted(self.nodes, other.nodes)
     
-    @functools.cache
-    def get_node_multiset(self) -> list[str]:
-        return sorted(self.nodes)
-    
-    def custom_set_dist(self, other: AdjTree) -> int:
-        return sed.standard_sed(self.get_node_multiset(), other.get_node_multiset())
-
-    
     @classmethod
-    @functools.cache
+    @functools.lru_cache(10000)
     def __from_stree(cls, t: StrTree, start_idx: int) -> tuple[AdjTree, int]:
         nodes = [t.key]
         idxs: list[int] = []
@@ -1285,7 +1263,7 @@ class StrTree:
             self.__cached_keyset = keyset
             return keyset
     
-    @functools.cache
+    @functools.lru_cache(10000)
     def get_breadth_prefix(self, size_limit: int) -> StrTree:
         assert 0 < size_limit
         root_tree = StrTree(self.key, [])

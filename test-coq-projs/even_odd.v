@@ -1,4 +1,5 @@
 
+Require Import Lia.
 
 Definition odd (n : nat) := exists k, n = 2 * k + 1.
 Definition even (n: nat) := exists k, n = 2 * k.

@@ -13,8 +13,6 @@ from evaluation.step_eval import ATTEMPTS_NAME, FileEval, FileEvalOld
 from util.util import LOGGER
 
 
-
-
 bank: dict[FileInfo, DatasetFile] = {}
 
 

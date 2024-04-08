@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Callable
 
 import os
 import math
@@ -21,7 +21,6 @@ from premise_selection.datamodule import tokenize_strings
 from premise_selection.premise_formatter import PremiseFormat, PREMISE_ALIASES
 from util.train_utils import get_required_arg
 from util.constants import PREMISE_DATA_CONF_NAME, TRAINING_CONF_NAME
-from util.util import LOGGER
 
 
 @functools.lru_cache(50)
@@ -41,43 +40,48 @@ class PremiseVectorDB:
         self,
         db_loc: str,
         page_size: int,
-        retriever_checkpoint_loc: str,
+        source: str,
         sdb_hash: str,
     ):
         self.db_loc = db_loc
         self.page_size = page_size
-        self.retriever_checkpoint_loc = retriever_checkpoint_loc
+        self.source = source  # Just for book keeping
         self.sdb_hash = sdb_hash
         self.device = "cpu"
 
     def page_loc(self, idx: int) -> str:
         return os.path.join(self.db_loc, f"{idx}.pt")
 
-    def group_idxs(self, idxs: list[int]) -> dict[int, list[int]]:
-        page_idxs: dict[int, list[int]] = {}
-        for idx in idxs:
+    def group_idxs(self, idxs: list[int]) -> dict[int, list[tuple[int, int]]]:
+        page_idxs: dict[int, list[tuple[int, int]]] = {}
+        for i, idx in enumerate(idxs):
             page_idx = idx // self.page_size
             if page_idx not in page_idxs:
                 page_idxs[page_idx] = []
-            page_idxs[page_idx].append(idx)
+            page_idxs[page_idx].append((idx, i))  # vector idx, orig idx
         return page_idxs
 
     def get_embs(self, idxs: list[int]) -> Optional[torch.Tensor]:
         page_groups = self.group_idxs(idxs)
         page_tensors: list[torch.Tensor] = []
+        all_orig_idxs: list[int] = []
         for pg_num, pg_idxs in page_groups.items():
+            page_idxs = [p for p, _ in pg_idxs]
+            orig_idxs = [o for _, o in pg_idxs]
+            all_orig_idxs.extend(orig_idxs)
             page_tensor = load_page(self.db_loc, pg_num, self.device)
             if page_tensor is None:
                 return None
-            # indices = (torch.tensor(pg_idxs, device="cuda") % self.page_size)
-            indices = torch.tensor(pg_idxs, device=self.device) % self.page_size
+            indices = torch.tensor(page_idxs, device=self.device) % self.page_size
             page_tensors.append((page_tensor[indices]))
-        return torch.cat(page_tensors)
+        reidx = sorted(range(len(all_orig_idxs)), key=lambda idx: all_orig_idxs[idx])
+        reidx_tensor = torch.tensor(reidx, device=self.device)
+        big_tensor = torch.cat(page_tensors)
+        return big_tensor[reidx_tensor]
 
-    # # MIGHT BE ABLE TO KEEP WHOLE MATRIX IN MEMORY. WILL HAVE TO SEE IF THAT's a GOOD IDEA
     def get(self, idx: int) -> Optional[torch.Tensor]:
         page = idx // self.page_size
-        page_tensor = load_page(self.db_loc, page)
+        page_tensor = load_page(self.db_loc, page, self.device)
         if page_tensor is not None:
             return page_tensor[idx % self.page_size]
         return None
@@ -98,8 +102,8 @@ class PremiseVectorDB:
         metadata_loc = os.path.join(self.db_loc, self.METADATA_LOC)
         metadata = {
             "page_size": self.page_size,
+            "source": self.source,
             "sdb_hash": self.sdb_hash,
-            "retriever_checkpoint_loc": self.retriever_checkpoint_loc,
         }
         with open(metadata_loc, "w") as fout:
             fout.write(json.dumps(metadata))
@@ -114,7 +118,7 @@ class PremiseVectorDB:
         return cls(
             db_loc,
             metadata["page_size"],
-            metadata["retriever_checkpoint_loc"],
+            metadata["source"],
             metadata["sdb_hash"],
         )
 
@@ -135,51 +139,14 @@ class PremiseVectorDB:
         return db_sentences
 
     @classmethod
-    def batch_sentences(
-        cls, page_sentences: list[str], batch_size: int
-    ) -> list[list[str]]:
-        batches: list[list[str]] = []
-        cur_batch: list[str] = []
-        for s in page_sentences:
-            cur_batch.append(s)
-            if len(cur_batch) % batch_size == 0:
-                batches.append(cur_batch)
-                cur_batch = []
-        if 0 < len(cur_batch):
-            batches.append(cur_batch)
-        return batches
-
-    @classmethod
-    def load_retriever(
-        cls, checkpoint_loc: str
-    ) -> tuple[PremiseRetriever, GPT2Tokenizer, PremiseFormat, int]:
-        model_loc = os.path.dirname(checkpoint_loc)
-        data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
-        with open(data_preparation_conf, "r") as fin:
-            premise_conf = load(fin, Loader=Loader)
-        model_conf_loc = os.path.join(model_loc, TRAINING_CONF_NAME)
-        with open(model_conf_loc, "r") as fin:
-            model_conf = load(fin, Loader=Loader)
-        max_seq_len = get_required_arg("max_seq_len", model_conf)
-        tokenizer = GPT2Tokenizer.from_pretrained(model_conf["model_name"])
-        premise_format_alias = premise_conf["premise_format_alias"]
-        premise_format = PREMISE_ALIASES[premise_format_alias]
-        retriever = PremiseRetriever.from_pretrained(checkpoint_loc)
-        return retriever, tokenizer, premise_format, max_seq_len
-
-    @classmethod
     def create(
         cls,
         db_loc: str,
         page_size: int,
-        batch_size: int,
-        select_checkpoint: str,
+        source: str,  # Describes the source of the database
+        encoder: Callable[[list[DBSentence]], torch.Tensor],
         sentence_db_loc: str,
     ) -> PremiseVectorDB:
-        retriever, tokenizer, premise_format, max_seq_len = cls.load_retriever(
-            select_checkpoint
-        )
-        retriever.to("cuda")
         sdb = SentenceDB.load(sentence_db_loc)
         sdb_hash = cls.__hash_sdb(sentence_db_loc)
         sdb_size = sdb.size()
@@ -192,32 +159,71 @@ class PremiseVectorDB:
             sentences_to_write = cls.load_page_sentences(
                 cur_page, page_size, sdb, sdb_size
             )
-            sentence_texts = [
-                premise_format.format(Sentence.from_db_sentence(s))
-                for s in sentences_to_write
-            ]
-            sentence_batches = cls.batch_sentences(sentence_texts, batch_size)
-            batch_embs: list[torch.Tensor] = []
-            for batch in sentence_batches:
-                with torch.no_grad():
-                    batch_inputs = tokenize_strings(
-                        tokenizer,
-                        batch,
-                        max_seq_len,
-                    )
-                    batch_emb, _ = retriever.encode_premise(
-                        batch_inputs.input_ids, batch_inputs.attention_mask
-                    )
-                batch_embs.append(batch_emb)
-
-            page_embs = torch.cat(batch_embs).to("cpu")
+            page_embs = encoder(sentences_to_write)
+            assert len(page_embs) == len(sentences_to_write)
             page_loc = os.path.join(db_loc, f"{cur_page}.pt")
             torch.save(page_embs, page_loc)
-            assert len(page_embs) == len(sentence_texts)
-            num_written += len(sentence_texts)
+            num_written += len(sentences_to_write)
             cur_page += 1
-            LOGGER.info(f"Processed {num_written} out of {sdb_size}")
-        return PremiseVectorDB(db_loc, page_size, select_checkpoint, sdb, sdb_hash)
+            print(f"Processed {num_written} out of {sdb_size}")
+        return PremiseVectorDB(db_loc, page_size, source, sdb_hash)
+
+
+def batch_sentences(page_sentences: list[str], batch_size: int) -> list[list[str]]:
+    batches: list[list[str]] = []
+    cur_batch: list[str] = []
+    for s in page_sentences:
+        cur_batch.append(s)
+        if len(cur_batch) % batch_size == 0:
+            batches.append(cur_batch)
+            cur_batch = []
+    if 0 < len(cur_batch):
+        batches.append(cur_batch)
+    return batches
+
+
+def load_retriever(
+    checkpoint_loc: str,
+) -> tuple[PremiseRetriever, GPT2Tokenizer, type[PremiseFormat], int]:
+    model_loc = os.path.dirname(checkpoint_loc)
+    data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
+    with open(data_preparation_conf, "r") as fin:
+        premise_conf = load(fin, Loader=Loader)
+    model_conf_loc = os.path.join(model_loc, TRAINING_CONF_NAME)
+    with open(model_conf_loc, "r") as fin:
+        model_conf = load(fin, Loader=Loader)
+    max_seq_len = get_required_arg("max_seq_len", model_conf)
+    tokenizer = GPT2Tokenizer.from_pretrained(model_conf["model_name"])
+    premise_format_alias = premise_conf["premise_format_alias"]
+    premise_format = PREMISE_ALIASES[premise_format_alias]
+    retriever = PremiseRetriever.from_pretrained(checkpoint_loc)
+    return retriever, tokenizer, premise_format, max_seq_len
+
+
+def select_encode(
+    retriever: PremiseRetriever,
+    tokenizer: GPT2Tokenizer,
+    premise_format: type[PremiseFormat],
+    max_seq_len: int,
+    batch_size: int,
+    ss: list[DBSentence],
+) -> torch.Tensor:
+    sentence_texts = [premise_format.format(Sentence.from_db_sentence(s)) for s in ss]
+    sentence_batches = batch_sentences(sentence_texts, batch_size)
+    batch_embs: list[torch.Tensor] = []
+    for batch in sentence_batches:
+        with torch.no_grad():
+            batch_inputs = tokenize_strings(
+                tokenizer,
+                batch,
+                max_seq_len,
+            )
+            batch_emb = retriever.encode_premise(
+                batch_inputs.input_ids, batch_inputs.attention_mask
+            )
+        batch_embs.append(batch_emb)
+    page_embs = torch.cat(batch_embs).to("cpu")
+    return page_embs
 
 
 if __name__ == "__main__":
@@ -234,11 +240,24 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    retriever, tokenizer, premise_format, max_seq_len = load_retriever(
+        args.select_checkpoint
+    )
+    retriever.to("cuda")
+    encode_fn = functools.partial(
+        select_encode,
+        retriever,
+        tokenizer,
+        premise_format,
+        max_seq_len,
+        args.batch_size,
+    )
+
     pdb = PremiseVectorDB.create(
         args.db_loc,
         args.page_size,
-        args.batch_size,
         args.select_checkpoint,
+        encode_fn,
         args.sentence_db_loc,
     )
     pdb.save()

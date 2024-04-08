@@ -21,12 +21,11 @@ from model_deployment.goal_comparer import AlphaGoalComparer
 
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Proof
-from util.util import LOGGER
 
-from typeguard import typechecked
+logging.basicConfig(level=logging.WARNING)
+LOGGER = logging.getLogger(__name__)
 
 
-@typechecked
 class SuccessfulSearch:
     ALIAS = "success"
 
@@ -50,7 +49,6 @@ class SuccessfulSearch:
         return cls(search_tree, qed_node)
 
 
-@typechecked
 class FailedSearch:
     ALIAS = "failure"
 
@@ -66,7 +64,6 @@ class FailedSearch:
         return cls(search_tree)
 
 
-@typechecked
 class ErroredSearch:
     ALIAS = "error"
 
@@ -106,7 +103,6 @@ def search_result_from_json(
             raise ValueError(f"Unknown search result alias: f{a}")
 
 
-@typechecked
 class SearchTreeManager:
     def __init__(
         self,
@@ -297,12 +293,13 @@ class SearchTreeManager:
         the proof search tree."""
         leaf_subtree, _ = heapq.heappop(self.frontier)
         if print_proofs:
-            print(leaf_subtree.score.compute())
+            #print(leaf_subtree.score.compute())
             print("".join(leaf_subtree.combined_proof_steps))
         leaf_subtree.set_expanded_num(step_num)
         assert leaf_subtree.proof is not None
         dset_file = DatasetFile(self.search_tree.file_context, [leaf_subtree.proof])
         example = self.proof_manager.get_example(dset_file, leaf_subtree.goal_record)
+        print(example.passages)
         leaf_subtree.set_model_input(example.input)
         start_time = time.time_ns()
         result = self.model_wrapper.get_recs(example, self.max_branch)
@@ -315,6 +312,7 @@ class SearchTreeManager:
             result.next_tactic_list, result.score_list, result.num_tokens_list
         ):
             proof_script = leaf_subtree.total_proof_str() + tactic
+            self.proof_manager.fast_client.client.lsp_endpoint.timeout = 5 
             start_time = time.time_ns()
             proof_check_result = self.proof_manager.check_proof(
                 proof_script, leaf_subtree.proof.theorem

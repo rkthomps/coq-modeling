@@ -7,7 +7,7 @@ import datetime
 from dataclasses import dataclass
 
 import logging 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 from coqpyt.coq.base_file import CoqFile
 

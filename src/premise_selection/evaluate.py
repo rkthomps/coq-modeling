@@ -30,8 +30,11 @@ from model_deployment.premise_model_wrapper import (
     premise_wrapper_from_conf,
     TFIdf,
     BM25Okapi,
+    Random,
+    InFileReverse,
 )
 from util.util import LOGGER
+
 
 class EvalResult:
     def __init__(
@@ -189,12 +192,19 @@ if __name__ == "__main__":
 
     args = parser.parse_args(sys.argv[1:])
 
-    if args.checkpoint_loc == TFIdf.ALIAS or args.checkpoint_loc == BM25Okapi.ALIAS:
+    if (
+        args.checkpoint_loc == TFIdf.ALIAS
+        or args.checkpoint_loc == BM25Okapi.ALIAS
+        or args.checkpoint_loc == Random.ALIAS
+        or args.checkpoint_loc == InFileReverse.ALIAS
+    ):
         model_wrapper = premise_wrapper_from_conf({"alias": args.checkpoint_loc})
     elif "rerank" in args.checkpoint_loc.lower():
         model_wrapper = LocalRerankModelWrapper.from_checkpoint(args.checkpoint_loc)
     else:
-        model_wrapper = LocalPremiseModelWrapper.from_checkpoint(args.checkpoint_loc, args.vdb)
+        model_wrapper = LocalPremiseModelWrapper.from_checkpoint(
+            args.checkpoint_loc, args.vdb
+        )
 
     move_prem_wrapper_to(model_wrapper, "cuda")
     sentence_db = SentenceDB.load(args.sentence_db_loc)

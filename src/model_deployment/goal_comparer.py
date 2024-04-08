@@ -5,7 +5,6 @@ from typing import Any, Optional
 import ipdb
 import re
 
-from typeguard import typechecked
 
 from model_deployment.search_tree import SearchNode
 from model_deployment.fast_client import ClientWrapper
@@ -31,7 +30,6 @@ def strip_def(s: str) -> Optional[str]:
     return None
 
 
-@typechecked
 class ParsedHyp:
     def __init__(self, ids: list[str], ast: Any, text: str) -> None:
         self.ids = ids
@@ -44,7 +42,6 @@ class ParsedHyp:
         return ", ".join(self.ids) + ": " + text
 
 
-@typechecked
 class ParsedObligation:
     def __init__(self, hyps: list[ParsedHyp], goal_ast: Any, text: str) -> None:
         self.hyps = hyps
@@ -166,7 +163,6 @@ class ParsedObligation:
         return hyps_covered
 
 
-@typechecked
 class ParsedObligations:
     def __init__(self, obligations: list[ParsedObligation]) -> None:
         self.obligations = obligations
@@ -216,7 +212,6 @@ class CoqName:
                 )
 
 
-@typechecked
 class CoqQualId:
     def __init__(self, dirpath: list[list[str]], id: str) -> None:
         self.dirpath = dirpath
@@ -524,10 +519,11 @@ class AlphaGoalComparer:
     def as_hard_as(self, gs1: list[Goal], gs2: list[Goal], client: ClientWrapper, file_prefix: str) -> bool:
         if self.__goal_set_as_hard_as(gs1, gs2):
             return True
-        parsed1 = self.parse_goal_list(gs1, client, file_prefix) 
-        parsed2 = self.parse_goal_list(gs2, client, file_prefix)
-        if parsed1 is not None and parsed2 is not None:
-            return parsed1.as_hard_as(parsed2) 
-        else:
-            return False
+        return False
+        # parsed1 = self.parse_goal_list(gs1, client, file_prefix) 
+        # parsed2 = self.parse_goal_list(gs2, client, file_prefix)
+        # if parsed1 is not None and parsed2 is not None:
+        #     return parsed1.as_hard_as(parsed2) 
+        # else:
+        #     return False
 

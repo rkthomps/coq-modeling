@@ -1,12 +1,15 @@
 from __future__ import annotations
 from typing import Iterable, Any, Optional
 
+
+import random
 import time
 import sys, os
 import json
 import requests
 import math
 import ipdb
+from enum import Enum
 
 from tqdm import tqdm
 import torch
@@ -79,8 +82,8 @@ class LocalRerankModelWrapper:
         base_wrapper: PremiseModelWrapper,
         tokenizer: GPT2Tokenizer,
         max_seq_len: int,
-        batch_size: int = 32,
-        rerank_k: int = 256,
+        batch_size: int = 64,
+        rerank_k: int = 64,
     ) -> None:
         self.reranker = reranker
         self.base_wrapper = base_wrapper
@@ -163,6 +166,10 @@ class LocalRerankModelWrapper:
         reranker = PremiseReranker.from_pretrained(checkpoint_loc)
         return cls(reranker, base_wrapper, tokenizer, max_seq_len)
 
+    @classmethod
+    def from_conf(cls, conf: Any) -> LocalPremiseModelWrapper:
+        return cls.from_checkpoint(conf["checkpoint_loc"])
+
 
 class BM25Okapi:
     ALIAS = "bm25"
@@ -226,8 +233,8 @@ class BM25Okapi:
         return similarities
 
 
-class TFIdf:
-    ALIAS = "tf-idf"
+class Random:
+    ALIAS = "random"
 
     def __init__(self) -> None:
         self.premise_filter = PremiseFilter(
@@ -236,8 +243,66 @@ class TFIdf:
         self.premise_format = BasicPremiseFormat
         self.context_format = BasicContextFormat
 
+    def get_premise_scores_from_strings(
+        self, context_str: str, premises: list[Sentence]
+    ) -> list[float]:
+        premise_strs = [self.premise_format.format(p) for p in premises]
+        similarities = [random.random() for _ in premise_strs]
+        return similarities
+
+
+class InFileReverse:
+    ALIAS = "in-file"
+
+    def __init__(self) -> None:
+        self.premise_filter = PremiseFilter(
+            coq_excludes=[TermType.NOTATION, TermType.TACTIC]
+        )
+        self.premise_format = BasicPremiseFormat
+        self.context_format = BasicContextFormat
+
+    def __fix_path(self, p: str) -> str:
+        while p.startswith("../") or p.startswith("..\\"):
+            p = p[3:]
+        return p
+
+    def get_premise_scores(
+        self, context: Sentence, premises: list[Sentence]
+    ) -> list[float]:
+        similarities: list[float] = []
+        context_norm_path = self.__fix_path(context.file_path)
+        for p in premises:
+            fixed_path = self.__fix_path(p.file_path)
+            if fixed_path.endswith(context_norm_path) or context_norm_path.endswith(
+                fixed_path
+            ):
+                similarities.append(-1 * (p.line - context.line))
+            else:
+                similarities.append(0)
+        return similarities
+
+
+class TFIdf:
+    ALIAS = "tf-idf"
+
+    def __init__(self) -> None:
+        self.premise_filter = PremiseFilter()
+        self.premise_format = BasicPremiseFormat
+        self.context_format = BasicContextFormat
+
+    def __clean_token(self, s: str) -> str:
+        s = s.lstrip("(,:{")
+        s = s.rstrip("),:}")
+        return s
+
     def tokenizer(self, s: str) -> list[str]:
-        return s.split()
+        whitespace_split = s.split()
+        clean_tokens: list[str] = []
+        for t in whitespace_split:
+            clean_t = self.__clean_token(t)
+            if 0 < len(clean_t):
+                clean_tokens.append(clean_t)
+        return clean_tokens
 
     def compute_idfs(self, corpus: list[list[str]]) -> dict[str, float]:
         assert 0 < len(corpus)
@@ -250,7 +315,7 @@ class TFIdf:
 
         idfs: dict[str, float] = {}
         for k, v in doc_freqs.items():
-            idfs[k] = math.log(v / len(corpus))
+            idfs[k] = math.log(len(corpus) / v)
         return idfs
 
     def compute_doc_tf(self, doc: list[str]) -> dict[str, float]:
@@ -349,7 +414,7 @@ class LocalPremiseModelWrapper:
         self.misses += 1
         inputs = self.get_input(premise_str)
         with torch.no_grad():
-            encoding = self.retriever.encode_premise(
+            encoding, _ = self.retriever.encode_premise(
                 inputs.input_ids, inputs.attention_mask
             )
         self.encoding_cache.add(premise_str, encoding)
@@ -394,10 +459,12 @@ class LocalPremiseModelWrapper:
             )
             context_encoding = context_encoding.to(device)
 
-        start = time.time()
         all_indices = self.get_premise_idxs(premises)
         if all_indices is not None and self.vector_db:
             premise_matrix = self.vector_db.get_embs(all_indices)
+            # assert premise_matrix is not None
+            # premise_matrix2 = self.encode_premises_one_by_one(premises)
+            # assert torch.allclose(premise_matrix, premise_matrix2)
             if premise_matrix is None:
                 premise_matrix = self.encode_premises_one_by_one(premises)
         else:
@@ -517,12 +584,18 @@ PremiseModelWrapper = (
     | LocalRerankModelWrapper
     | TFIdf
     | BM25Okapi
+    | Random
+    | InFileReverse
 )
 
 
 def get_premise_scores(
     premise_model: (
-        LocalPremiseModelWrapper | PremiseServerModelWrapper | TFIdf | BM25Okapi
+        LocalPremiseModelWrapper
+        | PremiseServerModelWrapper
+        | TFIdf
+        | BM25Okapi
+        | Random
     ),
     step: FocusedStep,
     proof: Proof,
@@ -544,8 +617,19 @@ def get_ranked_premise_generator(
             | PremiseServerModelWrapper()
             | TFIdf()
             | BM25Okapi()
+            | Random()
         ):
             premise_scores = get_premise_scores(premise_model, step, proof, premises)
+            num_premises = len(premise_scores)
+            arg_sorted_premise_scores = sorted(
+                range(num_premises), key=lambda idx: -1 * premise_scores[idx]
+            )
+            for idx in arg_sorted_premise_scores:
+                yield premises[idx]
+        case InFileReverse():
+            premise_scores = premise_model.get_premise_scores(
+                proof.theorem.term, premises
+            )
             num_premises = len(premise_scores)
             arg_sorted_premise_scores = sorted(
                 range(num_premises), key=lambda idx: -1 * premise_scores[idx]
@@ -582,12 +666,18 @@ def premise_wrapper_from_conf(conf: Any) -> PremiseModelWrapper:
     match attempted_alias:
         case LocalPremiseModelWrapper.ALIAS:
             return LocalPremiseModelWrapper.from_conf(conf)
+        case LocalRerankModelWrapper.ALIAS:
+            return LocalRerankModelWrapper.from_conf(conf)
         case PremiseServerModelWrapper.ALIAS:
             return PremiseServerModelWrapper.from_conf(conf)
         case TFIdf.ALIAS:
             return TFIdf()
         case BM25Okapi.ALIAS:
             return BM25Okapi()
+        case Random.ALIAS:
+            return Random()
+        case InFileReverse.ALIAS:
+            return InFileReverse()
         case _:
             raise PremiseModelNotFound(
                 f"Could not find premise model wrapper: {attempted_alias}"
