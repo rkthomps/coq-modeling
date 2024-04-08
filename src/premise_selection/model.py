@@ -75,6 +75,7 @@ class PremiseRetriever(PreTrainedModel):
         masked_hidden_states = hidden_states * cuda_mask[:, :, None]
         summed_hidden_states = masked_hidden_states.sum(axis=1)
         averaged_states = summed_hidden_states / per_batch_counts[:, None]
+
         return averaged_states
 
     def encode(
@@ -94,9 +95,13 @@ class PremiseRetriever(PreTrainedModel):
         ).last_hidden_state
         projected_hidden_states = projection(hidden_states)
         per_batch_counts = cuda_mask.sum(axis=1)
+        per_batch_counts = torch.where(per_batch_counts == 0, 1, per_batch_counts)
         masked_hidden_states = projected_hidden_states * cuda_mask[:, :, None]
         summed_hidden_states = masked_hidden_states.sum(axis=1)
         averaged_states = summed_hidden_states / per_batch_counts[:, None]
+        averaged_states += 1e-4 * torch.randn(
+            averaged_states.shape, device=self.device
+        )  # without I was getting 0 tensors
         normed_embedding = F.normalize(averaged_states, dim=1)
         if label is not None:
             recovered_logits = recovery(projected_hidden_states)
@@ -111,7 +116,7 @@ class PremiseRetriever(PreTrainedModel):
         label: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         return self.encode(
-            input_ids, mask, self.premise_projection, self.premise_recovery
+            input_ids, mask, self.premise_projection, self.premise_recovery, label
         )
 
     def encode_context(
@@ -121,7 +126,7 @@ class PremiseRetriever(PreTrainedModel):
         label: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         return self.encode(
-            input_ids, mask, self.context_projection, self.context_recovery
+            input_ids, mask, self.context_projection, self.context_recovery, label
         )
 
     def forward(
@@ -132,15 +137,26 @@ class PremiseRetriever(PreTrainedModel):
         premise_mask: torch.Tensor,
         label: Optional[torch.Tensor] = None,
     ) -> dict[str, Any]:
-        context_embs, recovered_premise_logits = self.encode_context(
+        context_embs, recovered_context_logits = self.encode_context(
             context_ids, context_mask, label
         )
-        premise_embs, recovered_context_logits = self.encode_premise(
+        premise_embs, recovered_premise_logits = self.encode_premise(
             premise_ids, premise_mask, label
         )
         similarity = torch.mm(context_embs, premise_embs.t())
-        epsilon = 1e-4
-        assert (-1 - epsilon) <= similarity.min() <= similarity.max() <= (1 + epsilon)
+        try:
+            assert torch.isclose(
+                torch.norm(context_embs, 2, 1), torch.tensor(1.0, device=self.device)
+            ).all()
+            assert torch.isclose(
+                torch.norm(premise_embs, 2, 1), torch.tensor(1.0, device=self.device)
+            ).all()
+        except AssertionError:
+            print(torch.norm(context_embs, 2, 1))
+            print(torch.norm(premise_embs, 2, 1))
+            raise AssertionError
+        # epsilon = 1e-4
+        # assert (-1 - epsilon) <= similarity.min() <= similarity.max() <= (1 + epsilon)
         return {
             "similarities": similarity,
             "premise_logits": recovered_premise_logits,

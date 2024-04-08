@@ -91,38 +91,98 @@ class CrossEntTrainer(Trainer):
 
 
 class DualObjective(Trainer):
-    def get_similarity_loss(self, outputs: dict[str, Any]):
+
+    def __init__(self, mask_prob: int, **kwargs: Any):
+        super(DualObjective, self).__init__(**kwargs)
+        self.mask_prob = mask_prob
+
+    def get_similarity_loss(self, label: torch.Tensor, outputs: dict[str, Any]):
         temp = 0.1
         similarities = outputs["similarities"]
         cooled_dots = similarities / temp
-        pos_mask = -1e9 * (1 - cuda_label)
+        pos_mask = -1e9 * (1 - label)
         pos_weight = torch.logsumexp(cooled_dots + pos_mask, dim=1)
         total_weight = torch.logsumexp(cooled_dots, dim=1)
         diffs = pos_weight - total_weight
         assert (diffs <= 0).all()
-        num_posities = cuda_label.sum(axis=1)
+        num_posities = label.sum(axis=1)
         pos_avg = diffs / num_posities
         batch_avg = pos_avg.mean()
         loss = -1 * batch_avg
         return loss
 
-    def get_reconstruction_loss(
+    def get_clm_loss(
         self, inputs: torch.Tensor, input_mask: torch.Tensor, logits: torch.Tensor
     ):
+        vocab_size = logits.shape[-1]
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = inputs[..., 1:].contiguous()
+        reshape_logits = shift_logits.view(-1, vocab_size)
+        reshape_labels = shift_labels.view(-1)
+        # print(inputs.shape)
+        # print(logits.shape)
         loss = torch.nn.CrossEntropyLoss()
-        return loss(logits, inputs)
+        return loss(reshape_logits, reshape_labels)
+
+    def get_mlm_loss(
+        self, labels: torch.Tensor, input_mask: torch.Tensor, logits: torch.Tensor
+    ):
+        loss = torch.nn.CrossEntropyLoss()
+        vocab_size = logits.shape[-1]
+        return loss(logits.view(-1, vocab_size), labels.view(-1))
 
     def compute_loss(self, model, inputs, return_outputs=False):
+        pad_token_id = 1  # for gpt2tokenizer
+        premise_mlm_mask = (
+            torch.rand(inputs["premise_ids"].shape, device="cuda") < self.mask_prob
+        )
+        context_mlm_mask = (
+            torch.rand(inputs["context_ids"].shape, device="cuda") < self.mask_prob
+        )
+
+        premise_mask = inputs["premise_mask"] & ~premise_mlm_mask
+        context_mask = inputs["context_mask"] & ~context_mlm_mask
+
+        premise_inputs = torch.where(
+            premise_mask == 1, inputs["premise_ids"], pad_token_id
+        )
+        context_inputs = torch.where(
+            context_mask == 1, inputs["context_ids"], pad_token_id
+        )
+
+        premise_labels = torch.where(premise_mask == 0, inputs["premise_ids"], -100)
+        context_labels = torch.where(context_mask == 0, inputs["context_ids"], -100)
+
         cuda_label = inputs["label"].to(model.device)
-        outputs = model(**inputs)
-        similarity_loss = self.get_similarity_loss(outputs)
-        premise_reconstruction_loss = self.get_reconstruction_loss(
-            inputs["premise_ids"], inputs["premise_mask"], outputs["premise_logits"]
+        # TODO HERE
+        outputs = model(
+            context_ids=context_inputs,
+            context_mask=context_mask,
+            premise_ids=premise_inputs,
+            premise_mask=premise_mask,
+            label=cuda_label,
         )
-        context_reconstruction_loss = self.get_reconstruction_loss(
-            inputs["context_ids"], inputs["context_mask"], outputs["context_logits"]
+
+        similarity_loss = self.get_similarity_loss(cuda_label, outputs)
+        premise_reconstruction_loss = self.get_mlm_loss(
+            premise_labels, premise_mask, outputs["premise_logits"]
         )
-        loss = 0.5 * similarity_loss + 0.25 * premise_reconstruction_loss + 0.25 * context_reconstruction_loss
+        context_reconstruction_loss = self.get_mlm_loss(
+            context_labels, context_mask, outputs["context_logits"]
+        )
+        # print(
+        #     "sim",
+        #     similarity_loss,
+        #     "prem",
+        #     premise_reconstruction_loss,
+        #     "ctxt",
+        #     context_reconstruction_loss,
+        # )
+        loss = (
+            0.8 * similarity_loss
+            + 0.1 * premise_reconstruction_loss
+            + 0.1 * context_reconstruction_loss
+        )
         if return_outputs:
             return loss, outputs
         return loss
@@ -155,6 +215,17 @@ def get_trainer(
             eval_dataset=val_dataset,
             data_collator=train_dataset.collate,
             tokenizer=tokenizer,
+        )
+    elif loss_fn == "dual":
+        mask_prob = get_optional_arg("mask_prob", conf, 0.15)
+        return DualObjective(
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            data_collator=train_dataset.collate,
+            tokenizer=tokenizer,
+            mask_prob=mask_prob,
         )
     else:
         return MSETrainer(

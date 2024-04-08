@@ -14,12 +14,12 @@ import torch
 from transformers import GPT2Tokenizer
 from yaml import load, Loader
 
-from data_management.dataset_file import Sentence 
+from data_management.dataset_file import Sentence
 from data_management.sentence_db import SentenceDB, DBSentence
-from premise_selection.model import PremiseRetriever 
+from premise_selection.model import PremiseRetriever
 from premise_selection.datamodule import tokenize_strings
 from premise_selection.premise_formatter import PremiseFormat, PREMISE_ALIASES
-from util.train_utils import get_required_arg 
+from util.train_utils import get_required_arg
 from util.constants import PREMISE_DATA_CONF_NAME, TRAINING_CONF_NAME
 from util.util import LOGGER
 
@@ -29,8 +29,9 @@ def load_page(db_loc: str, page_idx: int, device: str) -> Optional[torch.Tensor]
     page_loc = os.path.join(db_loc, f"{page_idx}.pt")
     if not os.path.exists(page_loc):
         return None
-    #return torch.load(page_loc).to("cuda")
+    # return torch.load(page_loc).to("cuda")
     return torch.load(page_loc).to(device)
+
 
 class PremiseVectorDB:
     hash_cache: dict[str, str] = {}
@@ -48,7 +49,7 @@ class PremiseVectorDB:
         self.retriever_checkpoint_loc = retriever_checkpoint_loc
         self.sdb_hash = sdb_hash
         self.device = "cpu"
-    
+
     def page_loc(self, idx: int) -> str:
         return os.path.join(self.db_loc, f"{idx}.pt")
 
@@ -68,20 +69,18 @@ class PremiseVectorDB:
             page_tensor = load_page(self.db_loc, pg_num, self.device)
             if page_tensor is None:
                 return None
-            #indices = (torch.tensor(pg_idxs, device="cuda") % self.page_size)
-            indices = (torch.tensor(pg_idxs, device=self.device) % self.page_size)
+            # indices = (torch.tensor(pg_idxs, device="cuda") % self.page_size)
+            indices = torch.tensor(pg_idxs, device=self.device) % self.page_size
             page_tensors.append((page_tensor[indices]))
         return torch.cat(page_tensors)
 
-
     # # MIGHT BE ABLE TO KEEP WHOLE MATRIX IN MEMORY. WILL HAVE TO SEE IF THAT's a GOOD IDEA
-    def get(self, idx: int) -> Optional[torch.Tensor]: 
-        page = idx // self.page_size 
+    def get(self, idx: int) -> Optional[torch.Tensor]:
+        page = idx // self.page_size
         page_tensor = load_page(self.db_loc, page)
         if page_tensor is not None:
             return page_tensor[idx % self.page_size]
         return None
-
 
     @classmethod
     def __hash_sdb(cls, sentence_db_loc: str) -> str:
@@ -107,11 +106,17 @@ class PremiseVectorDB:
 
     @classmethod
     def load(
-        cls, db_loc: str,
+        cls,
+        db_loc: str,
     ) -> PremiseVectorDB:
         with open(os.path.join(db_loc, cls.METADATA_LOC)) as fin:
             metadata = json.load(fin)
-        return cls(db_loc, metadata["page_size"], metadata["retriever_checkpoint_loc"], metadata["sdb_hash"])
+        return cls(
+            db_loc,
+            metadata["page_size"],
+            metadata["retriever_checkpoint_loc"],
+            metadata["sdb_hash"],
+        )
 
     @classmethod
     def load_page_sentences(
@@ -122,7 +127,9 @@ class PremiseVectorDB:
         end = min(sdb_size + 1, page_num * page_size + page_size)
         for i in range(start, end):
             if i == 0:
-                db_sentences.append(DBSentence("Dummy sentence.", "", "[]", "TermType.LEMMA", 0)) # IDs start at 1
+                db_sentences.append(
+                    DBSentence("Dummy sentence.", "", "[]", "TermType.LEMMA", 0)
+                )  # IDs start at 1
             else:
                 db_sentences.append(sdb.retrieve(i))
         return db_sentences
@@ -141,9 +148,11 @@ class PremiseVectorDB:
         if 0 < len(cur_batch):
             batches.append(cur_batch)
         return batches
-    
+
     @classmethod
-    def load_retriever(cls, checkpoint_loc: str) -> tuple[PremiseRetriever, GPT2Tokenizer, PremiseFormat, int]:
+    def load_retriever(
+        cls, checkpoint_loc: str
+    ) -> tuple[PremiseRetriever, GPT2Tokenizer, PremiseFormat, int]:
         model_loc = os.path.dirname(checkpoint_loc)
         data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
         with open(data_preparation_conf, "r") as fin:
@@ -158,7 +167,6 @@ class PremiseVectorDB:
         retriever = PremiseRetriever.from_pretrained(checkpoint_loc)
         return retriever, tokenizer, premise_format, max_seq_len
 
-
     @classmethod
     def create(
         cls,
@@ -168,7 +176,9 @@ class PremiseVectorDB:
         select_checkpoint: str,
         sentence_db_loc: str,
     ) -> PremiseVectorDB:
-        retriever, tokenizer, premise_format, max_seq_len = cls.load_retriever(select_checkpoint)
+        retriever, tokenizer, premise_format, max_seq_len = cls.load_retriever(
+            select_checkpoint
+        )
         retriever.to("cuda")
         sdb = SentenceDB.load(sentence_db_loc)
         sdb_hash = cls.__hash_sdb(sentence_db_loc)
@@ -182,7 +192,10 @@ class PremiseVectorDB:
             sentences_to_write = cls.load_page_sentences(
                 cur_page, page_size, sdb, sdb_size
             )
-            sentence_texts = [premise_format.format(Sentence.from_db_sentence(s)) for s in sentences_to_write]
+            sentence_texts = [
+                premise_format.format(Sentence.from_db_sentence(s))
+                for s in sentences_to_write
+            ]
             sentence_batches = cls.batch_sentences(sentence_texts, batch_size)
             batch_embs: list[torch.Tensor] = []
             for batch in sentence_batches:
@@ -192,11 +205,11 @@ class PremiseVectorDB:
                         batch,
                         max_seq_len,
                     )
-                    batch_emb = retriever.encode_premise(
+                    batch_emb, _ = retriever.encode_premise(
                         batch_inputs.input_ids, batch_inputs.attention_mask
                     )
                 batch_embs.append(batch_emb)
-            
+
             page_embs = torch.cat(batch_embs).to("cpu")
             page_loc = os.path.join(db_loc, f"{cur_page}.pt")
             torch.save(page_embs, page_loc)
@@ -211,12 +224,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("db_loc", help="Where to put the vector db.")
     parser.add_argument("page_size", type=int, help="Size of a page in the db.")
-    parser.add_argument("batch_size", type=int, help="Batch size to use when making the db.")
+    parser.add_argument(
+        "batch_size", type=int, help="Batch size to use when making the db."
+    )
     parser.add_argument(
         "select_checkpoint", help="Checkpoint to use for the select model."
     )
     parser.add_argument("sentence_db_loc", help="Location of the sentence database")
-
 
     args = parser.parse_args()
 
