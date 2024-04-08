@@ -9,6 +9,7 @@ import json
 import requests
 import math
 import ipdb
+from enum import Enum
 
 from tqdm import tqdm
 import torch
@@ -281,18 +282,29 @@ class InFileReverse:
         return similarities
 
 
+
+
 class TFIdf:
     ALIAS = "tf-idf"
 
     def __init__(self) -> None:
-        self.premise_filter = PremiseFilter(
-            coq_excludes=[TermType.NOTATION, TermType.TACTIC]
-        )
+        self.premise_filter = PremiseFilter()
         self.premise_format = BasicPremiseFormat
         self.context_format = BasicContextFormat
 
+    def __clean_token(self, s: str) -> str:
+        s = s.lstrip("(,:{")
+        s = s.rstrip("),:}")
+        return s
+
     def tokenizer(self, s: str) -> list[str]:
-        return s.split()
+        whitespace_split = s.split()
+        clean_tokens: list[str] = []
+        for t in whitespace_split:
+            clean_t = self.__clean_token(t)
+            if 0 < len(clean_t):
+                clean_tokens.append(clean_t)
+        return clean_tokens 
 
     def compute_idfs(self, corpus: list[list[str]]) -> dict[str, float]:
         assert 0 < len(corpus)
@@ -305,7 +317,7 @@ class TFIdf:
 
         idfs: dict[str, float] = {}
         for k, v in doc_freqs.items():
-            idfs[k] = math.log(v / len(corpus))
+            idfs[k] = math.log(len(corpus) / v)
         return idfs
 
     def compute_doc_tf(self, doc: list[str]) -> dict[str, float]:
