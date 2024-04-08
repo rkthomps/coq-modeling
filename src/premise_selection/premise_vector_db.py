@@ -218,7 +218,7 @@ def select_encode(
                 batch,
                 max_seq_len,
             )
-            batch_emb = retriever.encode_premise(
+            batch_emb, _ = retriever.encode_premise(
                 batch_inputs.input_ids, batch_inputs.attention_mask
             )
         batch_embs.append(batch_emb)
