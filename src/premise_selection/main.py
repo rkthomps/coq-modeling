@@ -179,9 +179,9 @@ class DualObjective(Trainer):
         #     context_reconstruction_loss,
         # )
         loss = (
-            0.8 * similarity_loss
-            + 0.1 * premise_reconstruction_loss
-            + 0.1 * context_reconstruction_loss
+            0.5 * similarity_loss
+            + 0.25 * premise_reconstruction_loss
+            + 0.25 * context_reconstruction_loss
         )
         if return_outputs:
             return loss, outputs
