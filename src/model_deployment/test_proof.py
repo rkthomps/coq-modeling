@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-from data_management.splits import FileInfo, Split
+from data_management.splits import FileInfo, Split, DataSplit, file_from_split
 from data_management.dataset_file import FileContext, Term, Sentence
 from model_deployment.searcher import (
     SearchTreeManager,
@@ -32,6 +32,9 @@ _logger = get_basic_logger(__name__)
 @dataclass
 class TestProofConf:
     test_file: Path
+    data_loc: Path
+    data_split_loc: Path
+    theorem_name: str
     node_score_alias: str
     timeout: int
     branching_factor: int
@@ -43,6 +46,9 @@ class TestProofConf:
     def from_yaml(cls, yaml_data: Any) -> TestProofConf:
         return cls(
             Path(yaml_data["test_file"]),
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["data_split_loc"]),
+            yaml_data["theorem_name"],
             yaml_data["node_score_alias"],
             yaml_data["timeout"],
             yaml_data["branching_factor"],
@@ -50,9 +56,27 @@ class TestProofConf:
             yaml_data["max_exapansions"],
             TacticGenClientConf.from_yaml(yaml_data["tactic_client_conf"]),
         )
+    
+
+def get_file_from_split(test_file: Path, data_loc: Path, data_split: DataSplit) -> Optional[FileInfo]:
+    for split in Split:
+        for file_info in data_split.get_file_list(split):
+            info_path = data_loc / Path(file_info.file)
+            if info_path.resolve() == test_file.resolve():
+                return file_info
+    return None
+
+
+def get_dummy_file_info(test_file: Path) -> FileInfo:
+    assert 0 < len(test_file.parents)
+    repo = test_file.parents[0]
+    dp_name = str(test_file).replace(os.path.sep, "-")
+    return FileInfo(dp_name, str(test_file), str(repo), str(repo))
 
 
 def test_proof(conf: TestProofConf):
+    pass
+
 
 # WRAPPER = GPT4Wrapper()
 # EXAMPLE_TYPE = GPT4BasicLmExample

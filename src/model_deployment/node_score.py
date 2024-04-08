@@ -5,7 +5,6 @@ import math
 from typeguard import typechecked
 
 
-@typechecked
 class NodeScore:
     def __init__(self) -> None:
         pass
@@ -80,7 +79,6 @@ class ModelScore(NodeScore):
         return "model_score"
 
 
-@typechecked
 class TokenSumScore(NodeScore):
     def __init__(self, sequence_score: int | float):
         self.sequence_score = sequence_score
@@ -122,7 +120,6 @@ class TokenSumScore(NodeScore):
         return "token-sum-score"
 
 
-@typechecked
 class TokenLengthNormalizedScore(NodeScore):
     def __init__(self, sequence_score: int | float, proof_num_tokens: int):
         self.sequence_score = sequence_score
@@ -173,7 +170,6 @@ class TokenLengthNormalizedScore(NodeScore):
         return "token-normalized-score"
 
 
-@typechecked
 class LastTacGreedyScore(NodeScore):
     def __init__(self, sequence_score: int | float) -> None:
         self.sequence_score = sequence_score
@@ -211,7 +207,6 @@ class LastTacGreedyScore(NodeScore):
         return "last-tac-greedy-score"
 
 
-@typechecked
 class DepthFirstScore(NodeScore):
     def __init__(self, proof_num_tactics: int, sequence_score: int | float) -> None:
         self.proof_num_tactics = proof_num_tactics
@@ -269,7 +264,6 @@ class DepthFirstScore(NodeScore):
         return "depth-first-score"
 
 
-@typechecked
 class BreadthFirstScore(NodeScore):
     def __init__(self, proof_num_tactics: int, sequence_score: int | float) -> None:
         self.proof_num_tactics = proof_num_tactics
@@ -328,7 +322,6 @@ class BreadthFirstScore(NodeScore):
         return "breadth-first-score"
 
 
-@typechecked
 class BranchNormalizedScore(NodeScore):
     def __init__(
         self, sequence_score: int | float, proof_num_tactics: int, branching_factor: int
