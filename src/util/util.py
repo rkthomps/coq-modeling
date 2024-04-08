@@ -2,16 +2,19 @@ from __future__ import annotations
 import logging
 import os
 import re
+from pathlib import Path, Path
 import datetime
 
 from coqpyt.coq.base_file import CoqFile
 
 
-def get_fresh_path(dirname: str, fresh_base: str) -> str:
+def get_fresh_path(dirname: Path, fresh_base: str) -> Path:
     name = fresh_base
-    while os.path.exists(os.path.join(dirname, name)):
+    loc = dirname / name 
+    while loc.exists():
         name = "_" + name
-    return os.path.join(dirname, name)
+        loc = dirname / name 
+    return loc 
 
 
 def get_log_level() -> int:

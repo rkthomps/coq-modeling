@@ -1,29 +1,25 @@
 from __future__ import annotations
 from typing import Any, Optional
-import os
 import json
-import pdb
+import pickle
 from dataclasses import dataclass
 from pathlib import Path
 
-
-from data_management.splits import FileInfo, Split, DataSplit, file_from_split
-from data_management.dataset_file import FileContext, Term, Sentence
+from data_management.splits import FileInfo, Split, DataSplit
+from data_management.dataset_file import Term, DatasetFile
 from model_deployment.searcher import (
     SearchTreeManager,
-    SearchResult,
     SuccessfulSearch,
     FailedSearch,
 )
-from model_deployment.tactic_gen_client import TacticGenClientConf
-from model_deployment.proof_manager import ProofManager
+from model_deployment.tactic_gen_client import TacticGenConf, TacticGenClient
+from model_deployment.proof_manager import ProofManager, ProofInfo
 from model_deployment.node_score import NODE_SCORE_ALIASES
 
 from data_management.sentence_db import SentenceDB
 from util.util import get_basic_logger
+from util.constants import CLEAN_CONFIG
 
-from coqpyt.coq.structs import Step, TermType
-from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.base_file import CoqFile
 
 _logger = get_basic_logger(__name__)
@@ -33,6 +29,7 @@ _logger = get_basic_logger(__name__)
 class TestProofConf:
     test_file: Path
     data_loc: Path
+    sentence_db_loc: Path
     data_split_loc: Path
     theorem_name: str
     node_score_alias: str
@@ -40,12 +37,13 @@ class TestProofConf:
     branching_factor: int
     depth_limit: int
     max_exapansions: int
-    tactic_client_conf: TacticGenClientConf
+    tactic_conf: TacticGenConf 
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> TestProofConf:
         return cls(
             Path(yaml_data["test_file"]),
+            Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["data_loc"]),
             Path(yaml_data["data_split_loc"]),
             yaml_data["theorem_name"],
@@ -56,91 +54,72 @@ class TestProofConf:
             yaml_data["max_exapansions"],
             TacticGenClientConf.from_yaml(yaml_data["tactic_client_conf"]),
         )
-    
 
-def get_file_from_split(test_file: Path, data_loc: Path, data_split: DataSplit) -> Optional[FileInfo]:
+
+def get_file_from_split(
+    test_file: Path, data_loc: Path, data_split: DataSplit
+) -> Optional[tuple[FileInfo, Split]]:
     for split in Split:
         for file_info in data_split.get_file_list(split):
             info_path = data_loc / Path(file_info.file)
             if info_path.resolve() == test_file.resolve():
-                return file_info
+                return file_info, split
     return None
 
 
-def get_dummy_file_info(test_file: Path) -> FileInfo:
-    assert 0 < len(test_file.parents)
-    repo = test_file.parents[0]
-    dp_name = str(test_file).replace(os.path.sep, "-")
-    return FileInfo(dp_name, str(test_file), str(repo), str(repo))
+PROOF_KEYWORDS = ["Lemma", "Theorem", "Proposition", "Remark", "Example", "Property"]
+
+
+def get_term(dp_file: DatasetFile, theorem_str: str) -> Term:
+    for proof in dp_file.proofs:
+        if proof.theorem.term.text == theorem_str:
+            return proof.theorem
+    raise ValueError(f"{theorem_str} not found in {dp_file.file_context.file}")
+
+
+def get_proof_info(
+    file_info: FileInfo, dp_file: DatasetFile, theorem_name: str
+) -> ProofInfo:
+    file_loc = Path(file_info.file).resolve()
+    workspace_loc = Path(file_info.workspace).resolve()
+    with CoqFile(str(file_loc), workspace=str(workspace_loc)) as coq_file:
+        for i, step in enumerate(coq_file.steps):
+            if (
+                any([k in step.text for k in PROOF_KEYWORDS])
+                and theorem_name in step.text
+            ):
+                term = get_term(dp_file, step.text)
+                return ProofInfo(term, coq_file.steps[: (i + 1)], i)
+    raise ValueError(f"Could not find step defining theorem {theorem_name}")
 
 
 def test_proof(conf: TestProofConf):
-    pass
-
-
-# WRAPPER = GPT4Wrapper()
-# EXAMPLE_TYPE = GPT4BasicLmExample
-# NODE_SCORE_TYPE = CodeLLamaNodeScore
-
-
-# WRAPPER = CodeLLamaServer("http://127.0.0.1:5000/codellama")
-# EXAMPLE_CONFIG = LmExampleConfig.from_example_type(BaseCodeLLamaLmExample)
-# NODE_SCORE_TYPE = CodeLLamaNodeScore
-
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/even_odd.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/harder_example.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/example.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_impl.v"
-#TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/lt_trans.v"
-# TEST_FILE = "/home/ubuntu/coq-modeling/examples/Adding/add_2.v"
-TEST_FILE = "/home/ubuntu/coq-modeling/test-coq-projs/min_superlist.v"
-
-
-dummy_file_info = FileInfo(
-    "hi-dog",
-    TEST_FILE,
-    "/home/ubuntu/coq-modeling/test-coq-projs",
-    "/home/ubuntu/coq-modeling/test-coq-projs",
-)
-dummy_split = Split.TEST
-dummy_data_loc = "/"
-
-sentence_db = SentenceDB.load("./sentences.db") 
-
-# WRAPPER = CodeLLamaServer.from_conf({"server_url": "http://127.0.0.1:5000"})
-WRAPPER = FidT5LocalWrapper.from_conf(
-    {
-        # "alias": "fid-local",
-        # "pretrained_name": "/home/ubuntu/coq-modeling/models/t5-fid-small-basic-rnd-split-rnd-samp-pct-8/checkpoint-8000"
-        "pretrained-name": "/home/ubuntu/coq-modeling/models/t5-fid-base-basic-final/checkpoint-110500"
-    }
-)
-NODE_SCORE_TYPE = TokenLengthNormalizedScore
-TIMEOUT = 600
-BRANCH = 32
-DEPTH_LIMIT=300
-EXPANSIONS = 500
-
-
-
-def do_search(file_context: FileContext, initial_steps: list[Step], proof_point: int, proof_term: Term):
+    data_split = DataSplit.load(conf.data_split_loc)
+    sentence_db = SentenceDB.load(conf.sentence_db_loc)
+    file_info_tup = get_file_from_split(conf.test_file, conf.data_loc, data_split)
+    assert file_info_tup is not None  # TODO Support unknown files
+    file_info, split = file_info_tup
+    file_dp = file_info.get_dp(conf.data_loc, sentence_db)
+    tactic_client = TacticGenClient.from_conf(conf.tactic_conf)
+    proof_info = get_proof_info(file_info, file_dp, conf.theorem_name)
     with ProofManager(
-        TEST_FILE,
-        file_context,
-        proof_term,
-        initial_steps,
-        proof_point,
-        WRAPPER.formatter,
-        dummy_file_info,
+        file_dp.file_context,
+        proof_info,
+        tactic_client.formatter,
+        file_info,
         sentence_db,
-        dummy_split,
-        dummy_data_loc,
+        split,
+        conf.data_loc,
     ) as proof_manager:
         tree_manager = SearchTreeManager(
-            WRAPPER, proof_manager, NODE_SCORE_TYPE, BRANCH, EXPANSIONS, DEPTH_LIMIT, TIMEOUT, MODEL_SCORER 
-    )
-
+            tactic_client,
+            proof_manager, 
+            NODE_SCORE_ALIASES[conf.node_score_alias],
+            conf.branching_factor,
+            conf.max_exapansions,
+            conf.depth_limit,
+            conf.timeout,
+        )
         _logger.debug("Beginning Proof Search")
         result = tree_manager.search(print_proofs=True, print_trees=True)
         with open("proof-tree.json", "w") as fout:
@@ -161,25 +140,9 @@ def do_search(file_context: FileContext, initial_steps: list[Step], proof_point:
                 print("Failed Search")
 
 
-def do_coq_file_search():
-    file = os.path.abspath(dummy_file_info.file)
-    workspace = os.path.abspath(dummy_file_info.workspace)
-    file_context = FileContext(file, workspace, dummy_file_info.repository, [])
-    with CoqFile(TEST_FILE, workspace=dummy_file_info.workspace) as coq_file:
-        print("Initially valid: ", coq_file.is_valid)
-        last: Optional[int] = None
-        for i, step in enumerate(coq_file.steps):
-            if "Theorem" in step.text or "Lemma" in step.text:
-                last = i
-        assert last is not None
-        initial_steps = coq_file.steps[:(last + 1)]
-    theorem_sentence = Sentence(initial_steps[-1].text, file, [], TermType.LEMMA, initial_steps[-1].ast.range.start.line)
-    term = Term(theorem_sentence, [])
-    do_search(file_context, initial_steps, last, term)
-
-
-def do_proof_file_search():
-    ## TODO
-    pass
-
-do_coq_file_search()
+if __name__ == "__main__":
+    conf_loc = Path(f"./{CLEAN_CONFIG}") 
+    with conf_loc.open("rb") as fin:
+        conf = pickle.load(fin)
+        assert isinstance(conf, TestProofConf)
+        test_proof(conf)

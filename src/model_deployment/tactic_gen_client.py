@@ -50,12 +50,13 @@ class TacticGenClient:
         return ModelResult.from_json(response)
     
     @classmethod
-    def from_conf(cls, conf: TacticGenClientConf) -> TacticGenClient:
-        return cls(
-            conf.urls,
-            formatter_from_conf(conf.formatter_conf),
-        )
-        
+    def from_conf(cls, conf: TacticGenConf) -> TacticGenClient:
+        match conf:
+            case TacticGenClientConf():
+                return cls(conf.urls, formatter_from_conf(conf.formatter_conf))
+            case _:
+                raise ValueError(f"Cannot produce tactic gen client from {conf.__class__}")
+
 
 TacticGenConf = TacticGenClientConf | FidTacticGenConf 
 

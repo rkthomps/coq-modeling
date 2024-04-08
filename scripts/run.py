@@ -1,8 +1,10 @@
-import os
+import sys, os
+import pickle
 
 import argparse
-from subprocess import Popen
+import subprocess
 from pathlib import Path
+from dataclasses import dataclass
 import yaml
 
 from data_management.create_lm_dataset import LmDatasetConf
@@ -14,13 +16,14 @@ from tactic_gen.lm_example import (
 )
 from model_deployment.premise_client import PremiseConf, SelectConf, SelectClientConf
 from model_deployment.tactic_gen_client import TacticGenConf, FidTacticGenConf, TacticGenClientConf 
-from util.constants import PREMISE_DATA_CONF_NAME, DATA_CONF_NAME 
+from model_deployment.test_proof import TestProofConf
+from util.constants import PREMISE_DATA_CONF_NAME, DATA_CONF_NAME, CLEAN_CONFIG
 
 
-TopLevelConf = LmDatasetConf
+TopLevelConf = LmDatasetConf | TestProofConf
 
 next_port = 8000
-started_processes: list[Popen[bytes]] = []
+started_processes: list[subprocess.Popen[bytes]] = []
 
 SELECT_SERVER_SCRIPT = Path("src/model_deployment/select_server.py")
 TACTIC_GEN_SERVER_SCRIPT = Path("src/model_deployment/tactic_gen_server.py")
@@ -53,7 +56,7 @@ def start_select_servers(select_conf: SelectConf, use_devices: list[int]) -> lis
     urls: list[str] = []
     for device in use_devices:
         command = __make_select_command(select_conf, device)
-        process = Popen(command)
+        process = subprocess.Popen(command)
         urls.append(f"http//localhost:{next_port}")
         next_port += 1
         started_processes.append(process)
@@ -114,7 +117,7 @@ def start_tactic_gen_servers(conf: FidTacticGenConf, use_devices: list[int]) -> 
     urls: list[str] = []
     for device in use_devices:
         command = [f"CUDA_VISIBLE_DEVICES={device}", "python3", TACTIC_GEN_SERVER_SCRIPT, "local-fid", f"{conf.checkpoint_loc}", f"{next_port}"] 
-        process = Popen(command)
+        process = subprocess.Popen(command)
         urls.append(f"http//localhost:{next_port}")
         next_port += 1
         started_processes.append(process)
@@ -148,7 +151,66 @@ def start_servers(conf: TopLevelConf, use_devices: list[int]) -> TopLevelConf:
     match conf:
         case LmDatasetConf():
             return start_servers_lm_dataset_conf(conf, use_devices)
+        case TestProofConf():
+            tactic_client_conf = start_servers_tactic_gen(conf.tactic_conf, use_devices)
+            return TestProofConf(
+                conf.test_file,
+                conf.data_loc,
+                conf.sentence_db_loc,
+                conf.data_split_loc,
+                conf.theorem_name,
+                conf.node_score_alias,
+                conf.timeout,
+                conf.branching_factor,
+                conf.depth_limit,
+                conf.max_exapansions,
+                tactic_client_conf,
+            )
 
+@dataclass
+class Command:
+    conf: type[TopLevelConf]
+    py_path: Path
+
+
+COMMANDS = {
+    "prove": Command(TestProofConf, Path("src/model_deployment/test_proof.py")),
+}
+
+class CommandNotFoundError(Exception):
+    pass
 
 if __name__ == "__main__":
+    command_list = ", ".join(COMMANDS.keys())
     parser = argparse.ArgumentParser()
+    parser.add_argument("command", help=f"Select from: {command_list}")
+    parser.add_argument("config", help="Yaml configuration file for command.")
+    parser.add_argument("devices", nargs="+", type=int, help="CUDA devices to use for running the command.")
+    args = parser.parse_args(sys.argv[1:])
+
+    if args.command not in COMMANDS:
+        raise(CommandNotFoundError(f"{args.command} not one of {command_list}"))
+
+    command = COMMANDS[args.command]
+    config_loc = Path(args.config)
+    if not config_loc.exists():
+        raise FileNotFoundError(f"{config_loc}")
+    
+    with config_loc.open("r") as fin: 
+        yaml_conf = yaml.load(fin, Loader=yaml.Loader)
+    
+    top_level_conf = command.conf.from_yaml(yaml_conf)
+    clean_top_level_conf = start_servers(top_level_conf, args.devices)
+
+    clean_conf_path = Path(f"./{CLEAN_CONFIG}")
+    with clean_conf_path.open("wb") as fout:
+        pickle.dump(clean_top_level_conf, fout)
+    
+    subprocess.run(["python3", command.py_path])
+
+    for p in started_processes:
+        p.kill()
+    
+    if clean_conf_path.exists():
+        os.remove(clean_conf_path)
+    

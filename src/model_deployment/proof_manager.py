@@ -2,19 +2,15 @@ from __future__ import annotations
 from typing import Any, Optional
 from types import TracebackType
 
-import sys, os
+import os
+from pathlib import Path
 from enum import Enum
+from dataclasses import dataclass
 import ipdb
 import time
 
-from typeguard import typechecked
 
 from util.util import get_fresh_path
-from util.coqpyt_utils import (
-    replace_proof_with_admitted_stub,
-    restore_proof_file,
-    go_through_point,
-)
 from data_management import dataset_file
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import (
@@ -29,33 +25,21 @@ from data_management.splits import Split, FileInfo
 
 from tactic_gen.lm_example import LmExample, LmFormatter, ProofRetrievalFormatter
 
-from model_deployment.goal_comparer import ParsedObligations, ParsedObligation, ParsedHyp 
 from model_deployment.fast_client import FastLspClient, ClientWrapper
 from model_deployment.mine_goals import get_goal_record, GoalRecord
-from model_deployment.step_separator import separate_steps
 from util.coqpyt_utils import get_all_goals
 from util.util import get_basic_logger
 
-from coqpyt.lsp.client import LspClient
 from coqpyt.coq.lsp.client import (
     TextDocumentIdentifier,
-    TextDocumentItem,
-    CoqLspClient,
     Position,
 )
-from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
 from coqpyt.coq.structs import ProofTerm, Term as CTerm, TermType, Step as CStep
 from coqpyt.coq.lsp.structs import Goal, GoalAnswer, RangedSpan
 from coqpyt.lsp.structs import ResponseError
-from coqpyt.coq.proof_file import ProofFile
-from coqpyt.coq.base_file import CoqFile
-from coqpyt.coq.exceptions import InvalidChangeException
 
 from coqpyt.lsp.structs import (
     TextDocumentIdentifier,
-    VersionedTextDocumentIdentifier,
-    TextDocumentContentChangeEvent,
-    TextDocumentItem,
     Position,
     Range,
 )
@@ -98,6 +82,11 @@ class ProofCheckResult:
             new_dataset_file,
         )
 
+@dataclass
+class ProofInfo:
+    proof_term: Term
+    prefix_steps: list[CStep]
+    proof_point: int
 
 
 class ProofManager:
@@ -105,65 +94,40 @@ class ProofManager:
 
     def __init__(
         self,
-        file_path: str,
         file_context: FileContext,
-        proof_term: Term,
-        prefix_steps: list[CStep],
-        proof_point: int,
+        proof_info: ProofInfo,
         lm_formatter: LmFormatter,
         file_info: FileInfo,
         sentence_db: SentenceDB,
         split: Split,
-        data_loc: str,
+        data_loc: Path,
     ) -> None:
-        self.file_path = file_path
+        self.file_context = file_context
+        self.proof_info = proof_info
         self.lm_formatter = lm_formatter
-
-        self.sentence_db = sentence_db
-
         self.file_info = file_info
+        self.sentence_db = sentence_db
         self.split = split
         self.data_loc = data_loc
-
-        self.__workspace_loc = os.path.abspath(os.path.join(self.data_loc, self.file_info.workspace))
-        self.prefix_steps = prefix_steps
-        self.file_prefix = "".join([s.text for s in prefix_steps]) 
-        self.proof_term = proof_term
-        self.proof_point = proof_point
-        self.file_context = file_context
-
-        self.workspace_uri= f"file://{self.__workspace_loc}"
         self.__start_clients()
 
-
-        # self.goal_file_path = get_fresh_path(file_dir, "aux_goals.v")
-        # self.goal_file_uri = f"file://{self.goal_file_path}"
-        # self.goal_client_root_version = 1
-        # self.aux_client.didOpen(
-        #     TextDocumentItem(
-        #         self.goal_file_uri, "coq", self.goal_file_version, self.file_prefix
-        #     )
-        # )
-    def __restart_clients(self) -> None:
-        #self.aux_client.close()
-        if os.path.exists(self.fast_aux_file_path):
-            os.remove(self.fast_aux_file_path)
-        self.fast_client.close()
-        self.__start_clients()
-    
     def __start_clients(self) -> None:
-        file_dir = os.path.dirname(self.file_path)
-        file_basename = os.path.basename(self.file_path)
-        self.fast_aux_file_path = os.path.abspath(get_fresh_path(file_dir, f"aux_fast_{file_basename}"))
+        self.fast_aux_file_path = get_fresh_path(Path("."), str(self.file_loc.name))
         fast_aux_client = FastLspClient(self.workspace_uri, timeout=60)
         fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
         self.fast_client = ClientWrapper(fast_aux_client, fast_aux_file_uri)
-
-        # self.aux_file_path = os.path.abspath(get_fresh_path(file_dir, f"aux_{file_basename}"))
-        # aux_file_uri = f"file://{self.aux_file_path}"
-        # aux_client = CoqLspClient(self.workspace_uri, timeout=2)
-        # self.aux_client = ClientWrapper(aux_client, aux_file_uri)
-
+    
+    @property
+    def file_prefix(self) -> str:
+        return "".join([s.text for s in self.proof_info.prefix_steps])
+    
+    @property
+    def file_loc(self) -> Path:
+        return self.data_loc / self.file_info.file
+    
+    @property
+    def workspace_uri(self) -> str:
+        return f"file://{(self.data_loc / self.file_info.workspace).resolve()}"
 
     def get_proof_shell(
         self, cur_steps: list[str], cur_goals: GoalAnswer, theorem: dataset_file.Term
@@ -223,7 +187,7 @@ class ProofManager:
     def get_goal_record(self, steps: list[CStep]) -> Optional[GoalRecord]:
         if not isinstance(self.lm_formatter, ProofRetrievalFormatter):
             return None
-        new_step_idx = self.proof_point + len(steps)
+        new_step_idx = self.proof_info.proof_point + len(steps)
         end_pos = steps[new_step_idx].ast.range.end
         goal_dict: dict[int, Optional[GoalAnswer]] = {}
         record, version = get_goal_record(
@@ -255,10 +219,10 @@ class ProofManager:
         try:
             steps = self.fast_client.write_and_get_steps(contents)
         except ResponseError:
-            self.__restart_clients()
+            #self.__restart_clients()
             return ProofCheckResult.get_invalid()
         except TimeoutError:
-            self.__restart_clients()
+            #self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
         if not self.check_valid(self.fast_client.client):
@@ -270,10 +234,10 @@ class ProofManager:
         try:
             current_goals = self.fast_client.client.proof_goals(TextDocumentIdentifier(self.fast_client.file_uri), farther_end) 
         except ResponseError:
-            self.__restart_clients()
+            #self.__restart_clients()
             return ProofCheckResult.get_invalid()
         except TimeoutError:
-            self.__restart_clients()
+            #self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
         if current_goals is None:
@@ -330,7 +294,7 @@ class ProofManager:
             data_loc=self.data_loc,
             ground_truth_steps=None, # Not doing this right now
             key_record=goal_record,
-            cutoff_idx=self.proof_point,
+            cutoff_idx=self.proof_info.proof_point,
         )
         return example
 
