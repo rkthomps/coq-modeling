@@ -1,27 +1,41 @@
 from __future__ import annotations
 from typing import Any
 import random
+from dataclasses import dataclass
 
 from premise_selection.rerank_example import RerankExample
 from data_management.dataset_file import FocusedStep, Proof, DatasetFile, Sentence
-from model_deployment.premise_model_wrapper import (
-    PremiseModelWrapper,
-    premise_wrapper_from_conf,
-    get_ranked_premise_generator,
-    move_prem_wrapper_to,
+from model_deployment.premise_client import (
+    PremiseConf,
+    PremiseClient,
+    premise_client_from_conf,
+    premise_conf_from_yaml,
 )
 
 
-class RerankFormatter:
+@dataclass
+class RerankFormatterConf:
     ALIAS = "basic"
+    premise_conf: PremiseConf
+    consider_num: int
+    negatives_per_positive: int
 
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> RerankFormatterConf:
+        premise_conf = premise_conf_from_yaml(yaml_data)
+        consider_num = yaml_data["consider_num"]
+        negatives_per_positive = yaml_data["negatives_per_positive"]
+        return cls(premise_conf, consider_num, negatives_per_positive)
+
+
+class RerankFormatter:
     def __init__(
         self,
-        premise_wrapper: PremiseModelWrapper,
+        premise_client: PremiseClient,
         consider_num: int,
         negatives_per_positive: int,
     ) -> None:
-        self.premise_wrapper = premise_wrapper
+        self.premise_client = premise_client
         self.consider_num = consider_num
         self.negatives_per_positive = negatives_per_positive
 
@@ -31,15 +45,13 @@ class RerankFormatter:
         proof: Proof,
         dp_obj: DatasetFile,
     ) -> list[RerankExample]:
-        filtered_result = (
-            self.premise_wrapper.premise_filter.get_pos_and_avail_premises(
-                step, proof, dp_obj
-            )
+        filtered_result = self.premise_client.premise_filter.get_pos_and_avail_premises(
+            step, proof, dp_obj
         )
-        ranked_premises = get_ranked_premise_generator(
-            self.premise_wrapper, step, proof, filtered_result.avail_premises
+        ranked_premises = self.premise_client.get_ranked_premise_generator(
+            step, proof, filtered_result.avail_premises
         )
-        formatted_context = self.premise_wrapper.context_format.format(step, proof)
+        formatted_context = self.premise_client.context_format.format(step, proof)
 
         negative_premise_bank: list[Sentence] = []
         for i, premise in enumerate(ranked_premises):
@@ -51,7 +63,7 @@ class RerankFormatter:
 
         examples: list[RerankExample] = []
         for pos_premise in filtered_result.pos_premises:
-            formatted_pos_premise = self.premise_wrapper.premise_format.format(
+            formatted_pos_premise = self.premise_client.premise_format.format(
                 pos_premise
             )
             examples.append(
@@ -64,7 +76,7 @@ class RerankFormatter:
                     negative_premise_bank, self.negatives_per_positive
                 )
             for negative in negatives:
-                formatted_neg_premise = self.premise_wrapper.premise_format.format(
+                formatted_neg_premise = self.premise_client.premise_format.format(
                     negative
                 )
                 examples.append(
@@ -72,12 +84,7 @@ class RerankFormatter:
                 )
         return examples
 
-    def move_to(self, cuda_device: str) -> None:
-        move_prem_wrapper_to(self.premise_wrapper, cuda_device)
-
     @classmethod
-    def from_conf(cls, config: Any) -> RerankFormatter:
-        premise_wrapper = premise_wrapper_from_conf(config["premise_wrapper"])
-        consider_num = config["consider_num"]
-        negatives_per_positive = config["negatives_per_positive"]
-        return cls(premise_wrapper, consider_num, negatives_per_positive)
+    def from_conf(cls, conf: RerankFormatterConf) -> RerankFormatter:
+        premise_client = premise_client_from_conf(conf.premise_conf)
+        return cls(premise_client, conf.consider_num, conf.negatives_per_positive)
