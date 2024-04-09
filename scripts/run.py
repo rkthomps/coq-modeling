@@ -1,7 +1,10 @@
 import sys, os
 import pickle
+import time
+import signal
 
 import argparse
+import requests
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
@@ -27,6 +30,7 @@ from util.constants import PREMISE_DATA_CONF_NAME, DATA_CONF_NAME, CLEAN_CONFIG
 TopLevelConf = LmDatasetConf | TestProofConf
 
 next_port = 8000
+open_servers: list[str] = []
 started_processes: list[subprocess.Popen[bytes]] = []
 
 SELECT_SERVER_SCRIPT = Path("src/model_deployment/select_server.py")
@@ -60,7 +64,9 @@ def start_select_servers(select_conf: SelectConf, use_devices: list[int]) -> lis
         env = os.environ | {"CUDA_VISIBLE_DEVICES": f"{device}"}
         command = __make_select_command(select_conf)
         process = subprocess.Popen(command, env=env)
-        urls.append(f"http//localhost:{next_port}")
+        url = f"http://localhost:{next_port}"
+        open_servers.append(url)
+        urls.append(url)
         next_port += 1
         started_processes.append(process)
     return urls
@@ -128,12 +134,14 @@ def start_tactic_gen_servers(
         command = [
             "python3",
             TACTIC_GEN_SERVER_SCRIPT,
-            "local-fid",
+            "fid-local",
             f"{conf.checkpoint_loc}",
             f"{next_port}",
         ]
         process = subprocess.Popen(command, env=env)
-        urls.append(f"http//localhost:{next_port}")
+        url = f"http://localhost:{next_port}"
+        open_servers.append(url)
+        urls.append(url)
         next_port += 1
         started_processes.append(process)
     return urls
@@ -202,6 +210,24 @@ class CommandNotFoundError(Exception):
     pass
 
 
+class ServerFailedError(Exception):
+    pass
+
+
+def wait_for_servers():
+    print(open_servers)
+    for process, server_url in zip(started_processes, open_servers):
+        while True:
+            try:
+                poll_result = subprocess.Popen.poll(process)
+                if poll_result is not None:
+                    raise ServerFailedError
+                response = requests.get(server_url)
+                break
+            except requests.exceptions.RequestException:
+                continue
+
+
 if __name__ == "__main__":
     command_list = ", ".join(COMMANDS.keys())
     parser = argparse.ArgumentParser()
@@ -228,16 +254,18 @@ if __name__ == "__main__":
 
     top_level_conf = command.conf.from_yaml(yaml_conf)
     print(top_level_conf)
-    clean_top_level_conf = start_servers(top_level_conf, args.devices)
-
     clean_conf_path = Path(f"./{CLEAN_CONFIG}")
-    with clean_conf_path.open("wb") as fout:
-        pickle.dump(clean_top_level_conf, fout)
+    try:
+        clean_top_level_conf = start_servers(top_level_conf, args.devices)
 
-    subprocess.run(["python3", command.py_path])
+        with clean_conf_path.open("wb") as fout:
+            pickle.dump(clean_top_level_conf, fout)
 
-    for p in started_processes:
-        p.kill()
-
-    if clean_conf_path.exists():
-        os.remove(clean_conf_path)
+        print("Waiting for servers to start...")
+        wait_for_servers()
+        subprocess.run(["python3", command.py_path])
+    finally:
+        if clean_conf_path.exists():
+            os.remove(clean_conf_path)
+        for p in started_processes:
+            p.send_signal(signal.SIGINT)

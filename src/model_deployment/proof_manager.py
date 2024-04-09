@@ -113,7 +113,9 @@ class ProofManager:
         self.__start_clients()
 
     def __start_clients(self) -> None:
-        self.fast_aux_file_path = get_fresh_path(Path("."), str(self.file_loc.name))
+        self.fast_aux_file_path = get_fresh_path(
+            Path("."), str(self.file_loc.name)
+        ).resolve()
         fast_aux_client = FastLspClient(self.workspace_uri, timeout=60)
         fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
         self.fast_client = ClientWrapper(fast_aux_client, fast_aux_file_uri)
@@ -217,10 +219,12 @@ class ProofManager:
         contents = f"{self.file_prefix}{partial_proof}"
         try:
             steps = self.fast_client.write_and_get_steps(contents)
-        except ResponseError:
+        except ResponseError as e:
+            _logger.warning(f"Got repsonse error on proof: {partial_proof[-10:]}")
             # self.__restart_clients()
             return ProofCheckResult.get_invalid()
-        except TimeoutError:
+        except TimeoutError as t:
+            _logger.warning(f"Got timeout error on proof: {partial_proof[-10:]}")
             # self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
@@ -234,10 +238,12 @@ class ProofManager:
             current_goals = self.fast_client.client.proof_goals(
                 TextDocumentIdentifier(self.fast_client.file_uri), farther_end
             )
-        except ResponseError:
+        except ResponseError as e:
+            _logger.warning(f"Got repsonse error on proof: {partial_proof[-10:]}")
             # self.__restart_clients()
             return ProofCheckResult.get_invalid()
-        except TimeoutError:
+        except TimeoutError as t:
+            _logger.warning(f"Got timeout error on proof: {partial_proof[-10:]}")
             # self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
@@ -245,7 +251,7 @@ class ProofManager:
             return ProofCheckResult.get_invalid()
         t2 = time.time()
 
-        self.fast_client.client.lsp_endpoint.timeout = 0.5
+        self.fast_client.client.lsp_endpoint.timeout = 5
         print("New check time:", t2 - t1)
 
         # try:

@@ -30,6 +30,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("alias", help="Alias of the model wrapper")
     parser.add_argument("checkpoint_loc", help="Checkpoint of the model wrapper")
-    parser.add_argument("port", help="Port at which to host the model.")
+    parser.add_argument("port", type=int, help="Port at which to host the model.")
     args = parser.parse_args(sys.argv[1:])
-    run_simple("localhost", 4000, application)
+    conf = {
+        "alias": args.alias,
+        "checkpoint_loc": args.checkpoint_loc,
+    }
+    wrapper = wrapper_from_conf(conf)
+    print("serving model at checkpoint ", args.checkpoint_loc)
+    run_simple("localhost", args.port, application)

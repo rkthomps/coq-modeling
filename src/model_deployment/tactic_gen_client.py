@@ -57,7 +57,7 @@ class TacticGenClient:
 
         chosen_url = random.choice(self.urls)
         response = requests.post(chosen_url, json=request_data).json()
-        return ModelResult.from_json(response)
+        return ModelResult.from_json(response["result"])
 
     @classmethod
     def from_conf(cls, conf: TacticGenConf) -> TacticGenClient:
