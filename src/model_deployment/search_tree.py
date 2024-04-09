@@ -4,8 +4,6 @@ from dataclasses import dataclass
 
 import re
 
-from typeguard import typechecked
-
 from data_management.dataset_file import FileContext, Proof
 from data_management.sentence_db import SentenceDB
 from model_deployment.node_score import NodeScore
@@ -13,7 +11,6 @@ from model_deployment.mine_goals import GoalRecord
 from termcolor import colored
 
 
-@typechecked
 class SearchTree:
     def __init__(self, file_contex: FileContext, root: SearchNode) -> None:
         self.file_context = file_contex
@@ -38,7 +35,6 @@ class SearchTree:
         return cls(file_context, root)
 
 
-@typechecked
 class SearchNode:
     uni_sideways_t = "\u251c"
     sideways_bar = "\u2500"

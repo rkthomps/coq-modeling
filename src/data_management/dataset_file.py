@@ -126,6 +126,12 @@ class Sentence:
                     "id": idx_option,
                 }
 
+        return {
+            "type": "stored",
+            "id": self.db_idx,
+        }
+            
+
     @classmethod
     def from_idx(cls, idx: int, sentence_db: SentenceDB) -> Sentence:
         db_sentence = sentence_db.retrieve(idx)

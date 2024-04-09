@@ -173,7 +173,6 @@ class ProofCandidateReversed(ProofCandidate):
 
 
 class ProofRetrievalFormatter:
-    ALIAS = "proof-ret"
     MAX_N_EXAMPLES = 20
 
     def __init__(

@@ -119,6 +119,13 @@ class ProofManager:
         fast_aux_client = FastLspClient(self.workspace_uri, timeout=60)
         fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
         self.fast_client = ClientWrapper(fast_aux_client, fast_aux_file_uri)
+    
+    def __restart_clients(self) -> None:
+        if os.path.exists(self.fast_aux_file_path):
+            os.remove(self.fast_aux_file_path)
+        self.fast_client.close()
+        self.__start_clients()
+        
 
     @property
     def file_prefix(self) -> str:
@@ -189,7 +196,7 @@ class ProofManager:
     def get_goal_record(self, steps: list[CStep]) -> Optional[GoalRecord]:
         if not isinstance(self.lm_formatter, ProofRetrievalFormatter):
             return None
-        new_step_idx = self.proof_info.proof_point + len(steps)
+        new_step_idx = len(steps)  - 1
         end_pos = steps[new_step_idx].ast.range.end
         goal_dict: dict[int, Optional[GoalAnswer]] = {}
         record, version = get_goal_record(
@@ -221,11 +228,11 @@ class ProofManager:
             steps = self.fast_client.write_and_get_steps(contents)
         except ResponseError as e:
             _logger.warning(f"Got repsonse error on proof: {partial_proof[-10:]}")
-            # self.__restart_clients()
+            self.__restart_clients()
             return ProofCheckResult.get_invalid()
         except TimeoutError as t:
             _logger.warning(f"Got timeout error on proof: {partial_proof[-10:]}")
-            # self.__restart_clients()
+            self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
         if not self.check_valid(self.fast_client.client):
@@ -240,11 +247,11 @@ class ProofManager:
             )
         except ResponseError as e:
             _logger.warning(f"Got repsonse error on proof: {partial_proof[-10:]}")
-            # self.__restart_clients()
+            self.__restart_clients()
             return ProofCheckResult.get_invalid()
         except TimeoutError as t:
             _logger.warning(f"Got timeout error on proof: {partial_proof[-10:]}")
-            # self.__restart_clients()
+            self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
         if current_goals is None:
