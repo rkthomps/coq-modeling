@@ -82,6 +82,7 @@ class ProofCheckResult:
             new_dataset_file,
         )
 
+
 @dataclass
 class ProofInfo:
     proof_term: Term
@@ -116,15 +117,15 @@ class ProofManager:
         fast_aux_client = FastLspClient(self.workspace_uri, timeout=60)
         fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
         self.fast_client = ClientWrapper(fast_aux_client, fast_aux_file_uri)
-    
+
     @property
     def file_prefix(self) -> str:
         return "".join([s.text for s in self.proof_info.prefix_steps])
-    
+
     @property
     def file_loc(self) -> Path:
         return self.data_loc / self.file_info.file
-    
+
     @property
     def workspace_uri(self) -> str:
         return f"file://{(self.data_loc / self.file_info.workspace).resolve()}"
@@ -173,11 +174,10 @@ class ProofManager:
         )
 
     def get_initial_context(self) -> Optional[DatasetFile]:
-        initial_proof_result = self.check_proof("", self.proof_term)
+        initial_proof_result = self.check_proof("", self.proof_info.proof_term)
         assert initial_proof_result.new_proof is not None
         return DatasetFile(self.file_context, [initial_proof_result.new_proof])
 
-    
     def check_valid(self, client: FastLspClient) -> bool:
         for diagnostic in client.lsp_endpoint.diagnostics[self.fast_client.file_uri]:
             if diagnostic.severity == 1:
@@ -202,7 +202,6 @@ class ProofManager:
         self.fast_client.set_version(version)
         return record
 
-
     def check_proof(
         self, partial_proof: str, theorem: dataset_file.Term
     ) -> ProofCheckResult:
@@ -219,29 +218,31 @@ class ProofManager:
         try:
             steps = self.fast_client.write_and_get_steps(contents)
         except ResponseError:
-            #self.__restart_clients()
+            # self.__restart_clients()
             return ProofCheckResult.get_invalid()
         except TimeoutError:
-            #self.__restart_clients()
+            # self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
         if not self.check_valid(self.fast_client.client):
             return ProofCheckResult.get_invalid()
-        partial_steps = [s.text for s in steps[(self.proof_point + 1) :]]
-        #end_pos = steps[-1].ast.range.end
+        partial_steps = [s.text for s in steps[(self.proof_info.proof_point + 1) :]]
+        # end_pos = steps[-1].ast.range.end
         num_lines = len(contents.split("\n"))
         farther_end = Position(num_lines + 1, 0)
         try:
-            current_goals = self.fast_client.client.proof_goals(TextDocumentIdentifier(self.fast_client.file_uri), farther_end) 
+            current_goals = self.fast_client.client.proof_goals(
+                TextDocumentIdentifier(self.fast_client.file_uri), farther_end
+            )
         except ResponseError:
-            #self.__restart_clients()
+            # self.__restart_clients()
             return ProofCheckResult.get_invalid()
         except TimeoutError:
-            #self.__restart_clients()
+            # self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
         if current_goals is None:
-            return ProofCheckResult.get_invalid() 
+            return ProofCheckResult.get_invalid()
         t2 = time.time()
 
         self.fast_client.client.lsp_endpoint.timeout = 0.5
@@ -292,7 +293,7 @@ class ProofManager:
             file_info=self.file_info,
             split=self.split,
             data_loc=self.data_loc,
-            ground_truth_steps=None, # Not doing this right now
+            ground_truth_steps=None,  # Not doing this right now
             key_record=goal_record,
             cutoff_idx=self.proof_info.proof_point,
         )

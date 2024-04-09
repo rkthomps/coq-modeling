@@ -8,17 +8,21 @@ import math
 import requests
 from dataclasses import dataclass
 
-from data_management.sentence_db import SentenceDB 
+from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import FocusedStep, Proof, Sentence
-from premise_selection.premise_formatter import ContextFormat, PremiseFormat, CONTEXT_ALIASES, PREMISE_ALIASES
+from premise_selection.premise_formatter import (
+    ContextFormat,
+    PremiseFormat,
+    CONTEXT_ALIASES,
+    PREMISE_ALIASES,
+)
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
-from premise_selection.premise_vector_db import PremiseVectorDB
 
 
 @dataclass
 class SelectConf:
     ALIAS = "select"
-    checkpoint_loc: Path 
+    checkpoint_loc: Path
     vector_db_loc: Optional[str]
 
     @classmethod
@@ -40,6 +44,7 @@ class TFIdfConf:
             yaml_data["premise_format_alias"],
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
         )
+
 
 @dataclass
 class BM250OkapiConf:
@@ -64,7 +69,7 @@ class SelectClientConf:
     context_format_alias: str
     premise_format_alias: str
     premise_filter_conf: PremiseFilterConf
-    sentence_db_loc: Path 
+    sentence_db_loc: Path
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectClientConf:
@@ -75,6 +80,7 @@ class SelectClientConf:
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
             Path(yaml_data["sentence_db_loc"]),
         )
+
 
 PremiseConf = SelectConf | SelectClientConf | TFIdfConf | BM250OkapiConf
 
@@ -105,7 +111,6 @@ def premise_client_from_conf(conf: PremiseConf) -> PremiseClient:
             return BM25OkapiClient.from_conf(conf)
 
 
-
 class SelectPremiseClient:
     def __init__(
         self,
@@ -113,9 +118,9 @@ class SelectPremiseClient:
         context_format: type[ContextFormat],
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
-        sentence_db: SentenceDB
+        sentence_db: SentenceDB,
     ):
-        self.urls = urls 
+        self.urls = urls
         self.context_format = context_format
         self.premise_format = premise_format
         self.premise_filter = premise_filter
@@ -136,23 +141,24 @@ class SelectPremiseClient:
                 other_premises.append(p)
                 orig_idxs_other.append(i)
 
-        other_premises_json = [s.to_json(self.sentence_db, False) for s in other_premises]
+        other_premises_json = [
+            s.to_json(self.sentence_db, False) for s in other_premises
+        ]
         request_data = {
             "method": "get_scores",
             "params": [context_str, idxs, other_premises_json],
             "jsonrpc": "2.0",
-            "id": 0, 
+            "id": 0,
         }
-        request_url = random.choice(self.urls) 
+        request_url = random.choice(self.urls)
         response = requests.post(request_url, json=request_data).json()
 
         orig_idxs = orig_idxs + orig_idxs_other
-        new_order = sorted(range(len(orig_idxs)), key=lambda idx: orig_idxs[idx]) 
+        new_order = sorted(range(len(orig_idxs)), key=lambda idx: orig_idxs[idx])
         scores: list[float] = []
         for new_idx in new_order:
             scores.append(response[new_idx])
         return scores
-
 
     def get_ranked_premise_generator(
         self, step: FocusedStep, proof: Proof, premises: list[Sentence]
@@ -167,7 +173,7 @@ class SelectPremiseClient:
         )
         for idx in arg_sorted_premise_scores:
             yield premises[idx]
-    
+
     @classmethod
     def from_conf(cls, conf: SelectClientConf) -> SelectPremiseClient:
         return cls(
@@ -177,11 +183,11 @@ class SelectPremiseClient:
             PremiseFilter.from_conf(conf.premise_filter_conf),
             SentenceDB.load(conf.sentence_db_loc),
         )
-        
 
 
 class TFIdfClient:
     ALIAS = "tfidf"
+
     def __init__(
         self,
         context_format: type[ContextFormat],
@@ -277,7 +283,7 @@ class TFIdfClient:
         )
         for idx in arg_sorted_premise_scores:
             yield premises[idx]
-    
+
     @classmethod
     def from_conf(cls, conf: TFIdfConf) -> TFIdfClient:
         return TFIdfClient(
@@ -349,7 +355,6 @@ class BM25OkapiClient:
             similarities.append(doc_similarity)
         return similarities
 
-
     def get_ranked_premise_generator(
         self,
         step: FocusedStep,
@@ -366,8 +371,7 @@ class BM25OkapiClient:
         )
         for idx in arg_sorted_premise_scores:
             yield premises[idx]
-        
-    
+
     @classmethod
     def from_conf(cls, conf: BM250OkapiConf) -> BM25OkapiClient:
         return cls(
@@ -377,6 +381,4 @@ class BM25OkapiClient:
         )
 
 
-PremiseClient = (
-    SelectPremiseClient | TFIdfClient | BM25OkapiClient
-)
+PremiseClient = SelectPremiseClient | TFIdfClient | BM25OkapiClient

@@ -34,6 +34,7 @@ src/data_management/premise-confs/**
 !src/data_management/premise-confs/premise_basic.yaml
 src/data_management/tactic-confs/**
 !src/data_management/tactic-confs/random-sample-basic.yaml
+confs
 
 # - Training premise dataset
 src/premise_selection/confs/**

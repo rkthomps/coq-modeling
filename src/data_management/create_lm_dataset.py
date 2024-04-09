@@ -6,14 +6,20 @@ import argparse
 import multiprocessing as mp
 from queue import Queue
 from dataclasses import dataclass
-from pathlib import Path 
+from pathlib import Path
 
 
 import json
 from tqdm import tqdm
 import yaml
 
-from tactic_gen.lm_example import LmExample, LmFormatter, FormatterConf, formatter_from_conf , formatter_conf_from_yaml
+from tactic_gen.lm_example import (
+    LmExample,
+    LmFormatter,
+    FormatterConf,
+    formatter_from_conf,
+    formatter_conf_from_yaml,
+)
 from data_management.splits import (
     FileInfo,
     Split,
@@ -36,11 +42,11 @@ _logger = get_basic_logger(__name__)
 
 @dataclass
 class LmDatasetConf:
-    train_sample_loc: Path 
-    val_sample_loc: Path 
-    test_sample_loc: Path 
-    sentence_db_loc: Path 
-    output_dataset_loc: Path 
+    train_sample_loc: Path
+    val_sample_loc: Path
+    test_sample_loc: Path
+    sentence_db_loc: Path
+    output_dataset_loc: Path
     lm_formatter_conf: FormatterConf
 
     @classmethod
@@ -191,7 +197,7 @@ if __name__ == "__main__":
         num_procs = args.num_procs
         if num_procs < 2:
             raise ValueError("Data processing needs at least 2 processes.")
-    
+
     with open(args.lm_data_config_loc, "r") as fin:
         yaml_data = yaml.load(fin, Loader=yaml.Loader)
         data_conf = LmDatasetConf.from_yaml(yaml_data)

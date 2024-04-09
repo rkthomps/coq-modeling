@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from typing import Any, Optional
 import json
 import pickle
@@ -12,7 +13,11 @@ from model_deployment.searcher import (
     SuccessfulSearch,
     FailedSearch,
 )
-from model_deployment.tactic_gen_client import TacticGenConf, TacticGenClient
+from model_deployment.tactic_gen_client import (
+    TacticGenConf,
+    TacticGenClient,
+    tactic_gen_conf_from_yaml,
+)
 from model_deployment.proof_manager import ProofManager, ProofInfo
 from model_deployment.node_score import NODE_SCORE_ALIASES
 
@@ -36,23 +41,23 @@ class TestProofConf:
     timeout: int
     branching_factor: int
     depth_limit: int
-    max_exapansions: int
-    tactic_conf: TacticGenConf 
+    max_expansions: int
+    tactic_conf: TacticGenConf
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> TestProofConf:
         return cls(
             Path(yaml_data["test_file"]),
-            Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["data_split_loc"]),
             yaml_data["theorem_name"],
             yaml_data["node_score_alias"],
             yaml_data["timeout"],
             yaml_data["branching_factor"],
             yaml_data["depth_limit"],
-            yaml_data["max_exapansions"],
-            TacticGenClientConf.from_yaml(yaml_data["tactic_client_conf"]),
+            yaml_data["max_expansions"],
+            tactic_gen_conf_from_yaml(yaml_data["tactic_conf"]),
         )
 
 
@@ -72,16 +77,16 @@ PROOF_KEYWORDS = ["Lemma", "Theorem", "Proposition", "Remark", "Example", "Prope
 
 def get_term(dp_file: DatasetFile, theorem_str: str) -> Term:
     for proof in dp_file.proofs:
-        if proof.theorem.term.text == theorem_str:
+        if proof.theorem.term.text.strip() == theorem_str.strip():
             return proof.theorem
     raise ValueError(f"{theorem_str} not found in {dp_file.file_context.file}")
 
 
 def get_proof_info(
-    file_info: FileInfo, dp_file: DatasetFile, theorem_name: str
+    data_loc: Path, file_info: FileInfo, dp_file: DatasetFile, theorem_name: str
 ) -> ProofInfo:
-    file_loc = Path(file_info.file).resolve()
-    workspace_loc = Path(file_info.workspace).resolve()
+    file_loc = (data_loc / file_info.file).resolve()
+    workspace_loc = (data_loc / file_info.workspace).resolve()
     with CoqFile(str(file_loc), workspace=str(workspace_loc)) as coq_file:
         for i, step in enumerate(coq_file.steps):
             if (
@@ -101,7 +106,7 @@ def test_proof(conf: TestProofConf):
     file_info, split = file_info_tup
     file_dp = file_info.get_dp(conf.data_loc, sentence_db)
     tactic_client = TacticGenClient.from_conf(conf.tactic_conf)
-    proof_info = get_proof_info(file_info, file_dp, conf.theorem_name)
+    proof_info = get_proof_info(conf.data_loc, file_info, file_dp, conf.theorem_name)
     with ProofManager(
         file_dp.file_context,
         proof_info,
@@ -113,10 +118,10 @@ def test_proof(conf: TestProofConf):
     ) as proof_manager:
         tree_manager = SearchTreeManager(
             tactic_client,
-            proof_manager, 
+            proof_manager,
             NODE_SCORE_ALIASES[conf.node_score_alias],
             conf.branching_factor,
-            conf.max_exapansions,
+            conf.max_expansions,
             conf.depth_limit,
             conf.timeout,
         )
@@ -141,8 +146,8 @@ def test_proof(conf: TestProofConf):
 
 
 if __name__ == "__main__":
-    conf_loc = Path(f"./{CLEAN_CONFIG}") 
+    conf_loc = Path(f"./{CLEAN_CONFIG}")
     with conf_loc.open("rb") as fin:
         conf = pickle.load(fin)
-        assert isinstance(conf, TestProofConf)
+        assert "TestProofConf" in str(conf.__class__)  # isinstance didn't work
         test_proof(conf)

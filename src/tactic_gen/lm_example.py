@@ -9,11 +9,20 @@ import ipdb
 import heapq
 from dataclasses import dataclass
 
-
 from data_management.splits import FileInfo
 from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence, Goal
-from tactic_gen.n_step_sampler import NStepSampler, NStepConf, n_step_conf_from_yaml, n_step_from_conf
-from model_deployment.premise_client import PremiseClient, PremiseConf, premise_conf_from_yaml, premise_client_from_conf
+from tactic_gen.n_step_sampler import (
+    NStepSampler,
+    NStepConf,
+    n_step_conf_from_yaml,
+    n_step_from_conf,
+)
+from model_deployment.premise_client import (
+    PremiseClient,
+    PremiseConf,
+    premise_conf_from_yaml,
+    premise_client_from_conf,
+)
 from model_deployment.mine_goals import FileGoals, GoalRecord
 from model_deployment.transform_ast import AdjTree
 
@@ -56,33 +65,40 @@ def fmt_goals(goals: list[Goal]) -> str:
 @dataclass
 class BasicFormatterConf:
     ALIAS = "basic"
-    n_step_conf: NStepConf 
+    n_step_conf: NStepConf
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> BasicFormatterConf:
-        n_step_conf = n_step_conf_from_yaml(yaml_data["n_step_conf"])
+        n_step_conf = n_step_conf_from_yaml(yaml_data["n_step_sampler"])
         return cls(n_step_conf)
+
 
 @dataclass
 class ProofRetrievalFormatterConf:
     ALIAS = "proof"
     proof_bank_loc: str
-    n_step_conf: NStepConf 
+    n_step_conf: NStepConf
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofRetrievalFormatterConf:
-        return cls(yaml_data["proof_bank_loc"], n_step_conf_from_yaml(yaml_data["n_step_conf"]))
+        return cls(
+            yaml_data["proof_bank_loc"],
+            n_step_conf_from_yaml(yaml_data["n_step_sampler"]),
+        )
 
 
 @dataclass
-class PremiseFormatterConf: 
+class PremiseFormatterConf:
     ALIAS = "premise"
     premise_conf: PremiseConf
     n_step_conf: NStepConf
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseFormatterConf:
-        return cls(premise_conf_from_yaml(yaml_data["premise_conf"]), n_step_conf_from_yaml(yaml_data["n_step_conf"]))
+        return cls(
+            premise_conf_from_yaml(yaml_data["premise_conf"]),
+            n_step_conf_from_yaml(yaml_data["n_step_sampler"]),
+        )
 
 
 FormatterConf = BasicFormatterConf | ProofRetrievalFormatterConf | PremiseFormatterConf
@@ -112,9 +128,7 @@ def formatter_from_conf(conf: FormatterConf) -> LmFormatter:
 
 
 class BasicFormatter:
-    def __init__(
-        self, n_step_sampler: NStepSampler
-    ) -> None:
+    def __init__(self, n_step_sampler: NStepSampler) -> None:
         self.n_step_sampler = n_step_sampler
 
     def example_from_step(
@@ -134,7 +148,6 @@ class BasicFormatter:
     @classmethod
     def from_conf(cls, conf: BasicFormatterConf) -> BasicFormatter:
         return cls(n_step_from_conf(conf.n_step_conf))
-
 
 
 class ProofCandidate:
@@ -159,8 +172,6 @@ class ProofCandidateReversed(ProofCandidate):
         return other.distance < self.distance
 
 
-
-
 class ProofRetrievalFormatter:
     ALIAS = "proof-ret"
     MAX_N_EXAMPLES = 20
@@ -172,9 +183,7 @@ class ProofRetrievalFormatter:
     ) -> None:
         self.proof_bank_loc = proof_bank_loc
         self.n_step_sampler = n_step_sampler
-        self.basic_formatter = BasicFormatter(
-            self.n_step_sampler
-        )
+        self.basic_formatter = BasicFormatter(self.n_step_sampler)
 
     @functools.lru_cache()
     def __get_file_goals(self, key: str) -> Optional[FileGoals]:
@@ -322,9 +331,7 @@ class PremiseFormatter:
     ) -> None:
         self.premise_client = premise_client
         self.n_step_sampler = n_step_sampler
-        self.__basic_formatter = BasicFormatter(
-            self.n_step_sampler
-        )
+        self.__basic_formatter = BasicFormatter(self.n_step_sampler)
 
     def get_premises(
         self,
@@ -369,8 +376,5 @@ class PremiseFormatter:
             n_step_from_conf(conf.n_step_conf),
         )
 
-LmFormatter = (
-    BasicFormatter
-    | PremiseFormatter
-    | ProofRetrievalFormatter
-)
+
+LmFormatter = BasicFormatter | PremiseFormatter | ProofRetrievalFormatter
