@@ -152,6 +152,7 @@ def start_servers_tactic_gen(
 ) -> TacticGenClientConf:
     match conf:
         case FidTacticGenConf():
+            assert conf.checkpoint_loc.exists()
             assert 0 < len(conf.checkpoint_loc.parents)
             model_loc = conf.checkpoint_loc.parents[0]
             lm_data_conf = model_loc / DATA_CONF_NAME
