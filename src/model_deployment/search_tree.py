@@ -30,7 +30,9 @@ class SearchTree:
 
     @classmethod
     def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> SearchTree:
-        file_context = FileContext.context_from_lines(json_data["file_context"], sentence_db)
+        file_context = FileContext.context_from_lines(
+            json_data["file_context"], sentence_db
+        )
         root = SearchNode.from_json(json_data["root"], sentence_db)
         return cls(file_context, root)
 
@@ -75,7 +77,6 @@ class SearchNode:
         else:
             self.children = children
         self.depth = depth
-    
 
     def total_proof_str(self) -> str:
         return self.steps_to_str(self.combined_proof_steps)
@@ -97,15 +98,45 @@ class SearchNode:
         subtree_max_creation_times = [c.get_last_node_time() for c in self.children]
         return max([my_creation_time] + subtree_max_creation_times)
 
-    def get_deepest_node(self, cur_depth: int = 0) -> tuple[SearchNode, int]:
+    def __get_last_node_expanded(self) -> Optional[int]:
+        if self.expanded is None:
+            return None
+        child_max_expanded: int = self.expanded
+        for c in self.children:
+            c_expanded = c.__get_last_node_expanded()
+            if c_expanded is not None and child_max_expanded < c_expanded:
+                child_max_expanded = c_expanded
+        return child_max_expanded
+
+    def get_last_node_expanded(self) -> int:
+        max_expanded = self.__get_last_node_expanded()
+        if max_expanded is None:
+            return 0
+        return max_expanded
+
+    def size(self) -> int:
+        return 1 + sum([c.size() for c in self.children])
+
+    def num_errors(self) -> int:
+        self_error = 0 if self.valid else 1
+        return self_error + sum([c.num_errors() for c in self.children])
+
+    def num_pruned(self) -> int:
+        self_pruned = 1 if not self.makes_progress and self.valid else 0
+        return self_pruned + sum([c.num_pruned() for c in self.children])
+
+    def __get_deepest_node(self, cur_depth: int) -> tuple[SearchNode, int]:
         cur_max_depth = cur_depth
         cur_deepest_node = self
         for child in self.children:
-            child_deepest_node, depth = child.get_deepest_node(cur_depth + 1)
-            if depth > cur_max_depth:
+            child_deepest_node, depth = child.__get_deepest_node(cur_depth + 1)
+            if cur_max_depth < depth:
                 cur_max_depth = depth
                 cur_deepest_node = child_deepest_node
         return cur_deepest_node, cur_max_depth
+
+    def get_deepest_node(self) -> tuple[SearchNode, int]:
+        return self.__get_deepest_node(0)
 
     def pretty_print(
         self,
@@ -170,7 +201,9 @@ class SearchNode:
             "combined_proof_steps": self.combined_proof_steps,
             "score": self.score.to_json(),
             "creation_time": self.creation_time,
-            "proof": self.proof.to_json(sentences_db, False) if self.proof else self.proof,
+            "proof": (
+                self.proof.to_json(sentences_db, False) if self.proof else self.proof
+            ),
             "goal_record": self.goal_record.to_json() if self.goal_record else None,
             "expanded": self.expanded,
             "model_input": self.model_input,
@@ -197,7 +230,9 @@ class SearchNode:
 
         expanded = json_data["expanded"]
         model_input = json_data["model_input"] if "model_input" in json_data else None
-        children = [SearchNode.from_json(c, sentences_db) for c in json_data["children"]]
+        children = [
+            SearchNode.from_json(c, sentences_db) for c in json_data["children"]
+        ]
         redundant_to_str = json_data["redundant_to_str"]
         return cls(
             valid,

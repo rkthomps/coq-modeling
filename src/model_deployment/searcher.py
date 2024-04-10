@@ -28,9 +28,12 @@ _logger = get_basic_logger(__name__)
 class SuccessfulSearch:
     ALIAS = "success"
 
-    def __init__(self, search_tree: SearchTree, qed_node: SearchNode) -> None:
+    def __init__(
+        self, search_tree: SearchTree, qed_node: SearchNode, total_model_time: float
+    ) -> None:
         self.search_tree = search_tree
         self.qed_node = qed_node
+        self.total_model_time = total_model_time
 
     def get_proof(self) -> str:
         return self.qed_node.steps_to_str(self.qed_node.combined_proof_steps)
@@ -39,28 +42,35 @@ class SuccessfulSearch:
         return {
             "search_tree": self.search_tree.to_json(sentence_db),
             "qed_node": self.qed_node.to_json(sentence_db),
+            "total_model_time": self.total_model_time,
         }
 
     @classmethod
     def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Any:
         search_tree = SearchTree.from_json(json_data["search_tree"], sentence_db)
         qed_node = SearchNode.from_json(json_data["qed_node"], sentence_db)
-        return cls(search_tree, qed_node)
+        total_model_time = json_data["total_model_time"]
+        return cls(search_tree, qed_node, total_model_time)
 
 
 class FailedSearch:
     ALIAS = "failure"
 
-    def __init__(self, search_tree: SearchTree) -> None:
+    def __init__(self, search_tree: SearchTree, total_model_time: float) -> None:
         self.search_tree = search_tree
+        self.total_model_time = total_model_time
 
     def to_json(self, sentence_db: SentenceDB) -> Any:
-        return {"search_tree": self.search_tree.to_json(sentence_db)}
+        return {
+            "search_tree": self.search_tree.to_json(sentence_db),
+            "total_model_time": self.total_model_time,
+        }
 
     @classmethod
     def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Any:
         search_tree = SearchTree.from_json(json_data["search_tree"], sentence_db)
-        return cls(search_tree)
+        total_model_time = json_data["total_model_time"]
+        return cls(search_tree, total_model_time)
 
 
 class ErroredSearch:
@@ -141,6 +151,7 @@ class SearchTreeManager:
         final_tactic = False
         makes_progress = True
         self.comparer = AlphaGoalComparer()
+        self.total_model_time = 0
 
         initial_tactic: str = ""
         combined_valid_steps: list[str] = []
@@ -202,12 +213,15 @@ class SearchTreeManager:
                 break
             if len(self.frontier) == 0:
                 break
-            possible_complete_node = self.search_step(i, start, print_proofs)
+            self.proof_manager.fast_client.client.lsp_endpoint.timeout = 5
+            possible_complete_node = self.search_step(i + 1, start, print_proofs)
             if print_trees:
                 self.search_tree.pretty_print(verbose=True)
             if possible_complete_node:
-                return SuccessfulSearch(self.search_tree, possible_complete_node)
-        return FailedSearch(self.search_tree)
+                return SuccessfulSearch(
+                    self.search_tree, possible_complete_node, self.total_model_time
+                )
+        return FailedSearch(self.search_tree, self.total_model_time)
 
     def __get_complete_child_node(
         self,
@@ -326,22 +340,22 @@ class SearchTreeManager:
         """If the search is completed, return the resulting node in
         the proof search tree."""
         leaf_subtree, _ = heapq.heappop(self.frontier)
+        current_proof = "".join(leaf_subtree.combined_proof_steps)
         if print_proofs:
             print(leaf_subtree.score.compute())
-            print("".join(leaf_subtree.combined_proof_steps))
+            print(current_proof)
         leaf_subtree.set_expanded_num(step_num)
         assert leaf_subtree.proof is not None
         dset_file = DatasetFile(self.search_tree.file_context, [leaf_subtree.proof])
         example = self.proof_manager.get_example(dset_file, leaf_subtree.goal_record)
         leaf_subtree.set_model_input(example.input)
-        start_time = time.time_ns()
-        result = self.tactic_client.get_recs(example, self.max_branch)
-        end_time = time.time_ns()
-        _logger.info(f"Model time: {(end_time - start_time) / 1e9}")
+        start_time = time.time()
+        result = self.tactic_client.get_recs(example, self.max_branch, current_proof)
+        end_time = time.time()
+        self.total_model_time += end_time - start_time
         children: list[SearchNode] = []
         next_frontier_pool: list[SearchNode] = []
         next_frontier_goals: list[list[Goal]] = []
-        start_time = time.time_ns()
         for tactic, score, num_tokens in zip(
             result.next_tactic_list, result.score_list, result.num_tokens_list
         ):
@@ -408,7 +422,5 @@ class SearchTreeManager:
                     node.makes_progress = False
             self.frontier = next_frontier
 
-        end_time = time.time_ns()
-        _logger.info(f"Check time: {(end_time - start_time) / 1e9}")
         leaf_subtree.children = children
         return None

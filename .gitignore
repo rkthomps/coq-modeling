@@ -34,6 +34,7 @@ src/data_management/premise-confs/**
 !src/data_management/premise-confs/premise_basic.yaml
 src/data_management/tactic-confs/**
 !src/data_management/tactic-confs/random-sample-basic.yaml
+conf.pkl
 
 # - Training premise dataset
 src/premise_selection/confs/**
@@ -47,6 +48,7 @@ src/tactic_gen/confs/**
 evals-before-*
 evals-small
 evals-bad-imports
+dev-results.csv
 build-coq
 src/evaluation/confs/**
 !src/evaluation/confs/eval.yaml

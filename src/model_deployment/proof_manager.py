@@ -225,11 +225,11 @@ class ProofManager:
         try:
             steps = self.fast_client.write_and_get_steps(contents)
         except ResponseError as e:
-            _logger.warning(f"Got repsonse error on proof: {partial_proof[-10:]}")
+            _logger.warning(f"Got repsonse error on proof: {partial_proof[-30:]}")
             self.__restart_clients()
             return ProofCheckResult.get_invalid()
         except TimeoutError as t:
-            _logger.warning(f"Got timeout error on proof: {partial_proof[-10:]}")
+            _logger.warning(f"Got timeout error on proof: {partial_proof[-30:]}")
             self.__restart_clients()
             return ProofCheckResult.get_invalid()
 
@@ -251,11 +251,12 @@ class ProofManager:
             _logger.warning(f"Got timeout error on proof: {partial_proof[-10:]}")
             self.__restart_clients()
             return ProofCheckResult.get_invalid()
+        self.fast_client.client.lsp_endpoint.timeout = 5
 
         if current_goals is None:
             return ProofCheckResult.get_invalid()
-
-        self.fast_client.client.lsp_endpoint.timeout = 5
+        if current_goals.goals is None:
+            return ProofCheckResult.get_invalid()
 
         # try:
         #     assert "".join(partial_steps) == partial_proof
@@ -281,7 +282,24 @@ class ProofManager:
             )
 
         new_proof = self.get_proof_shell(partial_steps, current_goals, theorem)
-        goal_record = self.get_goal_record(steps)
+        try:
+            goal_record = self.get_goal_record(steps)
+        except ResponseError as e:
+            _logger.warning(f"Got repsonse getting goal record: {partial_proof[-10:]}")
+            self.__restart_clients()
+            goal_record = None
+        except TimeoutError as t:
+            _logger.warning(
+                f"Got timeout error getting goal record: {partial_proof[-10:]}"
+            )
+            self.__restart_clients()
+            goal_record = None
+        except TypeError as t:
+            _logger.warning(
+                f"Got type error getting goal record: {partial_proof[-10:]}"
+            )
+            goal_record = None
+
         return ProofCheckResult(
             TacticResult.VALID,
             partial_steps,

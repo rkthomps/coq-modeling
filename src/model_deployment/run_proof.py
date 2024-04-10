@@ -19,7 +19,7 @@ from model_deployment.tactic_gen_client import (
     tactic_gen_conf_from_yaml,
 )
 from model_deployment.proof_manager import ProofInfo, ProofManager
-from model_deployment.searcher import SearchConf
+from model_deployment.searcher import SearchConf, SuccessfulSearch, FailedSearch
 
 from data_management.sentence_db import SentenceDB
 from util.util import get_basic_logger
@@ -122,6 +122,10 @@ def get_term(dp_file: DatasetFile, theorem_str: str) -> Term:
     raise ValueError(f"{theorem_str} not found in {dp_file.file_context.file}")
 
 
+def normalize(s: str) -> str:
+    return " ".join(s.split())
+
+
 def get_proof_info(
     data_loc: Path,
     file_info: FileInfo,
@@ -131,7 +135,9 @@ def get_proof_info(
     workspace_loc = (data_loc / file_info.workspace).resolve()
     with CoqFile(str(file_loc), workspace=str(workspace_loc)) as coq_file:
         for i, step in enumerate(coq_file.steps):
-            if step.text.strip() == term.term.text.strip():
+            if normalize(step.text) in normalize(term.term.text) or normalize(
+                term.term.text
+            ) in normalize(step.text):
                 return ProofInfo(term, coq_file.steps[: (i + 1)], i)
     raise ValueError(f"Could not find step defining theorem {term.term.text}")
 
@@ -165,4 +171,10 @@ if __name__ == "__main__":
     with conf_loc.open("rb") as fin:
         conf: TestProofConf = pickle.load(fin)
         assert "TestProofConf" in str(conf.__class__)  # isinstance didn't work
-        run_proof(conf.to_run_conf())
+        result = run_proof(conf.to_run_conf())
+        match result:
+            case SuccessfulSearch():
+                print("".join(result.qed_node.combined_proof_steps))
+                print("depth", result.search_tree.root.get_deepest_node())
+            case FailedSearch():
+                print("failed")

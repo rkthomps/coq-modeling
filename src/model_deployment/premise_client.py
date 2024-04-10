@@ -215,6 +215,8 @@ class TFIdfClient:
         return clean_tokens
 
     def compute_idfs(self, corpus: list[str]) -> dict[str, float]:
+        if 0 == len(corpus):
+            return {}
         assert 0 < len(corpus)
         doc_freqs: dict[str, int] = {}
         for premise in corpus:
@@ -232,6 +234,8 @@ class TFIdfClient:
     @functools.lru_cache(5000)
     def compute_doc_tf(self, premise: str) -> dict[str, float]:
         doc = self.tokenizer(premise)
+        if 0 == len(doc):
+            return {}
         assert 0 < len(doc)
         term_freqs: dict[str, int] = {}
         for word in doc:
@@ -245,6 +249,8 @@ class TFIdfClient:
         return tfs
 
     def compute_query_tf(self, query: list[str]) -> dict[str, float]:
+        if 0 == len(query):
+            return {}
         assert 0 < len(query)
         term_freqs: dict[str, int] = {}
         max_term_freq = 0

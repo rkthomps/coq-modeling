@@ -210,6 +210,7 @@ def start_servers(conf: TopLevelConf, use_devices: list[int]) -> TopLevelConf:
             return TestProofsConf(
                 conf.proofs,
                 conf.n_procs,
+                conf.save_loc,
                 conf.data_loc,
                 conf.sentence_db_loc,
                 conf.data_split_loc,

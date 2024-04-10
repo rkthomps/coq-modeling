@@ -47,10 +47,10 @@ class TacticGenClient:
     urls: list[str]
     formatter: LmFormatter
 
-    def get_recs(self, example: LmExample, n: int) -> ModelResult:
+    def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         request_data = {
             "method": "get_recs",
-            "params": [example.to_json(), n],
+            "params": [example.to_json(), n, current_proof],
             "jsonrpc": "2.0",
             "id": 0,
         }

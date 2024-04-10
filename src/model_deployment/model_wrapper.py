@@ -23,6 +23,7 @@ from util.train_utils import get_required_arg
 
 from tactic_gen.lm_example import (
     LmExample,
+    THM_SEP,
 )
 from tactic_gen.train_codellama import (
     TRAINING_CONF_NAME,
@@ -82,7 +83,30 @@ class FidT5LocalWrapper:
         self.tokenizer = tokenizer
         self.local_dset = local_dset
 
-    def get_recs(self, example: LmExample, n: int) -> ModelResult:
+    def get_current_proof_words(self, current_proof: str) -> list[str]:
+        return current_proof.split()
+
+    def get_sequence_biases(self, current_proof: str) -> dict[tuple[int], float]:
+        current_words = current_proof.split()
+        bias_inc = 0.1
+        word_biases: dict[str, float] = {}
+        for w in current_words:
+            sp_w = " " + w
+            if sp_w not in word_biases:
+                word_biases[sp_w] = 0.0
+            word_biases[sp_w] -= bias_inc
+
+        seq_biases: dict[tuple[int, float]] = {}
+        for w, b in word_biases.items():
+            w_seq = tuple(self.tokenizer([w], add_special_tokens=False).input_ids[0])
+            seq_biases[w_seq] = b
+        if len(seq_biases) == 0:
+            seq_biases = {(0,): 0.0}
+        return seq_biases
+
+    def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
+        seq_bias = self.get_sequence_biases(current_proof)
+        # print(seq_bias)
         input_batch = self.local_dset.collate([example])
         with torch.no_grad():
             # TODO THIS BREAKS with n=1
@@ -92,6 +116,8 @@ class FidT5LocalWrapper:
                 64,
                 # do_sample=True,
                 # temperature=0.6,
+                # encoder_repetition_penalty=0.5,
+                # sequence_bias=seq_bias,
                 return_dict_in_generate=True,
                 output_scores=True,
                 num_beams=n,
@@ -155,7 +181,7 @@ class CodeLLamaLocalWrapper:
         self.batch_size = batch_size
 
     # TODO test built in huggingface beam decoding
-    def get_recs(self, example: LmExample, n: int) -> ModelResult:
+    def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         collated_input = self.collate_fn(example.input)
         input_ids = self.tokenizer(collated_input, return_tensors="pt")["input_ids"].to(
             "cuda"
@@ -224,7 +250,7 @@ class CodeLLamaLocalWrapper:
 
 
 class StubWrapper:
-    def get_recs(self, example: LmExample, n: int) -> ModelResult:
+    def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         return ModelResult([], [], [])
 
 
