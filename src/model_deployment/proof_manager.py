@@ -119,13 +119,12 @@ class ProofManager:
         fast_aux_client = FastLspClient(self.workspace_uri, timeout=60)
         fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
         self.fast_client = ClientWrapper(fast_aux_client, fast_aux_file_uri)
-    
+
     def __restart_clients(self) -> None:
         if os.path.exists(self.fast_aux_file_path):
             os.remove(self.fast_aux_file_path)
         self.fast_client.close()
         self.__start_clients()
-        
 
     @property
     def file_prefix(self) -> str:
@@ -196,7 +195,7 @@ class ProofManager:
     def get_goal_record(self, steps: list[CStep]) -> Optional[GoalRecord]:
         if not isinstance(self.lm_formatter, ProofRetrievalFormatter):
             return None
-        new_step_idx = len(steps)  - 1
+        new_step_idx = len(steps) - 1
         end_pos = steps[new_step_idx].ast.range.end
         goal_dict: dict[int, Optional[GoalAnswer]] = {}
         record, version = get_goal_record(
@@ -222,7 +221,6 @@ class ProofManager:
             or ("Abort." in partial_proof)
         ):
             return ProofCheckResult.get_invalid()
-        t1 = time.time()
         contents = f"{self.file_prefix}{partial_proof}"
         try:
             steps = self.fast_client.write_and_get_steps(contents)
@@ -256,10 +254,8 @@ class ProofManager:
 
         if current_goals is None:
             return ProofCheckResult.get_invalid()
-        t2 = time.time()
 
         self.fast_client.client.lsp_endpoint.timeout = 5
-        print("New check time:", t2 - t1)
 
         # try:
         #     assert "".join(partial_steps) == partial_proof

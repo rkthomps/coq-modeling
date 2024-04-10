@@ -1,5 +1,5 @@
-
 from data_management.dataset_file import Proof, FocusedStep, Sentence
+
 
 class ContextFormat:
     @staticmethod
@@ -23,7 +23,7 @@ class BasicContextFormat(ContextFormat):
 
     @staticmethod
     def get_alias() -> str:
-        return "basic-context-format"
+        return "basic"
 
 
 CONTEXT_ALIASES: dict[str, type[ContextFormat]] = {
@@ -48,11 +48,9 @@ class BasicPremiseFormat(PremiseFormat):
 
     @staticmethod
     def get_alias() -> str:
-        return "basic-premise-format"
+        return "basic"
 
 
 PREMISE_ALIASES: dict[str, type[PremiseFormat]] = {
     BasicPremiseFormat.get_alias(): BasicPremiseFormat,
 }
-
-

@@ -174,7 +174,7 @@ if __name__ == "__main__":
     with conf_path.open("rb") as fin:
         example_conf: RerankDatasetConf = pickle.load(fin)
 
-    if 1 < example_conf.n_procs:
+    if example_conf.n_procs < 2:
         raise ValueError("Data processing needs at least 2 processes.")
 
     if os.path.exists(example_conf.output_dataset_loc):

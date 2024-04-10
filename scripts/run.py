@@ -11,8 +11,11 @@ from dataclasses import dataclass
 import yaml
 
 from data_management.create_lm_dataset import LmDatasetConf
+from data_management.create_rerank_dataset import RerankDatasetConf
 from data_management.create_premise_dataset import SelectDataConfig
 from premise_selection.premise_filter import PremiseFilterConf
+from premise_selection.rerank_formatter import RerankFormatterConf
+
 from tactic_gen.lm_example import (
     FormatterConf,
     PremiseFormatterConf,
@@ -23,11 +26,12 @@ from model_deployment.tactic_gen_client import (
     FidTacticGenConf,
     TacticGenClientConf,
 )
-from model_deployment.test_proof import TestProofConf
+from model_deployment.run_proof import TestProofConf
+from model_deployment.run_proofs import TestProofsConf
 from util.constants import PREMISE_DATA_CONF_NAME, DATA_CONF_NAME, CLEAN_CONFIG
 
 
-TopLevelConf = LmDatasetConf | TestProofConf
+TopLevelConf = LmDatasetConf | TestProofConf | TestProofsConf | RerankDatasetConf
 
 next_port = 8000
 open_servers: list[str] = []
@@ -72,7 +76,7 @@ def start_select_servers(select_conf: SelectConf, use_devices: list[int]) -> lis
     return urls
 
 
-def start_servers_premise_formatter_conf(
+def start_servers_premise_conf(
     conf: PremiseConf, use_devices: list[int]
 ) -> PremiseConf:
     match conf:
@@ -103,11 +107,20 @@ def start_servers_formatter_conf(
     match conf:
         case PremiseFormatterConf():
             return PremiseFormatterConf(
-                start_servers_premise_formatter_conf(conf.premise_conf, use_devices),
+                start_servers_premise_conf(conf.premise_conf, use_devices),
                 conf.n_step_conf,
             )
         case _:
             return conf
+
+
+def start_servers_rerank_formatter_conf(
+    conf: RerankFormatterConf, use_devices: list[int]
+) -> RerankFormatterConf:
+    clean_premise_conf = start_servers_premise_conf(conf.select_conf, use_devices)
+    return RerankFormatterConf(
+        clean_premise_conf, conf.consider_num, conf.negatives_per_positive
+    )
 
 
 def start_servers_lm_dataset_conf(
@@ -182,17 +195,39 @@ def start_servers(conf: TopLevelConf, use_devices: list[int]) -> TopLevelConf:
         case TestProofConf():
             tactic_client_conf = start_servers_tactic_gen(conf.tactic_conf, use_devices)
             return TestProofConf(
+                conf.theorem_name,
                 conf.test_file,
                 conf.data_loc,
                 conf.sentence_db_loc,
                 conf.data_split_loc,
-                conf.theorem_name,
-                conf.node_score_alias,
-                conf.timeout,
-                conf.branching_factor,
-                conf.depth_limit,
-                conf.max_expansions,
+                conf.search_conf,
                 tactic_client_conf,
+                conf.print_proofs,
+                conf.print_trees,
+            )
+        case TestProofsConf():
+            tactic_client_conf = start_servers_tactic_gen(conf.tactic_conf, use_devices)
+            return TestProofsConf(
+                conf.proofs,
+                conf.n_procs,
+                conf.data_loc,
+                conf.sentence_db_loc,
+                conf.data_split_loc,
+                conf.search_conf,
+                tactic_client_conf,
+            )
+        case RerankDatasetConf():
+            rerank_formatter_conf = start_servers_rerank_formatter_conf(
+                conf.rerank_formatter_conf, use_devices
+            )
+            return RerankDatasetConf(
+                conf.n_procs,
+                conf.train_sample_loc,
+                conf.val_sample_loc,
+                conf.test_sample_loc,
+                conf.sentence_db_loc,
+                conf.output_dataset_loc,
+                rerank_formatter_conf,
             )
 
 
@@ -203,7 +238,11 @@ class Command:
 
 
 COMMANDS = {
-    "prove": Command(TestProofConf, Path("src/model_deployment/test_proof.py")),
+    "prove": Command(TestProofConf, Path("src/model_deployment/run_proof.py")),
+    "run-dev": Command(TestProofsConf, Path("src/model_deployment/run_proofs.py")),
+    "rerank-data": Command(
+        RerankDatasetConf, Path("src/data_management/create_rerank_dataset.py")
+    ),
 }
 
 
@@ -264,7 +303,7 @@ if __name__ == "__main__":
 
         print("Waiting for servers to start...")
         wait_for_servers()
-        subprocess.run(["python3", command.py_path])
+        subprocess.run(["python3", command.py_path, args.config])
     finally:
         if clean_conf_path.exists():
             os.remove(clean_conf_path)

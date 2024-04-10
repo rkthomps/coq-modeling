@@ -4,6 +4,7 @@ import heapq
 import time
 import ipdb
 import re
+from dataclasses import dataclass
 
 import sys, os
 
@@ -11,21 +12,19 @@ from coqpyt.coq.lsp.structs import Goal
 from util.coqpyt_utils import get_all_goals
 
 from model_deployment.tactic_gen_client import TacticGenClient
-from model_deployment.node_score import NodeScore
+from model_deployment.node_score import NodeScore, NODE_SCORE_ALIASES
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import SearchNode, SearchTree
-from model_deployment.goal_comparer import AlphaGoalComparer 
+from model_deployment.goal_comparer import AlphaGoalComparer
 from util.util import get_basic_logger
 
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Proof
 
-from typeguard import typechecked
 
 _logger = get_basic_logger(__name__)
 
 
-@typechecked
 class SuccessfulSearch:
     ALIAS = "success"
 
@@ -49,7 +48,6 @@ class SuccessfulSearch:
         return cls(search_tree, qed_node)
 
 
-@typechecked
 class FailedSearch:
     ALIAS = "failure"
 
@@ -65,7 +63,6 @@ class FailedSearch:
         return cls(search_tree)
 
 
-@typechecked
 class ErroredSearch:
     ALIAS = "error"
 
@@ -91,9 +88,7 @@ def search_result_to_json(search_result: SearchResult, sentence_db: SentenceDB) 
     return {"alias": search_result.ALIAS} | search_result.to_json(sentence_db)
 
 
-def search_result_from_json(
-    json_data: Any, sentence_db: SentenceDB 
-) -> SearchResult:
+def search_result_from_json(json_data: Any, sentence_db: SentenceDB) -> SearchResult:
     match json_data["alias"]:
         case "success":
             return SuccessfulSearch.from_json(json_data, sentence_db)
@@ -103,6 +98,25 @@ def search_result_from_json(
             return ErroredSearch.from_json(json_data)
         case a:
             raise ValueError(f"Unknown search result alias: f{a}")
+
+
+@dataclass
+class SearchConf:
+    node_score_alias: str
+    max_branch: int
+    max_expansions: int
+    depth_limit: int
+    timeout: int
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> SearchConf:
+        return cls(
+            yaml_data["node_score_alias"],
+            yaml_data["max_branch"],
+            yaml_data["max_expansions"],
+            yaml_data["depth_limit"],
+            yaml_data["timeout"],
+        )
 
 
 class SearchTreeManager:
@@ -116,7 +130,7 @@ class SearchTreeManager:
         depth_limit: int,
         timeout: int,
     ) -> None:
-        self.tactic_client = tactic_client 
+        self.tactic_client = tactic_client
         self.proof_manager = proof_manager
         self.score_type = score_type
         self.max_branch = max_branch
@@ -164,7 +178,23 @@ class SearchTreeManager:
         self.seen_goals_nodes: list[SearchNode] = []
         heapq.heappush(self.frontier, (self.root, initial_check_result.current_goals))
 
-    def search(self, print_trees: bool = False, print_proofs: bool= False) -> SuccessfulSearch | FailedSearch:
+    @classmethod
+    def from_conf(
+        cls, conf: SearchConf, tactic_gen_client: TacticGenClient, manager: ProofManager
+    ) -> SearchTreeManager:
+        return cls(
+            tactic_gen_client,
+            manager,
+            NODE_SCORE_ALIASES[conf.node_score_alias],
+            conf.max_branch,
+            conf.max_expansions,
+            conf.depth_limit,
+            conf.timeout,
+        )
+
+    def search(
+        self, print_trees: bool = False, print_proofs: bool = False
+    ) -> SuccessfulSearch | FailedSearch:
         start = time.time_ns()
         for i in range(self.max_num_leaf_expansions):
             cur = time.time_ns()
@@ -172,7 +202,6 @@ class SearchTreeManager:
                 break
             if len(self.frontier) == 0:
                 break
-            _logger.info(f"Beginning iteration {i + 1} of search.")
             possible_complete_node = self.search_step(i, start, print_proofs)
             if print_trees:
                 self.search_tree.pretty_print(verbose=True)
@@ -194,7 +223,7 @@ class SearchTreeManager:
         final_tactic = True
         makes_progress = True
         creation_time = time.time_ns() - search_start_time
-        assert parent_node.depth is not None 
+        assert parent_node.depth is not None
         complete_node = SearchNode(
             valid,
             final_tactic,
@@ -223,7 +252,7 @@ class SearchTreeManager:
         makes_progress = False
         combined_steps = proof_check_result.attempted_steps
         creation_time = time.time_ns() - search_start_time
-        assert parent_node.depth is not None 
+        assert parent_node.depth is not None
         invalid_node = SearchNode(
             valid,
             final_tactic,
@@ -237,9 +266,11 @@ class SearchTreeManager:
             depth=parent_node.depth + 1,
         )
         return invalid_node
-    
+
     def as_hard_as(self, gs1: list[Goal], gs2: list[Goal]) -> bool:
-        return self.comparer.as_hard_as(gs1, gs2, self.proof_manager.fast_client, self.proof_manager.file_prefix)
+        return self.comparer.as_hard_as(
+            gs1, gs2, self.proof_manager.fast_client, self.proof_manager.file_prefix
+        )
 
     def __get_valid_child_node(
         self,
@@ -261,15 +292,16 @@ class SearchTreeManager:
         )
         creation_time = time.time_ns() - search_start_time
         makes_progress = (
-            redundant_to is None
-            #or self.__is_bullet(attempted_tactic)
+            redundant_to
+            is None
+            # or self.__is_bullet(attempted_tactic)
             # or self.__is_first_proof_tactic(
             #     parent_node.total_proof_str(), attempted_tactic
             # )
         )
         valid = True
         final_tactic = False
-        assert parent_node.depth is not None 
+        assert parent_node.depth is not None
         new_leaf = SearchNode(
             valid,
             final_tactic,
@@ -281,13 +313,15 @@ class SearchTreeManager:
             proof_check_result.new_proof,
             proof_check_result.goal_record,
             redundant_to_str=redundant_to_str,
-            depth = parent_node.depth + 1
+            depth=parent_node.depth + 1,
         )
         return new_leaf
 
-
     def search_step(
-        self, step_num: int, search_start_time: int, print_proofs: bool,
+        self,
+        step_num: int,
+        search_start_time: int,
+        print_proofs: bool,
     ) -> Optional[SearchNode]:
         """If the search is completed, return the resulting node in
         the proof search tree."""
@@ -307,16 +341,14 @@ class SearchTreeManager:
         children: list[SearchNode] = []
         next_frontier_pool: list[SearchNode] = []
         next_frontier_goals: list[list[Goal]] = []
+        start_time = time.time_ns()
         for tactic, score, num_tokens in zip(
             result.next_tactic_list, result.score_list, result.num_tokens_list
         ):
             proof_script = leaf_subtree.total_proof_str() + tactic
-            start_time = time.time_ns()
             proof_check_result = self.proof_manager.check_proof(
                 proof_script, leaf_subtree.proof.theorem
             )
-            end_time = time.time_ns()
-            _logger.info(f"Check time: {(end_time - start_time) / 1e9}")
             node_score = self.score_type.from_unit_score(
                 score, num_tokens, self.max_branch
             )
@@ -354,13 +386,15 @@ class SearchTreeManager:
                     children.append(valid_node)
                     # We will check again if the candide makes progress to make
                     # sure it isn't superceded by later candidates.
-                    if valid_node.makes_progress and valid_node.depth is not None and valid_node.depth <= self.depth_limit:
+                    if (
+                        valid_node.makes_progress
+                        and valid_node.depth is not None
+                        and valid_node.depth <= self.depth_limit
+                    ):
                         assert proof_check_result.current_goals is not None
                         next_frontier_pool.append(valid_node)
-                        next_frontier_goals.append(
-                            proof_check_result.current_goals
-                        )
-        
+                        next_frontier_goals.append(proof_check_result.current_goals)
+
         for next_canidate, next_goals in zip(next_frontier_pool, next_frontier_goals):
             next_frontier: list[tuple[SearchNode, list[Goal]]] = []
             heapq.heappush(next_frontier, (next_canidate, next_goals))
@@ -374,5 +408,7 @@ class SearchTreeManager:
                     node.makes_progress = False
             self.frontier = next_frontier
 
+        end_time = time.time_ns()
+        _logger.info(f"Check time: {(end_time - start_time) / 1e9}")
         leaf_subtree.children = children
         return None

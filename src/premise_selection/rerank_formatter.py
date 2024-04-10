@@ -16,13 +16,13 @@ from model_deployment.premise_client import (
 @dataclass
 class RerankFormatterConf:
     ALIAS = "basic"
-    premise_conf: PremiseConf
+    select_conf: PremiseConf
     consider_num: int
     negatives_per_positive: int
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RerankFormatterConf:
-        premise_conf = premise_conf_from_yaml(yaml_data)
+        premise_conf = premise_conf_from_yaml(yaml_data["select_conf"])
         consider_num = yaml_data["consider_num"]
         negatives_per_positive = yaml_data["negatives_per_positive"]
         return cls(premise_conf, consider_num, negatives_per_positive)
@@ -86,5 +86,5 @@ class RerankFormatter:
 
     @classmethod
     def from_conf(cls, conf: RerankFormatterConf) -> RerankFormatter:
-        premise_client = premise_client_from_conf(conf.premise_conf)
+        premise_client = premise_client_from_conf(conf.select_conf)
         return cls(premise_client, conf.consider_num, conf.negatives_per_positive)

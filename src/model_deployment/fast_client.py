@@ -5,26 +5,32 @@ import subprocess
 import time
 
 from coqpyt.coq.structs import Step
-from coqpyt.lsp.structs import * 
+from coqpyt.lsp.structs import *
 from coqpyt.lsp.json_rpc_endpoint import JsonRpcEndpoint
 from coqpyt.lsp.endpoint import LspEndpoint
 from coqpyt.lsp.client import LspClient
 from coqpyt.coq.lsp.structs import *
+
 
 class ClientWrapper:
     def __init__(self, client: FastLspClient, file_uri: str) -> None:
         self.client = client
         self.file_uri = file_uri
         self.file_version = 1
-        self.client.didOpen(TextDocumentItem(self.file_uri, "coq", self.file_version, ""))
-    
+        self.client.didOpen(
+            TextDocumentItem(self.file_uri, "coq", self.file_version, "")
+        )
+
     def set_version(self, v: int) -> None:
         self.file_version = v
-    
+
     def write(self, content: str) -> None:
         self.file_version += 1
-        self.client.didChange(VersionedTextDocumentIdentifier(self.file_uri, self.file_version), [TextDocumentContentChangeEvent(None, None, content)])
-    
+        self.client.didChange(
+            VersionedTextDocumentIdentifier(self.file_uri, self.file_version),
+            [TextDocumentContentChangeEvent(None, None, content)],
+        )
+
     def write_and_get_steps(self, content: str) -> list[Step]:
         self.write(content)
         lines = content.split("\n")
@@ -35,14 +41,14 @@ class ClientWrapper:
             if i == len(spans) - 1 and span.span is None:
                 continue
             end_line, end_char = (spans[i].range.end.line, spans[i].range.end.character)
-            cur_lines = lines[prev_line:(end_line + 1)]
+            cur_lines = lines[prev_line : (end_line + 1)]
             cur_lines[0] = cur_lines[0][prev_char:]
             cur_lines[-1] = cur_lines[-1][:end_char]
             prev_line, prev_char = end_line, end_char
             text = "\n".join(cur_lines)
             steps.append(Step(text, "", span))
         return steps
-    
+
     def close(self) -> None:
         self.client.shutdown()
         self.client.exit()
@@ -81,7 +87,7 @@ class FastLspClient(LspClient):
 
         init_options = {
             "verbosity": 1,
-            #"check_only_on_request": True,
+            # "check_only_on_request": True,
         }
         self.init_options = init_options
 
@@ -104,7 +110,6 @@ class FastLspClient(LspClient):
         """
         self.lsp_endpoint.diagnostics[textDocument.uri] = []
         super().didOpen(textDocument)
-
 
     def didChange(
         self,
@@ -133,12 +138,11 @@ class FastLspClient(LspClient):
             GoalAnswer: Contains the goals at a position, messages associated
                 to the position and if errors exist, the top error at the position.
         """
-        start = time.time()
         result_dict = self.lsp_endpoint.call_method(
-            "proof/goals", textDocument=textDocument, position=position,
+            "proof/goals",
+            textDocument=textDocument,
+            position=position,
         )
-        end = time.time()
-        print('goal time str: ', end - start)
         parsed_goals = GoalAnswer.parse(result_dict)
         return parsed_goals
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Iterable, Any, Optional
 import sys, os
 import argparse
+import functools
 from pathlib import Path
 import random
 import math
@@ -198,13 +199,26 @@ class TFIdfClient:
         self.premise_format = premise_format
         self.premise_filter = premise_filter
 
-    def tokenizer(self, s: str) -> list[str]:
-        return s.split()
+    def __clean_token(self, s: str) -> str:
+        s = s.lstrip("(,:{")
+        s = s.rstrip("),:}")
+        return s
 
-    def compute_idfs(self, corpus: list[list[str]]) -> dict[str, float]:
+    @functools.lru_cache(5000)
+    def tokenizer(self, s: str) -> list[str]:
+        whitespace_split = s.split()
+        clean_tokens: list[str] = []
+        for t in whitespace_split:
+            clean_t = self.__clean_token(t)
+            if 0 < len(clean_t):
+                clean_tokens.append(clean_t)
+        return clean_tokens
+
+    def compute_idfs(self, corpus: list[str]) -> dict[str, float]:
         assert 0 < len(corpus)
         doc_freqs: dict[str, int] = {}
-        for doc in corpus:
+        for premise in corpus:
+            doc = self.tokenizer(premise)
             for word in set(doc):
                 if word not in doc_freqs:
                     doc_freqs[word] = 0
@@ -212,10 +226,12 @@ class TFIdfClient:
 
         idfs: dict[str, float] = {}
         for k, v in doc_freqs.items():
-            idfs[k] = math.log(v / len(corpus))
+            idfs[k] = math.log(len(corpus) / v)
         return idfs
 
-    def compute_doc_tf(self, doc: list[str]) -> dict[str, float]:
+    @functools.lru_cache(5000)
+    def compute_doc_tf(self, premise: str) -> dict[str, float]:
+        doc = self.tokenizer(premise)
         assert 0 < len(doc)
         term_freqs: dict[str, int] = {}
         for word in doc:
@@ -248,11 +264,10 @@ class TFIdfClient:
         self, context_str: str, premises: list[Sentence]
     ) -> list[float]:
         premise_strs = [self.premise_format.format(p) for p in premises]
-        docs = [self.tokenizer(p) for p in premise_strs]
         query = self.tokenizer(context_str)
-        idfs = self.compute_idfs(docs)
+        idfs = self.compute_idfs(premise_strs)
         query_tfs = self.compute_query_tf(query)
-        doc_tfs = [self.compute_doc_tf(doc) for doc in docs]
+        doc_tfs = [self.compute_doc_tf(p) for p in premise_strs]
         similarities: list[float] = []
         for doc_tf_dict in doc_tfs:
             dot_prod = 0

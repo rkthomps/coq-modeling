@@ -70,12 +70,12 @@ class CompleteSample:
     def from_json(cls, json_data: Any) -> CompleteSample:
         data_split = DataSplit.from_json(json_data["data_split"])
         split = str2split(json_data["split"])
-        data_loc = json_data["data_loc"]
+        data_loc = Path(json_data["data_loc"])
         return cls(data_split, split, data_loc)
 
     @classmethod
     def __create(
-        cls, data_split: DataSplit, split: Split, data_loc: Path 
+        cls, data_split: DataSplit, split: Split, data_loc: Path
     ) -> CompleteSample:
         return cls(data_split, split, data_loc)
 
