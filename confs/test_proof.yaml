@@ -1,0 +1,13 @@
+test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+data_loc: raw-data/coq-dataset
+sentence_db_loc: sentences.db
+data_split_loc: splits/final-split.json
+theorem_name: w_pos
+node_score_alias: token-normalized-score
+timeout: 60
+branching_factor: 64
+depth_limit: 30
+max_expansions: 500
+tactic_conf:
+  alias: fid
+  checkpoint_loc: models/t5-fid-small-proof-ret-final/checkpoint-107500

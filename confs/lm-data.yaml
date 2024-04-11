@@ -3,10 +3,11 @@ train_sample_loc: samples/final/train.json
 val_sample_loc: samples/final/val.json
 test_sample_loc: samples/final/test.json
 sentence_db_loc: sentences.db
-output_dataset_loc: data/rerank
+output_dataset_loc: data/tfidf
 
 lm_formatter:
-  select_conf: 
+  alias: premise
+  premise_conf:
     alias: tfidf
     context_format_alias: basic
     premise_format_alias: basic
@@ -14,6 +15,5 @@ lm_formatter:
       coq_excludes: []    
       non_coq_excludes: []
       general_excludes: []
-
-  consider_num: 256
-  negatives_per_positive: 4
+  n_step_sampler:
+    alias: one

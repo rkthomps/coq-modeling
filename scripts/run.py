@@ -128,6 +128,7 @@ def start_servers_lm_dataset_conf(
 ) -> LmDatasetConf:
     lm_conf = start_servers_formatter_conf(conf.lm_formatter_conf, use_devices)
     return LmDatasetConf(
+        conf.n_procs,
         conf.train_sample_loc,
         conf.val_sample_loc,
         conf.test_sample_loc,
@@ -244,6 +245,7 @@ COMMANDS = {
     "rerank-data": Command(
         RerankDatasetConf, Path("src/data_management/create_rerank_dataset.py")
     ),
+    "lm-data": Command(LmDatasetConf, Path("src/data_management/create_lm_dataset.py")),
 }
 
 

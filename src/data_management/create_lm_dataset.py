@@ -3,10 +3,12 @@ from typing import Optional, Any
 import sys, os
 import shutil
 import argparse
+import pickle
 import multiprocessing as mp
 from queue import Queue
 from dataclasses import dataclass
 from pathlib import Path
+from util.constants import CLEAN_CONFIG
 
 
 import json
@@ -42,6 +44,7 @@ _logger = get_basic_logger(__name__)
 
 @dataclass
 class LmDatasetConf:
+    n_procs: int
     train_sample_loc: Path
     val_sample_loc: Path
     test_sample_loc: Path
@@ -52,6 +55,7 @@ class LmDatasetConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LmDatasetConf:
         return cls(
+            yaml_data["n_procs"],
             Path(yaml_data["train_sample_loc"]),
             Path(yaml_data["val_sample_loc"]),
             Path(yaml_data["test_sample_loc"]),
@@ -82,7 +86,6 @@ def examples_to_queue(
     file_info: FileInfo,
     sentence_db_loc: Path,
     selected_steps: SelectedSteps,
-    device_idx: int,
     q: Queue[Optional[LmExample]],
 ) -> None:
     sentence_db = SentenceDB.load(sentence_db_loc)
@@ -176,7 +179,6 @@ def get_split_transformation_args(
 
 
 if __name__ == "__main__":
-    mp.set_start_method("spawn")
     parser = argparse.ArgumentParser(
         "Create a jsonl dataset from the data collected by the coq lsp."
     )
@@ -184,19 +186,15 @@ if __name__ == "__main__":
         "lm_data_config_loc",
         help="Location of configuration file for LmExample dataset.",
     )
-    parser.add_argument(
-        "--num_procs",
-        "-n",
-        type=int,
-        help="Number of processes to use to create the dataset.",
-    )
+
+    conf_path = Path(f"./{CLEAN_CONFIG}")
+    assert conf_path.exists()
+    with conf_path.open("rb") as fin:
+        example_conf: LmDatasetConf = pickle.load(fin)
 
     args = parser.parse_args(sys.argv[1:])
-    num_procs = 1
-    if args.num_procs:
-        num_procs = args.num_procs
-        if num_procs < 2:
-            raise ValueError("Data processing needs at least 2 processes.")
+    if example_conf.n_procs < 2:
+        raise ValueError("Data processing needs at least 2 processes.")
 
     with open(args.lm_data_config_loc, "r") as fin:
         yaml_data = yaml.load(fin, Loader=yaml.Loader)
@@ -208,7 +206,7 @@ if __name__ == "__main__":
 
     with mp.Manager() as manager:
         q: Queue[Optional[LmExample]] = manager.Queue()
-        with mp.Pool(num_procs) as pool:
+        with mp.Pool(example_conf.n_procs) as pool:
             for split in [Split.TEST, Split.VAL, Split.TRAIN]:
                 split_args = get_split_transformation_args(data_conf, split, q)
                 raw_path = split_file_path(
