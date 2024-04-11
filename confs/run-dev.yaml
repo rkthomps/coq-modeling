@@ -63,9 +63,9 @@ tactic_gen:
   alias: fid
   checkpoint_loc: models/t5-fid-small-proof-ret-final/checkpoint-107500
 
-# tactic_gen:
-#   alias: fid
-#   checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
+tactic_gen:
+  alias: fid
+  checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
 
 # tactic_gen:
 #   alias: fid
