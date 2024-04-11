@@ -1,6 +1,7 @@
 from typing import Optional
 import sys, os
 import shutil
+from pathlib import Path
 
 import ipdb
 
@@ -45,18 +46,18 @@ class StrawOb:
         return f"{import_str}\n\n{hyp_str}\n\n{goal_str}"
 
     def get_parsed(self) -> ParsedObligation:
-        tmp_file = get_fresh_path(".", "tmp.v")
+        tmp_file = get_fresh_path(Path("."), "tmp.v")
         try:
             return self.__get_parsed(tmp_file)
         finally:
             if os.path.exists(tmp_file):
                 os.remove(tmp_file)
 
-    def __get_parsed(self, file: str) -> ParsedObligation:
+    def __get_parsed(self, file: Path) -> ParsedObligation:
         with open(file, "w") as fout:
             fout.write(self.coq_str())
         parsed_hyps: list[ParsedHyp] = []
-        with CoqFile(file) as coq_file:
+        with CoqFile(str(file.resolve())) as coq_file:
             for i, hyp in enumerate(self.hyps):
                 step = coq_file.steps[len(self.imports) + i]
                 hyp_ast = extract_body_from_step(step)

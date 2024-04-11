@@ -1,5 +1,6 @@
 import os
 import random
+from pathlib import Path
 from data_management.dataset_file import Proof, DatasetFile
 from data_management.splits import DATA_POINTS_NAME
 from data_management.sentence_db import SentenceDB
@@ -18,7 +19,7 @@ Proof.
 
 
 class TestStepSep:
-    RAW_DATA_LOC = "test/test_files/coq-mini-dataset"
+    RAW_DATA_LOC = Path("test/test_files/coq-mini-dataset")
 
     def test_proof_splitting(self) -> None:
         num_steps_tested = 0
@@ -41,18 +42,18 @@ class TestStepSep:
     def setup_class(cls) -> None:
         cls.max_num_proofs = 1000
         cls.proofs: list[Proof] = []
-        sentence_db_loc = "./sentences.db"
-        if not os.path.exists(sentence_db_loc):
+        sentence_db_loc = Path("./sentences.db")
+        if not sentence_db_loc.exists():
             raise ValueError(f"Could not find sentence db. Expected at {sentence_db_loc}")
         sentence_db = SentenceDB.load(sentence_db_loc)
-        if not os.path.exists(cls.RAW_DATA_LOC):
+        if not cls.RAW_DATA_LOC.exists():
             raise FileNotFoundError(
                 f"Could not find {cls.RAW_DATA_LOC}. Perhaps you're not in the root project folder."
             )
-        dp_loc = os.path.join(cls.RAW_DATA_LOC, DATA_POINTS_NAME)
+        dp_loc = cls.RAW_DATA_LOC / DATA_POINTS_NAME
         names = os.listdir(dp_loc)
         for dp_name in names:
-            dp_obj_loc = os.path.join(dp_loc, dp_name)
+            dp_obj_loc = dp_loc / dp_name 
             dp_obj = DatasetFile.load(dp_obj_loc, sentence_db)
             for proof in dp_obj.proofs:
                 cls.proofs.append(proof)

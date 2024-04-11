@@ -1,5 +1,6 @@
 import os
 import pdb
+from pathlib import Path
 
 from data_management.splits import DataSplit, Project, FileInfo
 from data_management.sentence_db import SentenceDB 
@@ -37,9 +38,9 @@ class TestSplits:
 
     @classmethod
     def setup_class(cls) -> None:
-        sentence_db_loc = "./sentences.db"
+        sentence_db_loc = Path("./sentences.db")
         cls.sentence_db = SentenceDB.load(sentence_db_loc)
-        cls.data_path = os.path.join("test", "test_files", "coq-mini-dataset")
+        cls.data_path = Path("test/test_files/coq-mini-dataset")
         if not os.path.exists(cls.data_path):
             raise FileNotFoundError(
                 f"{cls.data_path} not found. Run tests from root project dir."

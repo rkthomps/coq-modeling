@@ -3,6 +3,7 @@ import sys, os
 import ipdb
 import json
 import pytest
+from pathlib import Path
 from hypothesis import given, strategies as st, assume
 
 from data_management.jsonl_utils import shuffle, deduplicate
@@ -19,15 +20,15 @@ class TestJsonlUtils:
         return frequencies
 
     @staticmethod
-    def __file_lines(in_file: str) -> list[str]:
+    def __file_lines(in_file: Path) -> list[str]:
         lines: list[str] = []
-        with open(in_file, "r") as fin:
+        with in_file.open("r") as fin:
             for line in fin:
                 lines.append(line)
         return lines
 
     @classmethod
-    def __multiset_eq(cls, file1: str, file2: str) -> bool:
+    def __multiset_eq(cls, file1: Path, file2: Path) -> bool:
         obj1_freqs = cls.__get_obj_frequencies(cls.__file_lines(file1))
         obj2_freqs = cls.__get_obj_frequencies(cls.__file_lines(file2))
         return obj1_freqs == obj2_freqs
@@ -86,12 +87,12 @@ class TestJsonlUtils:
 
     @classmethod
     def setup_class(cls) -> None:
-        cls.in_file = "in.jsonl"
-        cls.out_file = "out.jsonl"
+        cls.in_file = Path("in.jsonl")
+        cls.out_file = Path("out.jsonl")
 
     @classmethod
     def teardown_class(cls) -> None:
-        if os.path.exists(cls.in_file):
+        if cls.in_file.exists():
             os.remove(cls.in_file)
-        if os.path.exists(cls.out_file):
+        if cls.out_file.exists():
             os.remove(cls.out_file)
