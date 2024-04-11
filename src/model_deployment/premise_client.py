@@ -204,7 +204,7 @@ class TFIdfClient:
         s = s.rstrip("),:}")
         return s
 
-    @functools.lru_cache(5000)
+    @functools.lru_cache(50000)
     def tokenizer(self, s: str) -> list[str]:
         whitespace_split = s.split()
         clean_tokens: list[str] = []
@@ -231,7 +231,7 @@ class TFIdfClient:
             idfs[k] = math.log(len(corpus) / v)
         return idfs
 
-    @functools.lru_cache(5000)
+    @functools.lru_cache(10000)
     def compute_doc_tf(self, premise: str) -> dict[str, float]:
         doc = self.tokenizer(premise)
         if 0 == len(doc):
