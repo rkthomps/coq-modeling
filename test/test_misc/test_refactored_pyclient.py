@@ -1,6 +1,7 @@
 import os
 import shutil
 import ipdb
+from pathlib import Path
 
 from coqpyt.coq.proof_file import ProofFile
 from coqpyt.coq.changes import CoqAddStep, CoqDeleteStep
@@ -42,12 +43,12 @@ def go_through_step(p: ProofFile, step_idx: int) -> None:
 
 class TestCoqPytExample:
     @staticmethod
-    def __get_file_contents(file_path: str) -> str:
-        with open(file_path, "r") as fin:
+    def __get_file_contents(file_path: Path) -> str:
+        with file_path.open("r") as fin:
             return fin.read()
 
     def test_change_steps(self) -> None:
-        with ProofFile(self.file1_path) as proof_file:
+        with ProofFile(str(self.file1_path.resolve())) as proof_file:
             proof_file.run()
             proof_file.change_steps(
                 [CoqDeleteStep(2), CoqDeleteStep(1), CoqAddStep(" Admitted.", 0)]
@@ -68,7 +69,7 @@ class TestCoqPytExample:
             assert example_text == self.__get_file_contents(self.file1_path)
 
     def test_intros_vs_induction(self) -> None:
-        with ProofFile(self.file2_path) as proof_file:
+        with ProofFile(str(self.file2_path.resolve())) as proof_file:
             proof_file.change_steps(
                 [
                     CoqAddStep(" intros.", 1),
@@ -94,17 +95,17 @@ class TestCoqPytExample:
 
     @classmethod
     def setup_class(cls) -> None:
-        cls.file1_path = get_fresh_path(".", "proof_ex_file.v")
-        with open(cls.file1_path, "w") as fout:
+        cls.file1_path = get_fresh_path(Path("."), "proof_ex_file.v")
+        with cls.file1_path.open("w") as fout:
             fout.write(example_text)
 
-        cls.file2_path = get_fresh_path(".", "ex_file2.v")
-        with open(cls.file2_path, "w") as fout:
+        cls.file2_path = get_fresh_path(Path("."), "ex_file2.v")
+        with cls.file2_path.open("w") as fout:
             fout.write(example2_text)
 
     @classmethod
     def teardown_class(cls) -> None:
-        if os.path.exists(cls.file1_path):
+        if cls.file1_path.exists():
             os.remove(cls.file1_path)
-        if os.path.exists(cls.file2_path):
+        if cls.file2_path.exists():
             os.remove(cls.file2_path)

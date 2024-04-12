@@ -4,12 +4,13 @@ import os
 import shutil
 
 import pytest
+from pathlib import Path
 
 from data_management.sentence_db import DBSentence, SentenceDB
 
 
 class TestSentenceDB:
-    DB_PATH = "the_db"
+    DB_PATH = Path("the_db")
 
     def test_duplicate_create(self) -> None:
         with pytest.raises(ValueError):
@@ -45,5 +46,5 @@ class TestSentenceDB:
 
     @classmethod
     def teardown_class(cls) -> None:
-        if os.path.exists(cls.DB_PATH):
+        if cls.DB_PATH.exists():
             os.remove(cls.DB_PATH)
