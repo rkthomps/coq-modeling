@@ -4,8 +4,7 @@ import jsonlines
 from transformers import AutoTokenizer, GPT2Tokenizer
 from torch.utils.data import Dataset, DataLoader
 import torch
-
-from typeguard import typechecked
+from pathlib import Path
 
 from data_management.splits import (
     Split,
@@ -68,11 +67,10 @@ def collate_examples(
     }
 
 
-@typechecked
 class RerankDataset(Dataset):
     def __init__(
         self,
-        rerank_file_path: str,
+        rerank_file_path: Path,
         tokenizer: GPT2Tokenizer,
         max_seq_len: int,
         max_num_examples: Optional[int] = None,

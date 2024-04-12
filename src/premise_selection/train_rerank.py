@@ -3,6 +3,7 @@ import sys, os
 import ipdb
 import shutil
 from typing import Any, Optional
+from pathlib import Path
 
 from data_management.splits import split_file_path, Split
 from premise_selection.rerank_datamodule import RerankDataset
@@ -47,7 +48,7 @@ def get_datasets(
     tokenizer: GPT2Tokenizer,
     max_seq_len: int,
 ) -> tuple[RerankDataset, RerankDataset]:
-    data_path = get_required_arg("data_path", conf)
+    data_path = Path(get_required_arg("data_path", conf))
     # num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
     train_path = split_file_path(data_path, Split.TRAIN)
     train_dataset = RerankDataset(

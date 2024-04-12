@@ -1,4 +1,4 @@
-n_procs: 4
+n_procs: 16
 train_sample_loc: samples/final/train.json
 val_sample_loc: samples/final/val.json
 test_sample_loc: samples/final/test.json
