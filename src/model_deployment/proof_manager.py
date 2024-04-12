@@ -216,7 +216,8 @@ class ProofManager:
         # TODO: NEED TO CATCH SIMPL IN *
         # partial_steps = separate_steps(partial_proof)
         if (
-            ("Admitted." in partial_proof)
+            ("Theorem" in partial_proof)
+            or ("Admitted." in partial_proof)
             or ("admit." in partial_proof)
             or ("Abort." in partial_proof)
         ):
@@ -324,6 +325,8 @@ class ProofManager:
             key_record=goal_record,
             cutoff_idx=self.proof_info.proof_point,
         )
+        print(example.input)
+        # print(example.passages)
         return example
 
     def __enter__(self) -> ProofManager:

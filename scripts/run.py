@@ -13,6 +13,7 @@ import yaml
 from data_management.create_lm_dataset import LmDatasetConf
 from data_management.create_rerank_dataset import RerankDatasetConf
 from data_management.create_premise_dataset import SelectDataConfig
+from data_management.create_goal_dataset import GoalDatasetConf
 from premise_selection.premise_filter import PremiseFilterConf
 from premise_selection.rerank_formatter import RerankFormatterConf
 
@@ -31,7 +32,9 @@ from model_deployment.run_proofs import TestProofsConf
 from util.constants import PREMISE_DATA_CONF_NAME, DATA_CONF_NAME, CLEAN_CONFIG
 
 
-TopLevelConf = LmDatasetConf | TestProofConf | TestProofsConf | RerankDatasetConf
+TopLevelConf = (
+    LmDatasetConf | TestProofConf | TestProofsConf | RerankDatasetConf | GoalDatasetConf
+)
 
 next_port = 8000
 open_servers: list[str] = []
@@ -231,6 +234,8 @@ def start_servers(conf: TopLevelConf, use_devices: list[int]) -> TopLevelConf:
                 conf.output_dataset_loc,
                 rerank_formatter_conf,
             )
+        case GoalDatasetConf():
+            return conf
 
 
 @dataclass
@@ -246,6 +251,9 @@ COMMANDS = {
         RerankDatasetConf, Path("src/data_management/create_rerank_dataset.py")
     ),
     "lm-data": Command(LmDatasetConf, Path("src/data_management/create_lm_dataset.py")),
+    "goal-data": Command(
+        GoalDatasetConf, Path("src/data_management/create_goal_dataset.py")
+    ),
 }
 
 

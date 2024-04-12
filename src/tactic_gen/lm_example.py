@@ -36,6 +36,22 @@ END_TOK = "<E>"
 N_TAC_TOK = "<N>"
 
 
+@dataclass
+class GoalExample:
+    goal: str
+    n_step_left: int
+
+    def to_json(self) -> Any:
+        return {
+            "goal": self.goal,
+            "n_step_left": self.n_step_left,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> GoalExample:
+        return cls(json_data["goal"], json_data["n_step_left"])
+
+
 class LmExample:
     def __init__(
         self, input: str, output: str, passages: Optional[list[str]] = None

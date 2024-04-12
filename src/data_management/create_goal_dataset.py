@@ -15,13 +15,8 @@ import json
 from tqdm import tqdm
 import yaml
 
-from tactic_gen.lm_example import (
-    LmExample,
-    LmFormatter,
-    FormatterConf,
-    formatter_from_conf,
-    formatter_conf_from_yaml,
-)
+from goal_evaluation.goal_example import GoalFormatter, GoalFormatterConf, GoalExample
+
 from data_management.splits import (
     FileInfo,
     Split,
@@ -43,17 +38,17 @@ _logger = get_basic_logger(__name__)
 
 
 @dataclass
-class LmDatasetConf:
+class GoalDatasetConf:
     n_procs: int
     train_sample_loc: Path
     val_sample_loc: Path
     test_sample_loc: Path
     sentence_db_loc: Path
     output_dataset_loc: Path
-    lm_formatter_conf: FormatterConf
+    goal_formatter_conf: GoalFormatterConf
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> LmDatasetConf:
+    def from_yaml(cls, yaml_data: Any) -> GoalDatasetConf:
         return cls(
             yaml_data["n_procs"],
             Path(yaml_data["train_sample_loc"]),
@@ -61,17 +56,17 @@ class LmDatasetConf:
             Path(yaml_data["test_sample_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["output_dataset_loc"]),
-            formatter_conf_from_yaml(yaml_data["lm_formatter"]),
+            GoalFormatterConf.from_yaml(yaml_data["goal_formatter"]),
         )
 
 
-def writer(q: Queue[Optional[LmExample]], out_file: str) -> None:
+def writer(q: Queue[Optional[GoalExample]], out_file: str) -> None:
     num_examples_written = 0
     with open(out_file, "w") as fout:
         while True:
             example = q.get()
             match example:
-                case LmExample():
+                case GoalExample():
                     fout.write(json.dumps(example.to_json()) + "\n")
                     num_examples_written += 1
                     print(f"\rNum Examples: {num_examples_written}", end="")
@@ -82,64 +77,50 @@ def writer(q: Queue[Optional[LmExample]], out_file: str) -> None:
 
 def examples_to_queue(
     example_sample: ExampleSample,
-    lm_formatter: LmFormatter,
+    goal_formatter: GoalFormatter,
     file_info: FileInfo,
     sentence_db_loc: Path,
     selected_steps: SelectedSteps,
-    q: Queue[Optional[LmExample]],
+    q: Queue[Optional[GoalExample]],
 ) -> None:
     sentence_db = SentenceDB.load(sentence_db_loc)
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
     match selected_steps:
         case AllSteps():
             for proof in dp_obj.proofs:
-                ground_truth_steps = [s.step.text for s in proof.steps]
                 for i in range(len(proof.steps)):
-                    example = lm_formatter.example_from_step(
+                    example = goal_formatter.example_from_step(
                         i,
                         proof,
-                        dp_obj=dp_obj,
-                        file_info=file_info,
-                        split=example_sample.split,
-                        data_loc=example_sample.data_loc,
-                        ground_truth_steps=ground_truth_steps,
-                        key_record=None,
-                        cutoff_idx=None,
+                        dp_obj,
                     )
                     q.put(example)
         case CertainSteps(steps=step_idxs):
             for step_idx in step_idxs:
                 proof = dp_obj.proofs[step_idx.proof_idx]
-                ground_truth_steps = [s.step.text for s in proof.steps]
-                example = lm_formatter.example_from_step(
+                example = goal_formatter.example_from_step(
                     step_idx.step_idx,
                     proof,
-                    dp_obj=dp_obj,
-                    file_info=file_info,
-                    split=example_sample.split,
-                    data_loc=example_sample.data_loc,
-                    ground_truth_steps=ground_truth_steps,
-                    key_record=None,
-                    cutoff_idx=None,
+                    dp_obj,
                 )
                 q.put(example)
 
 
 __ArgTuple = tuple[
     ExampleSample,
-    LmFormatter,
+    GoalFormatter,
     FileInfo,
     Path,
     SelectedSteps,
-    Queue[Optional[LmExample]],
+    Queue[Optional[GoalExample]],
 ]
 
 
 def __get_split_transformation_args(
     example_sampler: ExampleSample,
-    formatter: LmFormatter,
+    formatter: GoalFormatter,
     sentence_db_loc: Path,
-    q: Queue[LmExample | None],
+    q: Queue[GoalExample | None],
 ) -> list[__ArgTuple]:
     arg_list: list[__ArgTuple] = []
     for file, selected_steps in example_sampler.step_generator():
@@ -157,9 +138,9 @@ def __get_split_transformation_args(
 
 
 def get_split_transformation_args(
-    data_config: LmDatasetConf,
+    data_config: GoalDatasetConf,
     split: Split,
-    q: Queue[Optional[LmExample]],
+    q: Queue[Optional[GoalExample]],
 ) -> list[__ArgTuple]:
     match split:
         case Split.TRAIN:
@@ -169,7 +150,7 @@ def get_split_transformation_args(
         case Split.TEST:
             sample = load_sample(data_config.test_sample_loc)
 
-    lm_formatter = formatter_from_conf(data_config.lm_formatter_conf)
+    lm_formatter = GoalFormatter.from_conf(data_config.goal_formatter_conf)
     return __get_split_transformation_args(
         sample,
         lm_formatter,
@@ -183,14 +164,14 @@ if __name__ == "__main__":
         "Create a jsonl dataset from the data collected by the coq lsp."
     )
     parser.add_argument(
-        "lm_data_config_loc",
+        "goal_data_config_loc",
         help="Location of configuration file for LmExample dataset.",
     )
 
     conf_path = Path(f"./{CLEAN_CONFIG}")
     assert conf_path.exists()
     with conf_path.open("rb") as fin:
-        data_conf: LmDatasetConf = pickle.load(fin)
+        data_conf: GoalDatasetConf = pickle.load(fin)
 
     args = parser.parse_args(sys.argv[1:])
     if data_conf.n_procs < 2:
@@ -201,7 +182,7 @@ if __name__ == "__main__":
     os.makedirs(data_conf.output_dataset_loc)
 
     with mp.Manager() as manager:
-        q: Queue[Optional[LmExample]] = manager.Queue()
+        q: Queue[Optional[GoalExample]] = manager.Queue()
         with mp.Pool(data_conf.n_procs) as pool:
             for split in [Split.TEST, Split.VAL, Split.TRAIN]:
                 split_args = get_split_transformation_args(data_conf, split, q)
@@ -235,4 +216,4 @@ if __name__ == "__main__":
                 os.remove(deduped_path)
 
     conf_out_loc = os.path.join(data_conf.output_dataset_loc, DATA_CONF_NAME)
-    shutil.copy(args.lm_data_config_loc, conf_out_loc)
+    shutil.copy(args.goal_data_config_loc, conf_out_loc)
