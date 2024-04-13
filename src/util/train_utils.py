@@ -4,6 +4,7 @@ import time
 import sys, os
 import shutil
 import subprocess
+from pathlib import Path
 
 from yaml import load, Loader
 from transformers import TrainingArguments
@@ -11,6 +12,7 @@ from transformers import TrainingArguments
 
 from util.constants import (
     DATA_CONF_NAME,
+    GOAL_DATA_CONF_NAME,
     PREMISE_DATA_CONF_NAME,
     RERANK_DATA_CONF_NAME,
     REQS_NAME,
@@ -27,20 +29,23 @@ def load_config(path: str) -> dict[str, Any]:
     return conf
 
 
-def copy_configs(conf_path: str, conf: dict[str, Any]) -> None:
-    output_dir = get_required_arg("output_dir", conf)
-    data_path = get_required_arg("data_path", conf)
-    if os.path.exists(os.path.join(data_path, DATA_CONF_NAME)):
-        data_conf_loc = os.path.join(data_path, DATA_CONF_NAME)
-        shutil.copy(data_conf_loc, os.path.join(output_dir, DATA_CONF_NAME))
-    elif os.path.exists(os.path.join(data_path, PREMISE_DATA_CONF_NAME)):
-        data_conf_loc = os.path.join(data_path, PREMISE_DATA_CONF_NAME)
-        shutil.copy(data_conf_loc, os.path.join(output_dir, PREMISE_DATA_CONF_NAME))
+def copy_configs(conf_path: Path, conf: dict[str, Any]) -> None:
+    output_dir = Path(get_required_arg("output_dir", conf))
+    data_path = Path(get_required_arg("data_path", conf))
+    lm_data_conf = data_path / DATA_CONF_NAME
+    premise_data_conf = data_path / PREMISE_DATA_CONF_NAME
+    goal_data_conf = data_path / GOAL_DATA_CONF_NAME
+    rerank_data_conf = data_path / RERANK_DATA_CONF_NAME 
+    if lm_data_conf.exists():
+        shutil.copy(lm_data_conf, output_dir / DATA_CONF_NAME)
+    elif premise_data_conf.exists():
+        shutil.copy(premise_data_conf, output_dir / PREMISE_DATA_CONF_NAME)
+    elif goal_data_conf.exists(): 
+        shutil.copy(goal_data_conf, output_dir / GOAL_DATA_CONF_NAME)
     else:
-        data_conf_loc = os.path.join(data_path, RERANK_DATA_CONF_NAME)
-        shutil.copy(data_conf_loc, os.path.join(output_dir, RERANK_DATA_CONF_NAME))
+        shutil.copy(rerank_data_conf, output_dir / RERANK_DATA_CONF_NAME)
 
-    shutil.copy(conf_path, os.path.join(output_dir, TRAINING_CONF_NAME))
+    shutil.copy(conf_path, output_dir / TRAINING_CONF_NAME)
     reqs = subprocess.check_output([sys.executable, "-m", "pip", "freeze"])
     with open(os.path.join(output_dir, REQS_NAME), "wb") as fout:
         fout.write(reqs)

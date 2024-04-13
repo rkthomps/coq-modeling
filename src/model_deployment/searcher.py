@@ -163,10 +163,7 @@ class SearchTreeManager:
         initial_check_result = proof_manager.check_proof(
             initial_proof, self.initial_proof_obj.theorem
         )
-        try:
-            assert initial_check_result.tactic_result == TacticResult.VALID
-        except AssertionError:
-            ipdb.set_trace()
+        assert initial_check_result.tactic_result == TacticResult.VALID
         assert initial_check_result.current_goals is not None
         assert initial_check_result.new_proof is not None
         initial_score = self.score_type.get_initial_score(max_branch)

@@ -1,14 +1,14 @@
+
 import sys, os
 import argparse
 from typing import Any, Optional
 from pathlib import Path
 import transformers
-from transformers import Trainer, T5Tokenizer, T5ForConditionalGeneration
+from transformers import Trainer, GPT2Tokenizer, OPTForCausalLM 
 from data_management.splits import Split, split_file_path
 
 
-from tactic_gen.fid_data import FidDataset
-from tactic_gen.fid_model import FiDT5
+from goal_evaluation.goal_data import GoalDataset
 from util.train_utils import (
     get_optional_arg,
     get_required_arg,
@@ -21,46 +21,59 @@ from util.train_utils import (
 
 def get_datasets(
     conf: dict[str, Any],
-    tokenizer: T5Tokenizer,
-) -> tuple[FidDataset, FidDataset]:
-    max_encode_len = get_required_arg("max_encode_len", conf)
-    max_decode_len = get_required_arg("max_decode_len", conf)
-    max_num_passages = get_required_arg("max_num_passages", conf)
-
+    tokenizer: GPT2Tokenizer,
+) -> tuple[GoalDataset, GoalDataset]:
+    max_seq_len = get_required_arg("max_seq_len", conf)
     data_path = Path(get_required_arg("data_path", conf))
     num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
 
     train_path = split_file_path(data_path, Split.TRAIN)
-    train_dataset = FidDataset(
+    train_dataset = GoalDataset(
         train_path,
         tokenizer,
-        max_encode_len,
-        max_decode_len,
-        max_num_passages,
+        max_seq_len,
     )
     val_path = split_file_path(data_path, Split.VAL)
-    val_dataset = FidDataset(
+    val_dataset = GoalDataset(
         val_path,
         tokenizer,
-        max_encode_len,
-        max_decode_len,
-        max_num_passages,
+        max_seq_len,
         num_eval_examples,
     )
     return train_dataset, val_dataset
 
 
-def get_tokenizer(conf: dict[str, Any]) -> T5Tokenizer:
+def get_tokenizer(conf: dict[str, Any]) -> GPT2Tokenizer:
     model_name = get_required_arg("model_name", conf)
-    return T5Tokenizer.from_pretrained(model_name)
+    tokenizer = GPT2Tokenizer.from_pretrained(model_name, truncation_side="left")
+    return tokenizer 
 
 
-def get_model(conf: dict[str, Any]) -> T5ForConditionalGeneration:
+def get_model(conf: dict[str, Any]) -> OPTForCausalLM:
     model_name = get_required_arg("model_name", conf)
-    t5 = T5ForConditionalGeneration.from_pretrained(model_name)
-    fid_model = FiDT5(t5.config)
-    fid_model.load_t5(t5.state_dict())
-    return fid_model
+    opt = OPTForCausalLM.from_pretrained(model_name)
+    return opt
+
+# class (Trainer):
+#     def compute_loss(self, model, inputs, return_outputs=False):
+#         temp = 0.1
+#         cuda_label = inputs["label"].to(model.device)
+#         outputs = model(**inputs)
+#         similarities = outputs["similarities"]
+#         cooled_dots = similarities / temp
+#         pos_mask = -1e9 * (1 - cuda_label)
+#         pos_weight = torch.logsumexp(cooled_dots + pos_mask, dim=1)
+#         total_weight = torch.logsumexp(cooled_dots, dim=1)
+#         diffs = pos_weight - total_weight
+#         assert (diffs <= 0).all()
+#         num_posities = cuda_label.sum(axis=1)
+#         pos_avg = diffs / num_posities
+#         batch_avg = pos_avg.mean()
+#         loss = -1 * batch_avg
+#         if return_outputs:
+#             return loss, outputs
+#         return loss
+
 
 
 def get_trainer(

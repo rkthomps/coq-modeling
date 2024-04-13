@@ -32,7 +32,7 @@ from data_management.samples import (
 )
 from data_management.jsonl_utils import shuffle, deduplicate
 from util.util import get_basic_logger
-from util.constants import DATA_CONF_NAME
+from util.constants import GOAL_DATA_CONF_NAME 
 
 _logger = get_basic_logger(__name__)
 
@@ -92,7 +92,6 @@ def examples_to_queue(
                     example = goal_formatter.example_from_step(
                         i,
                         proof,
-                        dp_obj,
                     )
                     q.put(example)
         case CertainSteps(steps=step_idxs):
@@ -101,7 +100,6 @@ def examples_to_queue(
                 example = goal_formatter.example_from_step(
                     step_idx.step_idx,
                     proof,
-                    dp_obj,
                 )
                 q.put(example)
 
@@ -215,5 +213,5 @@ if __name__ == "__main__":
                 shuffle(deduped_path, shuffled_path)
                 os.remove(deduped_path)
 
-    conf_out_loc = os.path.join(data_conf.output_dataset_loc, DATA_CONF_NAME)
+    conf_out_loc = os.path.join(data_conf.output_dataset_loc, GOAL_DATA_CONF_NAME) 
     shutil.copy(args.goal_data_config_loc, conf_out_loc)

@@ -116,8 +116,16 @@ class PremiseFormatterConf:
             n_step_conf_from_yaml(yaml_data["n_step_sampler"]),
         )
 
+@dataclass
+class GPTVanillaFormatterConf:
+    ALIAS = "gpt-vanilla"
 
-FormatterConf = BasicFormatterConf | ProofRetrievalFormatterConf | PremiseFormatterConf
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> GPTVanillaFormatterConf:
+        return cls()
+
+GPTFormatterConf = GPTVanillaFormatterConf
+FormatterConf = BasicFormatterConf | ProofRetrievalFormatterConf | PremiseFormatterConf | GPTVanillaFormatterConf
 
 
 def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
@@ -129,6 +137,8 @@ def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
             return ProofRetrievalFormatterConf.from_yaml(yaml_data)
         case PremiseFormatterConf.ALIAS:
             return PremiseFormatterConf.from_yaml(yaml_data)
+        case GPTVanillaFormatterConf.ALIAS:
+            return GPTVanillaFormatterConf.from_yaml(yaml_data) 
         case _:
             raise ValueError("Formatter conf not found: " + attempted_alias)
 
@@ -141,6 +151,8 @@ def formatter_from_conf(conf: FormatterConf) -> LmFormatter:
             return ProofRetrievalFormatter.from_conf(conf)
         case PremiseFormatterConf():
             return PremiseFormatter.from_conf(conf)
+        case GPTVanillaFormatterConf():
+            return GPTVanillaFormatter.from_conf(conf)
 
 
 class BasicFormatter:
@@ -392,4 +404,19 @@ class PremiseFormatter:
         )
 
 
-LmFormatter = BasicFormatter | PremiseFormatter | ProofRetrievalFormatter
+class GPTVanillaFormatter:
+    SYSTEM_MSG = "You complete the given proof in Coq. You continue from where the prompt left off."
+
+    def example_from_step(
+        self, step_idx: int, proof: Proof, dp_obj: DatasetFile, **kwargs: Any,
+    ) -> LmExample:
+        format = f"{proof.theorem.term.text}\n{proof.theorem.term.text}"
+        return LmExample(format, "out", None)
+    
+    @classmethod
+    def from_conf(cls, conf: GPTVanillaFormatterConf) -> GPTVanillaFormatter:
+        return cls()
+
+
+GPTFormatter = GPTVanillaFormatter
+LmFormatter = BasicFormatter | PremiseFormatter | ProofRetrievalFormatter | GPTVanillaFormatter

@@ -17,6 +17,7 @@ from model_deployment.tactic_gen_client import (
     TacticGenConf,
     TacticGenClient,
     tactic_gen_conf_from_yaml,
+    tactic_gen_client_from_conf,
 )
 from model_deployment.proof_manager import ProofInfo, ProofManager
 from model_deployment.searcher import SearchConf, SuccessfulSearch, FailedSearch
@@ -31,16 +32,12 @@ _logger = get_basic_logger(__name__)
 
 
 @dataclass
-class TestProofConf:
+class TheoremLocationInfo:
     theorem_name: str
     test_file: Path
     data_loc: Path
     sentence_db_loc: Path
     data_split_loc: Path
-    search_conf: SearchConf
-    tactic_conf: TacticGenConf
-    print_proofs: bool
-    print_trees: bool
 
     def get_file_from_split(
         self,
@@ -61,23 +58,42 @@ class TestProofConf:
             if self.theorem_name in proof.theorem.term.text:
                 return i
         raise ValueError(f"{self.theorem_name} not found in {self.test_file}")
-
-    def to_run_conf(self) -> RunProofConf:
-        sentence_db = SentenceDB.load(self.sentence_db_loc)
+    
+    def to_location_info(self) -> LocationInfo:
         data_split = DataSplit.load(self.data_split_loc)
         file_info, split = self.get_file_from_split(data_split)
+        sentence_db = SentenceDB.load(self.sentence_db_loc)
         file_dp = file_info.get_dp(self.data_loc, sentence_db)
         idx = self.get_dp_idx(file_dp)
+        return LocationInfo(
+            self.data_loc, file_info, split, file_dp, idx, sentence_db, data_split 
+        )
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> TheoremLocationInfo:
+        return cls(
+            yaml_data["theorem_name"],
+            Path(yaml_data["test_file"]),
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            Path(yaml_data["data_split_loc"]),
+        )
+
+
+@dataclass
+class TestProofConf:
+    theorem_location_info: TheoremLocationInfo
+    search_conf: SearchConf
+    tactic_conf: TacticGenConf
+    print_proofs: bool
+    print_trees: bool
+
+
+    def to_run_conf(self) -> RunProofConf:
         return RunProofConf(
-            self.data_loc,
-            file_info,
-            split,
-            file_dp,
-            idx,
-            sentence_db,
-            data_split,
+            self.theorem_location_info.to_location_info(),
             self.search_conf,
-            TacticGenClient.from_conf(self.tactic_conf),
+            tactic_gen_client_from_conf(self.tactic_conf),
             self.print_proofs,
             self.print_trees,
         )
@@ -85,11 +101,7 @@ class TestProofConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> TestProofConf:
         return cls(
-            yaml_data["theorem_name"],
-            Path(yaml_data["test_file"]),
-            Path(yaml_data["data_loc"]),
-            Path(yaml_data["sentence_db_loc"]),
-            Path(yaml_data["data_split_loc"]),
+            TheoremLocationInfo.from_yaml(yaml_data["thm_info"]),
             SearchConf.from_yaml(yaml_data["search"]),
             tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
             yaml_data["print_proofs"],
@@ -98,7 +110,7 @@ class TestProofConf:
 
 
 @dataclass
-class RunProofConf:
+class LocationInfo:
     data_loc: Path
     file_info: FileInfo
     split: Split
@@ -106,6 +118,11 @@ class RunProofConf:
     dp_proof_idx: int
     sentence_db: SentenceDB
     data_split: DataSplit
+
+
+@dataclass
+class RunProofConf:
+    location_info: LocationInfo
     search_conf: SearchConf
     tactic_gen: TacticGenClient
     print_proofs: bool
@@ -144,18 +161,18 @@ def get_proof_info(
 
 def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
     proof_info = get_proof_info(
-        conf.data_loc,
-        conf.file_info,
-        conf.dataset_file.proofs[conf.dp_proof_idx].theorem,
+        conf.location_info.data_loc,
+        conf.location_info.file_info,
+        conf.location_info.dataset_file.proofs[conf.location_info.dp_proof_idx].theorem,
     )
     with ProofManager(
-        conf.dataset_file.file_context,
+        conf.location_info.dataset_file.file_context,
         proof_info,
         conf.tactic_gen.formatter,
-        conf.file_info,
-        conf.sentence_db,
-        conf.split,
-        conf.data_loc,
+        conf.location_info.file_info,
+        conf.location_info.sentence_db,
+        conf.location_info.split,
+        conf.location_info.data_loc,
     ) as proof_manager:
         tree_manager = SearchTreeManager.from_conf(
             conf.search_conf, conf.tactic_gen, proof_manager

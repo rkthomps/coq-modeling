@@ -12,6 +12,7 @@ import time
 
 from util.util import get_fresh_path
 from data_management import dataset_file
+from data_management.splits import DataSplit
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import (
     DatasetFile,
@@ -82,7 +83,6 @@ class ProofCheckResult:
             new_dataset_file,
         )
 
-
 @dataclass
 class ProofInfo:
     proof_term: Term
@@ -111,6 +111,7 @@ class ProofManager:
         self.split = split
         self.data_loc = data_loc
         self.__start_clients()
+    
 
     def __start_clients(self) -> None:
         self.fast_aux_file_path = get_fresh_path(

@@ -10,6 +10,7 @@ import random
 import json
 import jsonlines
 import numpy as np
+from pathlib import Path
 
 from transformers import T5Tokenizer, BatchEncoding
 from tactic_gen.lm_example import LmExample
@@ -18,7 +19,7 @@ from tactic_gen.lm_example import LmExample
 class FidDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        data_path: Optional[str],
+        data_path: Optional[Path],
         tokenizer: T5Tokenizer,
         max_encode_len: int,
         max_decode_len: int,

@@ -30,11 +30,11 @@ class GoalFormatterConf:
 
 class GoalFormatter:
     def example_from_step(
-        self, step_idx: int, proof: Proof, dset_file: DatasetFile
+        self, step_idx: int, proof: Proof
     ) -> GoalExample:
         step = proof.steps[step_idx]
         goal_str = fmt_goals(step.goals)
-        n_steps_left = len(proof.steps) - step_idx + 1
+        n_steps_left = len(proof.steps) - step_idx
         return GoalExample(goal_str, n_steps_left)
 
     @classmethod
