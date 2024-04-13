@@ -83,6 +83,7 @@ class ProofCheckResult:
             new_dataset_file,
         )
 
+
 @dataclass
 class ProofInfo:
     proof_term: Term
@@ -111,7 +112,6 @@ class ProofManager:
         self.split = split
         self.data_loc = data_loc
         self.__start_clients()
-    
 
     def __start_clients(self) -> None:
         self.fast_aux_file_path = get_fresh_path(
@@ -326,7 +326,7 @@ class ProofManager:
             key_record=goal_record,
             cutoff_idx=self.proof_info.proof_point,
         )
-        print(example.input)
+        # print(example.input)
         # print(example.passages)
         return example
 

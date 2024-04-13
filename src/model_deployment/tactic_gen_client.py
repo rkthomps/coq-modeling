@@ -6,11 +6,18 @@ import requests
 import random
 from pathlib import Path
 from dataclasses import dataclass
-import openai
-openai.api_key = os.environ["OPENAI_API_KEY"]
-from openai import OpenAI 
 
-from tactic_gen.lm_example import LmExample, GPTFormatter, FormatterConf, formatter_conf_from_yaml
+# import openai
+
+# openai.api_key = os.environ["OPENAI_API_KEY"]
+# from openai import OpenAI
+
+from tactic_gen.lm_example import (
+    LmExample,
+    GPTFormatter,
+    FormatterConf,
+    formatter_conf_from_yaml,
+)
 from tactic_gen.lm_example import (
     LmFormatter,
     FormatterConf,
@@ -50,7 +57,7 @@ class LocalTacticGenClientConf:
 class OpenAiCientConf:
     ALIAS = "openai"
     model_name: str
-    formatter_conf: FormatterConf 
+    formatter_conf: FormatterConf
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> OpenAiCientConf:
@@ -63,7 +70,7 @@ class OpenAiClient:
         self.model_name = model_name
         self.client = OpenAI(organization=os.environ["OPENAI_ORG_KEY"])
         self.formatter = formatter
-    
+
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         completion = self.client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -77,12 +84,12 @@ class OpenAiClient:
         for choice in completion.choices:
             messages.append(choice.message)
         return ModelResult(messages, [], [])
-    
+
     @classmethod
     def from_conf(cls, conf: OpenAiCientConf) -> OpenAiClient:
         formatter = formatter_from_conf(conf.formatter_conf)
         assert isinstance(formatter, GPTFormatter)
-        return cls(conf.model_name, formatter) 
+        return cls(conf.model_name, formatter)
 
 
 @dataclass
@@ -106,12 +113,14 @@ class LocalTacticGenClient:
     def from_conf(cls, conf: LocalTacticGenClientConf) -> TacticGenClient:
         return cls(conf.urls, formatter_from_conf(conf.formatter_conf))
 
+
 TacticGenClient = LocalTacticGenClient | OpenAiClient
+
 
 def tactic_gen_client_from_conf(conf: TacticGenConf) -> TacticGenClient:
     match conf:
-        case LocalTacticGenClientConf(): 
-            return LocalTacticGenClient.from_conf(conf) 
+        case LocalTacticGenClientConf():
+            return LocalTacticGenClient.from_conf(conf)
         case OpenAiCientConf():
             return OpenAiClient.from_conf(conf)
         case _:

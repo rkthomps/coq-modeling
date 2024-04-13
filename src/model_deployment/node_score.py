@@ -30,7 +30,7 @@ class NodeScore:
 
     @classmethod
     def from_unit_score(
-        cls, unit_score: float, num_tokens: int, max_branch: int
+        cls, unit_score: float, num_tokens: int, goal_length: int, max_branch: int
     ) -> NodeScore:
         raise NotImplementedError
 
@@ -45,166 +45,66 @@ class NodeScore:
         raise NotImplementedError
 
 
-class ModelScore(NodeScore):
-    def __init__(self, model_score: float):
-        self.model_score = model_score
-    
-    def compute(self) -> float:
-        return self.model_score
-    
-    def agg(self, other: NodeScore) -> NodeScore:
-        return other
-    
-    def to_json(self) -> Any:
-        return {
-            "model_score": self.model_score
-        }
-    
-    @classmethod
-    def from_unit_score(cls, unit_score: float, num_tokens: int, max_branch: int) -> NodeScore:
-        return cls(unit_score) 
-
-    @classmethod
-    def get_initial_score(cls, branching_factor: int) -> NodeScore:
-        score = 0
-        return cls(score)
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> ModelScore:
-        model_score = json_data["model_score"]
-        return cls(model_score)
-
-    @staticmethod
-    def get_alias() -> str:
-        return "model_score"
-
-
-class TokenSumScore(NodeScore):
-    def __init__(self, sequence_score: int | float):
-        self.sequence_score = sequence_score
-
-    def compute(self) -> float:
-        return self.sequence_score
-
-    def agg(self, other: NodeScore) -> NodeScore:
-        if not isinstance(other, TokenSumScore):
-            raise ValueError(f"Other nodescore must be {self.get_alias()}")
-        new_sequence_score = self.sequence_score + other.sequence_score
-        return TokenSumScore(new_sequence_score)
-
-    def to_json(self) -> Any:
-        parent_json = super(TokenSumScore, self).to_json()
-        self_json = {
-            "sequence_score": self.sequence_score,
-        }
-        return parent_json | self_json
-
-    @classmethod
-    def from_unit_score(
-        cls, unit_score: float, num_tokens: int, max_branch: int
-    ) -> NodeScore:
-        return cls(unit_score)
-
-    @classmethod
-    def get_initial_score(cls, branching_factor: int) -> NodeScore:
-        score = 0
-        return cls(score)
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> TokenSumScore:
-        sequence_score = json_data["sequence_score"]
-        return cls(sequence_score)
-
-    @staticmethod
-    def get_alias() -> str:
-        return "token-sum-score"
-
-
 class TokenLengthNormalizedScore(NodeScore):
-    def __init__(self, sequence_score: int | float, proof_num_tokens: int):
+    def __init__(
+        self, sequence_score: int | float, proof_num_tokens: int, goal_length: int
+    ):
         self.sequence_score = sequence_score
         self.proof_num_tokens = proof_num_tokens
+        self.goal_length = goal_length
 
     def compute(self) -> float:
         if self.proof_num_tokens == 0:
             assert self.sequence_score == 0
             return 0
-        #return self.sequence_score - self.proof_num_tokens * math.log(0.1)
-        return self.sequence_score / self.proof_num_tokens
+        # return self.sequence_score - self.proof_num_tokens * math.log(0.1)
+        model_term = self.sequence_score / self.proof_num_tokens
+        goal_term = -0.01 * self.proof_num_tokens * self.goal_length
+        # print("model:", model_term)
+        # print("goal:", goal_term)
+        return model_term
 
     def agg(self, other: NodeScore) -> NodeScore:
         if not isinstance(other, TokenLengthNormalizedScore):
             raise ValueError(f"Other nodescore must be {self.get_alias()}")
         new_sequence_score = self.sequence_score + other.sequence_score
         new_proof_num_tokens = self.proof_num_tokens + other.proof_num_tokens
-        return TokenLengthNormalizedScore(new_sequence_score, new_proof_num_tokens)
+        return TokenLengthNormalizedScore(
+            new_sequence_score, new_proof_num_tokens, other.goal_length
+        )
 
     def to_json(self) -> Any:
         parent_json = super(TokenLengthNormalizedScore, self).to_json()
         self_json = {
             "sequence_score": self.sequence_score,
             "proof_num_tokens": self.proof_num_tokens,
+            "goal_length": self.goal_length,
         }
         return parent_json | self_json
 
     @classmethod
     def from_unit_score(
-        cls, unit_score: float, num_tokens: int, max_branch: int
+        cls, unit_score: float, num_tokens: int, goal_length: int, max_branch: int
     ) -> NodeScore:
-        return cls(unit_score, num_tokens)
+        return cls(unit_score, num_tokens, goal_length)
 
     @classmethod
     def get_initial_score(cls, branching_factor: int) -> NodeScore:
         score = 0
         num_tokens = 0
-        return cls(score, num_tokens)
+        goal_length = 0
+        return cls(score, num_tokens, goal_length)
 
     @classmethod
     def from_json(cls, json_data: Any) -> TokenLengthNormalizedScore:
         sequence_score = json_data["sequence_score"]
         proof_num_tokens = json_data["proof_num_tokens"]
-        return cls(sequence_score, proof_num_tokens)
+        goal_length = json_data["goal_length"]
+        return cls(sequence_score, proof_num_tokens, goal_length)
 
     @staticmethod
     def get_alias() -> str:
         return "token-normalized-score"
-
-
-class LastTacGreedyScore(NodeScore):
-    def __init__(self, sequence_score: int | float) -> None:
-        self.sequence_score = sequence_score
-
-    def compute(self) -> float:
-        return self.sequence_score
-
-    def agg(self, other: NodeScore) -> NodeScore:
-        if not isinstance(other, LastTacGreedyScore):
-            raise ValueError(f"Other nodescore must be {self.get_alias()}")
-        return LastTacGreedyScore(other.sequence_score)
-
-    def to_json(self) -> Any:
-        parent_json = super(LastTacGreedyScore, self).to_json()
-        self_json = {"sequence_score": self.sequence_score}
-        return parent_json | self_json
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> LastTacGreedyScore:
-        sequence_score = json_data["sequence_score"]
-        return cls(sequence_score)
-
-    @classmethod
-    def from_unit_score(
-        cls, unit_score: float, num_tokens: int, max_branch: int
-    ) -> NodeScore:
-        return LastTacGreedyScore(unit_score)
-
-    @classmethod
-    def get_initial_score(cls, branching_factor: int) -> NodeScore:
-        return LastTacGreedyScore(0)
-
-    @staticmethod
-    def get_alias() -> str:
-        return "last-tac-greedy-score"
 
 
 class DepthFirstScore(NodeScore):
@@ -251,7 +151,7 @@ class DepthFirstScore(NodeScore):
 
     @classmethod
     def from_unit_score(
-        cls, unit_score: float, num_tokens: int, max_branch: int
+        cls, unit_score: float, num_tokens: int, goal_length: int, max_branch: int
     ) -> NodeScore:
         return cls(1, unit_score)
 
@@ -262,64 +162,6 @@ class DepthFirstScore(NodeScore):
     @staticmethod
     def get_alias() -> str:
         return "depth-first-score"
-
-
-class BreadthFirstScore(NodeScore):
-    def __init__(self, proof_num_tactics: int, sequence_score: int | float) -> None:
-        self.proof_num_tactics = proof_num_tactics
-        self.sequence_score = sequence_score
-
-    def __ord_key(self) -> tuple[int, int | float]:
-        return (-1 * self.proof_num_tactics, self.sequence_score)
-
-    def __le__(self, other: NodeScore) -> bool:
-        if not isinstance(other, BreadthFirstScore):
-            raise ValueError(f"Other nodescore must be {self.get_alias()}")
-        """We prefer nodes with lower breadth unlike other scores"""
-        return self.__ord_key() <= other.__ord_key()
-
-    def __lt__(self, other: NodeScore) -> bool:
-        if not isinstance(other, BreadthFirstScore):
-            raise ValueError(f"Other nodescore must be {self.get_alias()}")
-        return self.__ord_key() < other.__ord_key()
-
-    def compute(self) -> float:
-        return self.proof_num_tactics
-
-    def agg(self, other: NodeScore) -> NodeScore:
-        if not isinstance(other, BreadthFirstScore):
-            raise ValueError(f"Other nodescore must be {self.get_alias()}")
-        combined_num_tactics = self.proof_num_tactics + other.proof_num_tactics
-        combined_sequence_scores = other.sequence_score
-        return BreadthFirstScore(combined_num_tactics, combined_sequence_scores)
-
-    def to_json(self) -> Any:
-        parent_json = super(BreadthFirstScore, self).to_json()
-        self_json = {
-            "proof_num_tactics": self.proof_num_tactics,
-            "sequence_score": self.sequence_score,
-        }
-        return parent_json | self_json
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> NodeScore:
-        proof_num_tactics = json_data["proof_num_tactics"]
-        sequence_score = json_data["sequence_score"]
-        return cls(proof_num_tactics, sequence_score)
-
-    @classmethod
-    def from_unit_score(
-        cls, unit_score: float, num_tokens: int, max_branch: int
-    ) -> NodeScore:
-        return cls(1, unit_score)
-
-    @classmethod
-    def get_initial_score(cls, branching_factor: int) -> NodeScore:
-        return cls(0, 0)
-
-    @staticmethod
-    def get_alias() -> str:
-        return "breadth-first-score"
 
 
 class BranchNormalizedScore(NodeScore):
@@ -369,7 +211,7 @@ class BranchNormalizedScore(NodeScore):
 
     @classmethod
     def from_unit_score(
-        cls, unit_score: float, num_tokens: int, max_branch: int
+        cls, unit_score: float, num_tokens: int, goal_length: int, max_branch: int
     ) -> NodeScore:
         num_tactics = 1
         return cls(unit_score, num_tactics, max_branch)
@@ -382,8 +224,5 @@ class BranchNormalizedScore(NodeScore):
 NODE_SCORE_ALIASES: dict[str, type[NodeScore]] = {
     BranchNormalizedScore.get_alias(): BranchNormalizedScore,
     TokenLengthNormalizedScore.get_alias(): TokenLengthNormalizedScore,
-    TokenSumScore.get_alias(): TokenSumScore,
-    LastTacGreedyScore.get_alias(): LastTacGreedyScore,
-    BreadthFirstScore.get_alias(): BreadthFirstScore,
     DepthFirstScore.get_alias(): DepthFirstScore,
 }

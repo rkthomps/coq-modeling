@@ -360,11 +360,12 @@ class SearchTreeManager:
             proof_check_result = self.proof_manager.check_proof(
                 proof_script, leaf_subtree.proof.theorem
             )
-            node_score = self.score_type.from_unit_score(
-                score, num_tokens, self.max_branch
-            )
             match proof_check_result.tactic_result:
                 case TacticResult.COMPLETE:
+                    goal_length = 0
+                    node_score = self.score_type.from_unit_score(
+                        score, num_tokens, goal_length, self.max_branch
+                    )
                     complete_node = self.__get_complete_child_node(
                         proof_check_result,
                         tactic,
@@ -377,6 +378,10 @@ class SearchTreeManager:
                     return complete_node
 
                 case TacticResult.INVALID:
+                    goal_length = 1000000
+                    node_score = self.score_type.from_unit_score(
+                        score, num_tokens, goal_length, self.max_branch
+                    )
                     invalid_node = self.__get_invalid_child_node(
                         proof_check_result,
                         tactic,
@@ -387,6 +392,13 @@ class SearchTreeManager:
                     children.append(invalid_node)
 
                 case TacticResult.VALID:
+                    assert proof_check_result.current_goals is not None
+                    goal_length = sum(
+                        [len(repr(g)) for g in proof_check_result.current_goals]
+                    )
+                    node_score = self.score_type.from_unit_score(
+                        score, num_tokens, goal_length, self.max_branch
+                    )
                     valid_node = self.__get_valid_child_node(
                         proof_check_result,
                         tactic,

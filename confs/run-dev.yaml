@@ -45,7 +45,7 @@ proofs:
     theorem_name: Qabs_Qminus_Zero_eq
 
   
-n_procs: 5
+n_procs: 4
 save_loc: ./dev-results.csv
 
 data_loc: raw-data/coq-dataset
@@ -63,9 +63,9 @@ tactic_gen:
   alias: fid
   checkpoint_loc: models/t5-fid-small-proof-ret-final/checkpoint-107500
 
-tactic_gen:
-  alias: fid
-  checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
 
 # tactic_gen:
 #   alias: fid

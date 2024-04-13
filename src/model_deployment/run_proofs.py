@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import multiprocessing as mp
 import pickle
 
-from model_deployment.run_proof import run_proof, TestProofConf
+from model_deployment.run_proof import run_proof, TestProofConf, TheoremLocationInfo
 from model_deployment.searcher import SearchConf, SuccessfulSearch, FailedSearch
 from model_deployment.tactic_gen_client import TacticGenConf, tactic_gen_conf_from_yaml
 from util.constants import CLEAN_CONFIG
@@ -39,12 +39,15 @@ class TestProofsConf:
     def to_test_proof_list(self) -> list[TestProofConf]:
         test_proof_confs: list[TestProofConf] = []
         for p in self.proofs:
-            test_proof_conf = TestProofConf(
+            location = TheoremLocationInfo(
                 p.theorem_name,
                 p.test_file,
                 self.data_loc,
                 self.sentence_db_loc,
                 self.data_split_loc,
+            )
+            test_proof_conf = TestProofConf(
+                location,
                 self.search_conf,
                 self.tactic_conf,
                 False,
@@ -166,8 +169,10 @@ class SearchSummary:
 def run_test(test_proof: TestProofConf) -> SearchSummary:
     result = run_proof(test_proof.to_run_conf())
     summary = SearchSummary.from_search_result(
-        test_proof.test_file.relative_to(test_proof.data_loc),
-        test_proof.theorem_name,
+        test_proof.theorem_location_info.test_file.relative_to(
+            test_proof.theorem_location_info.data_loc
+        ),
+        test_proof.theorem_location_info.theorem_name,
         result,
     )
     summary.pretty_print()

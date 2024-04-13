@@ -25,7 +25,7 @@ from model_deployment.premise_client import PremiseConf, SelectConf, SelectClien
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
     FidTacticGenConf,
-    TacticGenClientConf,
+    LocalTacticGenClientConf,
 )
 from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
@@ -166,7 +166,7 @@ def start_tactic_gen_servers(
 
 def start_servers_tactic_gen(
     conf: TacticGenConf, use_devices: list[int]
-) -> TacticGenClientConf:
+) -> TacticGenConf:
     match conf:
         case FidTacticGenConf():
             assert conf.checkpoint_loc.exists()
@@ -182,8 +182,8 @@ def start_servers_tactic_gen(
                 formatter_conf, use_devices
             )
             tactic_urls = start_tactic_gen_servers(conf, use_devices)
-            return TacticGenClientConf(tactic_urls, formatter_client_conf)
-        case TacticGenClientConf():
+            return LocalTacticGenClientConf(tactic_urls, formatter_client_conf)
+        case _:
             return conf
 
 
@@ -199,11 +199,7 @@ def start_servers(conf: TopLevelConf, use_devices: list[int]) -> TopLevelConf:
         case TestProofConf():
             tactic_client_conf = start_servers_tactic_gen(conf.tactic_conf, use_devices)
             return TestProofConf(
-                conf.theorem_name,
-                conf.test_file,
-                conf.data_loc,
-                conf.sentence_db_loc,
-                conf.data_split_loc,
+                conf.theorem_location_info,
                 conf.search_conf,
                 tactic_client_conf,
                 conf.print_proofs,
