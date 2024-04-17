@@ -96,7 +96,6 @@ class ProofManager:
         self,
         file_context: FileContext,
         proof_info: ProofInfo,
-        lm_formatter: LmFormatter,
         file_info: FileInfo,
         sentence_db: SentenceDB,
         split: Split,
@@ -104,7 +103,6 @@ class ProofManager:
     ) -> None:
         self.file_context = file_context
         self.proof_info = proof_info
-        self.lm_formatter = lm_formatter
         self.file_info = file_info
         self.sentence_db = sentence_db
         self.split = split
@@ -192,10 +190,6 @@ class ProofManager:
         return True
 
     def get_goal_record(self, steps: list[CStep]) -> Optional[GoalRecord]:
-        if not isinstance(
-            self.lm_formatter, ProofRetrievalFormatter | GPTProofFormatter
-        ):
-            return None
         new_step_idx = len(steps) - 1
         end_pos = steps[new_step_idx].ast.range.end
         goal_dict: dict[int, Optional[GoalAnswer]] = {}
@@ -212,7 +206,10 @@ class ProofManager:
         return record
 
     def check_proof(
-        self, partial_proof: str, theorem: dataset_file.Term
+        self,
+        partial_proof: str,
+        theorem: dataset_file.Term,
+        need_goal_record: bool = True,
     ) -> ProofCheckResult:
         # TODO: NEED TO CATCH SIMPL IN *
         # partial_steps = separate_steps(partial_proof)
@@ -285,7 +282,9 @@ class ProofManager:
 
         new_proof = self.get_proof_shell(partial_steps, current_goals, theorem)
         try:
-            goal_record = self.get_goal_record(steps)
+            goal_record = None
+            if need_goal_record:
+                goal_record = self.get_goal_record(steps)
         except ResponseError as e:
             _logger.warning(f"Got repsonse getting goal record: {partial_proof[-10:]}")
             self.__restart_clients()
@@ -311,11 +310,14 @@ class ProofManager:
         )
 
     def get_example(
-        self, dset_file: DatasetFile, goal_record: Optional[GoalRecord]
+        self,
+        formatter: LmFormatter,
+        dset_file: DatasetFile,
+        goal_record: Optional[GoalRecord],
     ) -> LmExample:
         proof = dset_file.proofs[-1]
         last_step_idx = len(proof.steps) - 1
-        example = self.lm_formatter.example_from_step(
+        example = formatter.example_from_step(
             last_step_idx,
             proof,
             dp_obj=dset_file,

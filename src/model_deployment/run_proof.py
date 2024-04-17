@@ -58,7 +58,7 @@ class TheoremLocationInfo:
             if self.theorem_name in proof.theorem.term.text:
                 return i
         raise ValueError(f"{self.theorem_name} not found in {self.test_file}")
-    
+
     def to_location_info(self) -> LocationInfo:
         data_split = DataSplit.load(self.data_split_loc)
         file_info, split = self.get_file_from_split(data_split)
@@ -66,7 +66,7 @@ class TheoremLocationInfo:
         file_dp = file_info.get_dp(self.data_loc, sentence_db)
         idx = self.get_dp_idx(file_dp)
         return LocationInfo(
-            self.data_loc, file_info, split, file_dp, idx, sentence_db, data_split 
+            self.data_loc, file_info, split, file_dp, idx, sentence_db, data_split
         )
 
     @classmethod
@@ -87,7 +87,6 @@ class TestProofConf:
     tactic_conf: TacticGenConf
     print_proofs: bool
     print_trees: bool
-
 
     def to_run_conf(self) -> RunProofConf:
         return RunProofConf(
@@ -168,7 +167,6 @@ def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
     with ProofManager(
         conf.location_info.dataset_file.file_context,
         proof_info,
-        conf.tactic_gen.formatter,
         conf.location_info.file_info,
         conf.location_info.sentence_db,
         conf.location_info.split,

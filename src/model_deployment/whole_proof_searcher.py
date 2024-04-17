@@ -1,7 +1,7 @@
 import time
 from dataclasses import dataclass
 
-from tactic_gen.lm_example import LmExample
+from tactic_gen.lm_example import LmExample, ProofRetrievalFormatter, GPTProofFormatter
 from data_management.dataset_file import DatasetFile
 
 from model_deployment.tactic_gen_client import TacticGenClient
@@ -27,6 +27,12 @@ class WholeProofSearcher:
         self.tactic_gen_client = tactic_gen_client
         self.proof_manager = proof_manager
         self.n_attempts = n_attempts
+        assert len(self.tactic_gen_client.formatters) == 1
+        self.formatter = self.tactic_gen_client.formatters[0]
+
+    @property
+    def need_goal_record(self) -> bool:
+        return isinstance(self.formatter, ProofRetrievalFormatter | GPTProofFormatter)
 
     def search(self) -> WholeProofResult:
         initial_proof = ""
@@ -35,7 +41,7 @@ class WholeProofSearcher:
             raise ValueError("Could not get initial datasetfile")
         initial_proof_obj = initial_dset_file.proofs[-1]
         initial_check_result = self.proof_manager.check_proof(
-            initial_proof, initial_proof_obj.theorem
+            initial_proof, initial_proof_obj.theorem, self.need_goal_record
         )
         assert initial_check_result.tactic_result == TacticResult.VALID
         assert initial_check_result.current_goals is not None
@@ -44,7 +50,7 @@ class WholeProofSearcher:
 
         start = time.time()
         example = self.proof_manager.get_example(
-            initial_dset_file, initial_check_result.goal_record
+            self.formatter, initial_dset_file, initial_check_result.goal_record
         )
         model_result = self.tactic_gen_client.get_recs(
             example, self.n_attempts, initial_proof
@@ -55,7 +61,7 @@ class WholeProofSearcher:
         for proof in model_result.next_tactic_list:
             added_newline_proof = f"\n{proof}"
             check_result = self.proof_manager.check_proof(
-                added_newline_proof, initial_proof_obj.theorem
+                added_newline_proof, initial_proof_obj.theorem, False
             )
             print(check_result)
             match check_result.tactic_result:

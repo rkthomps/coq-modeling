@@ -11,6 +11,7 @@ import sys, os
 from coqpyt.coq.lsp.structs import Goal
 from util.coqpyt_utils import get_all_goals
 
+from model_deployment.model_result import ModelResult, filter_recs
 from model_deployment.tactic_gen_client import TacticGenClient
 from model_deployment.node_score import NodeScore, OverrideScore, NODE_SCORE_ALIASES
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
@@ -20,6 +21,7 @@ from util.util import get_basic_logger
 
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Proof
+from tactic_gen.lm_example import LmExample, GPTProofFormatter, ProofRetrievalFormatter
 
 
 _logger = get_basic_logger(__name__)
@@ -162,7 +164,7 @@ class SearchTreeManager:
         self.goal_scorer = self.__get_goal_scorer(initial_dset_file)
         self.initial_proof_obj = initial_dset_file.proofs[-1]
         initial_check_result = proof_manager.check_proof(
-            initial_proof, self.initial_proof_obj.theorem
+            initial_proof, self.initial_proof_obj.theorem, self.need_goal_record
         )
         assert initial_check_result.tactic_result == TacticResult.VALID
         assert initial_check_result.current_goals is not None
@@ -199,6 +201,15 @@ class SearchTreeManager:
             conf.max_expansions,
             conf.depth_limit,
             conf.timeout,
+        )
+
+    @property
+    def need_goal_record(self):
+        return any(
+            [
+                isinstance(f, GPTProofFormatter | ProofRetrievalFormatter)
+                for f in self.tactic_client.formatters
+            ]
         )
 
     def search(
@@ -339,6 +350,22 @@ class SearchTreeManager:
         )
         return new_leaf
 
+    def get_all_recs(
+        self, examples: list[LmExample], current_proof: str
+    ) -> ModelResult:
+        recs_per_example = self.max_branch // len(examples)
+        all_next_tactics: list[str] = []
+        all_next_scores: list[float] = []
+        all_next_num_tokens: list[int] = []
+        for example in examples:
+            result = self.tactic_client.get_recs(
+                example, recs_per_example, current_proof
+            )
+            all_next_tactics.extend(result.next_tactic_list)
+            all_next_scores.extend(result.score_list)
+            all_next_num_tokens.extend(result.num_tokens_list)
+        return filter_recs(all_next_tactics, all_next_scores, all_next_num_tokens, [])
+
     def search_step(
         self,
         step_num: int,
@@ -355,10 +382,13 @@ class SearchTreeManager:
         leaf_subtree.set_expanded_num(step_num)
         assert leaf_subtree.proof is not None
         dset_file = DatasetFile(self.search_tree.file_context, [leaf_subtree.proof])
-        example = self.proof_manager.get_example(dset_file, leaf_subtree.goal_record)
-        leaf_subtree.set_model_input(example.input)
+        examples = [
+            self.proof_manager.get_example(f, dset_file, leaf_subtree.goal_record)
+            for f in self.tactic_client.formatters
+        ]
+        leaf_subtree.set_model_input(examples)
         start_time = time.time()
-        result = self.tactic_client.get_recs(example, self.max_branch, current_proof)
+        result = self.get_all_recs(examples, current_proof)
         end_time = time.time()
         self.total_model_time += end_time - start_time
         children: list[SearchNode] = []
@@ -373,7 +403,7 @@ class SearchTreeManager:
                 return None
             proof_script = leaf_subtree.total_proof_str() + tactic
             proof_check_result = self.proof_manager.check_proof(
-                proof_script, leaf_subtree.proof.theorem
+                proof_script, leaf_subtree.proof.theorem, self.need_goal_record
             )
             match proof_check_result.tactic_result:
                 case TacticResult.COMPLETE:

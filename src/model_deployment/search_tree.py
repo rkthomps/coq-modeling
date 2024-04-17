@@ -6,6 +6,7 @@ import re
 
 from data_management.dataset_file import FileContext, Proof
 from data_management.sentence_db import SentenceDB
+from tactic_gen.lm_example import LmExample
 from model_deployment.node_score import NodeScore
 from model_deployment.mine_goals import GoalRecord
 from termcolor import colored
@@ -55,7 +56,7 @@ class SearchNode:
         proof: Optional[Proof],
         goal_record: Optional[GoalRecord],
         expanded: Optional[int] = None,
-        model_input: Optional[str] = None,
+        model_input: Optional[list[LmExample]] = None,
         children: Optional[list[SearchNode]] = None,
         redundant_to_str: Optional[str] = None,
         depth: Optional[int] = None,
@@ -87,7 +88,7 @@ class SearchNode:
     def set_expanded_num(self, expanded_num: int) -> None:
         self.expanded = expanded_num
 
-    def set_model_input(self, model_input: str) -> None:
+    def set_model_input(self, model_input: list[LmExample]) -> None:
         self.model_input = model_input
 
     def redundant_str(self) -> str:
@@ -206,7 +207,11 @@ class SearchNode:
             ),
             "goal_record": self.goal_record.to_json() if self.goal_record else None,
             "expanded": self.expanded,
-            "model_input": self.model_input,
+            "model_input": (
+                [m.to_json() for m in self.model_input]
+                if self.model_input is not None
+                else self.model_input
+            ),
             "redundant_to_str": self.redundant_to_str,
             "children": [c.to_json(sentences_db) for c in self.children],
         }
@@ -229,7 +234,11 @@ class SearchNode:
             goal_record = None
 
         expanded = json_data["expanded"]
-        model_input = json_data["model_input"] if "model_input" in json_data else None
+        model_input = (
+            [LmExample.from_json(e) for e in json_data["model_input"]]
+            if "model_input" in json_data and json_data["model_input"] is not None
+            else None
+        )
         children = [
             SearchNode.from_json(c, sentences_db) for c in json_data["children"]
         ]

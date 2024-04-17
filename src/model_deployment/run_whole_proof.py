@@ -55,7 +55,6 @@ def run_proof(conf: RunWholeProofConf) -> WholeProofResult:
     with ProofManager(
         conf.location_info.dataset_file.file_context,
         proof_info,
-        conf.tactic_gen.formatter,
         conf.location_info.file_info,
         conf.location_info.sentence_db,
         conf.location_info.split,

@@ -77,6 +77,7 @@ class OpenAiClient:
         self.model_name = model_name
         self.client = OpenAI(organization=os.environ["OPENAI_ORG_KEY"])
         self.formatter = formatter
+        self.formatters = [formatter]
 
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         completion = self.client.chat.completions.create(

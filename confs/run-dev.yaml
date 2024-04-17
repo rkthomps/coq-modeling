@@ -81,7 +81,7 @@ proofs:
     theorem_name: Qpositive_c_equiv'
 
   
-n_procs: 16
+n_procs: 8
 save_loc: ./dev-results.csv
 
 data_loc: raw-data/coq-dataset
@@ -146,17 +146,17 @@ search:
 
 
 
-tactic_gen:
-  alias: fid
-  checkpoint_loc: models/t5-fid-small-proof-ret-final/checkpoint-107500
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-proof-ret-final/checkpoint-107500
 
 # tactic_gen:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
 
-# tactic_gen:
-#   alias: fid
-#   checkpoint_loc: models/t5-fid-base-basic-final/checkpoint-110500
+tactic_gen:
+  alias: fid
+  checkpoint_loc: models/t5-fid-base-basic-final/checkpoint-110500
 
 # tactic_gen:
 #   alias: fid
