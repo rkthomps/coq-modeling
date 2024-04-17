@@ -80,6 +80,16 @@ class Sentence:
             return False
         return hash(self) == hash(other)
 
+    def is_lemma_or_axiom(self) -> bool:
+        return self.sentence_type in (
+            TermType.COROLLARY,
+            TermType.FACT,
+            TermType.LEMMA,
+            TermType.PROPERTY,
+            TermType.REMARK,
+            TermType.THEOREM,
+        )
+
     def to_db_sentence(self) -> DBSentence:
         return DBSentence(
             self.text,
@@ -130,7 +140,6 @@ class Sentence:
             "type": "stored",
             "id": self.db_idx,
         }
-            
 
     @classmethod
     def from_idx(cls, idx: int, sentence_db: SentenceDB) -> Sentence:

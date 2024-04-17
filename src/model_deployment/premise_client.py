@@ -32,6 +32,23 @@ class SelectConf:
 
 
 @dataclass
+class RerankConf:
+    ALIAS = "rerank"
+    checkpoint_loc: Path
+    rerank_num: int
+    select_conf: Optional[PremiseConf]
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> RerankConf:
+        select_conf = None
+        if "select" in yaml_data:
+            select_conf = premise_conf_from_yaml(yaml_data["select"])
+        return cls(
+            Path(yaml_data["checkpoint_loc"]), yaml_data["rerank_num"], select_conf
+        )
+
+
+@dataclass
 class TFIdfConf:
     ALIAS = "tfidf"
     context_format_alias: str
@@ -83,19 +100,46 @@ class SelectClientConf:
         )
 
 
-PremiseConf = SelectConf | SelectClientConf | TFIdfConf | BM250OkapiConf
+@dataclass
+class RerankClientConf:
+    ALIAS = "rerank-client"
+    urls: list[str]
+    select_client: PremiseConf
+    rerank_num: int
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> RerankClientConf:
+        return cls(
+            yaml_data["urls"],
+            premise_conf_from_yaml(yaml_data["select"]),
+            yaml_data["rerank_num"],
+        )
+
+
+PremiseConf = (
+    SelectConf
+    | SelectClientConf
+    | RerankConf
+    | RerankClientConf
+    | TFIdfConf
+    | BM250OkapiConf
+)
 
 
 def premise_conf_from_yaml(yaml_data: Any) -> PremiseConf:
     match yaml_data["alias"]:
         case "select":
             return SelectConf.from_yaml(yaml_data)
+        case "select-client":
+            return SelectClientConf.from_yaml(yaml_data)
+        case "rerank":
+            return RerankConf.from_yaml(yaml_data)
+        case "rerank-client":
+            return RerankClientConf.from_yaml(yaml_data)
         case "tfidf":
             return TFIdfConf.from_yaml(yaml_data)
         case "bm25":
             return BM250OkapiConf.from_yaml(yaml_data)
-        case "select-client":
-            return SelectClientConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Unknown Configuration")
 
@@ -106,10 +150,65 @@ def premise_client_from_conf(conf: PremiseConf) -> PremiseClient:
             raise ValueError("Select Conf Cannot be directly converted into a client.")
         case SelectClientConf():
             return SelectPremiseClient.from_conf(conf)
+        case RerankConf():
+            raise ValueError("Rerank Conf CAnnot be directly converted into a client.")
+        case RerankClientConf():
+            return RerankClient.from_conf(conf)
         case TFIdfConf():
             return TFIdfClient.from_conf(conf)
         case BM250OkapiConf():
             return BM25OkapiClient.from_conf(conf)
+
+
+class RerankClient:
+    def __init__(self, urls: list[str], select_client: PremiseClient, rerank_num: int):
+        self.urls = urls
+        self.select_client = select_client
+        self.rerank_num = rerank_num
+        self.context_format = self.select_client.context_format
+        self.premise_format = self.select_client.premise_format
+        self.premise_filter = self.select_client.premise_filter
+
+    def get_premise_scores_from_strings(
+        self, context_str: str, premises: list[Sentence]
+    ) -> list[float]:
+        premise_strs = [self.premise_format.format(s) for s in premises]
+        request_data = {
+            "method": "get_scores",
+            "params": [context_str, premise_strs],
+            "jsonrpc": "2.0",
+            "id": 0,
+        }
+        request_url = random.choice(self.urls)
+        response = requests.post(request_url, json=request_data).json()
+        return response["result"]
+
+    def get_ranked_premise_generator(
+        self, step: FocusedStep, proof: Proof, premises: list[Sentence]
+    ) -> Iterable[Sentence]:
+        rerank_premises: list[Sentence] = []
+        for premise in self.select_client.get_ranked_premise_generator(
+            step, proof, premises
+        ):
+            rerank_premises.append(premise)
+            if self.rerank_num <= len(rerank_premises):
+                break
+        context_str = self.context_format.format(step, proof)
+        rerank_scores = self.get_premise_scores_from_strings(
+            context_str, rerank_premises
+        )
+        num_premises = len(rerank_scores)
+        arg_sorted_premise_scores = sorted(
+            range(num_premises), key=lambda idx: -1 * rerank_scores[idx]
+        )
+        for idx in arg_sorted_premise_scores:
+            yield rerank_premises[idx]
+
+    @classmethod
+    def from_conf(cls, conf: RerankClientConf) -> RerankClient:
+        return cls(
+            conf.urls, premise_client_from_conf(conf.select_client), conf.rerank_num
+        )
 
 
 class SelectPremiseClient:
@@ -402,4 +501,4 @@ class BM25OkapiClient:
         )
 
 
-PremiseClient = SelectPremiseClient | TFIdfClient | BM25OkapiClient
+PremiseClient = SelectPremiseClient | RerankClient | TFIdfClient | BM25OkapiClient

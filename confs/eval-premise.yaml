@@ -1,0 +1,10 @@
+premise:
+  alias: rerank
+  checkpoint_loc: models/rerank/checkpoint-10100
+  rerank_num: 64
+
+data_loc: raw-data/coq-dataset
+sentence_db_loc: sentences.db
+data_split_loc: splits/final-split.json
+split_name: val
+save_loc: rerank 

@@ -5,6 +5,11 @@ import sys, os
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
 
+import logging
+
+log = logging.getLogger("werkzeug")
+log.setLevel(logging.ERROR)
+
 import requests
 from jsonrpc import JSONRPCResponseManager, dispatcher
 
@@ -36,7 +41,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("checkpoint_loc", help="Location of select model checkpoint.")
     parser.add_argument("--vector_db_loc", help="Location of vector database.")
-    parser.add_argument("port", type=int, help="Port on which to run the select server.")
+    parser.add_argument(
+        "port", type=int, help="Port on which to run the select server."
+    )
     args = parser.parse_args(sys.argv[1:])
     wrapper = SelectWrapper.from_checkpoint(args.checkpoint_loc, args.vector_db_loc)
     run_simple("localhost", args.port, application)

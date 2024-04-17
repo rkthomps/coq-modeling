@@ -3,49 +3,55 @@ from typing import Type, Iterable, Any, Optional
 
 
 import sys, os
-import argparse
-import pdb
+import pickle
 import json
-import re
+from pathlib import Path
 
-import torch
-from transformers import ByT5Tokenizer, T5EncoderModel
-from yaml import load, Loader
+from dataclasses import dataclass
+
 from tqdm import tqdm
 
-from typeguard import typechecked
-
+from data_management.dataset_file import Sentence
 from data_management.sentence_db import SentenceDB
-from data_management.splits import DataSplit, Split, DATA_POINTS_NAME
-from data_management.dataset_file import DatasetFile, Sentence, data_shape_expected
-from premise_selection.model import PremiseRetriever
-from model_deployment.premise_model_wrapper import (
-    PremiseModelWrapper,
-    PremiseServerModelWrapper,
-    SelectWrapper,
-    RerankWrapper,
-    get_ranked_premise_generator,
-    move_prem_wrapper_to,
-    premise_wrapper_from_conf,
-    TFIdf,
-    BM25Okapi,
+from data_management.splits import DataSplit, Split, str2split
+from model_deployment.premise_client import (
+    PremiseConf,
+    PremiseClient,
+    premise_client_from_conf,
+    premise_conf_from_yaml,
 )
-
 from util.util import get_basic_logger
+from util.constants import CLEAN_CONFIG
 
 _logger = get_basic_logger(__name__)
 
 
+@dataclass
+class PremiseEvalConf:
+    premise_conf: PremiseConf
+    data_loc: Path
+    sentence_db_loc: Path
+    data_split_loc: Path
+    split_name: str
+    save_loc: Path
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> PremiseEvalConf:
+        return cls(
+            premise_conf_from_yaml(yaml_data["premise"]),
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            Path(yaml_data["data_split_loc"]),
+            yaml_data["split_name"],
+            Path(yaml_data["save_loc"]),
+        )
+
+
+@dataclass
 class EvalResult:
-    def __init__(
-        self,
-        num_avail_premises: int,
-        hits_on: list[int],
-        num_positive_premises: int,
-    ) -> None:
-        self.num_avail_premises = num_avail_premises
-        self.hits_on = hits_on
-        self.num_positive_premises = num_positive_premises
+    num_avail_premises: int
+    hits_on: list[int]
+    num_positive_premises: int
 
     def to_json(self) -> Any:
         return {
@@ -65,10 +71,10 @@ class EvalResult:
         return cls(num_avail_premises, hits_on, num_positive_premises)
 
 
+@dataclass
 class EvalData:
-    def __init__(self, num_steps: int, eval_result_list: list[EvalResult]) -> None:
-        self.num_steps = num_steps
-        self.eval_result_list = eval_result_list
+    num_steps: int
+    eval_result_list: list[EvalResult]
 
     def precision_at(self, k: int) -> float:
         num_recs = k * len(self.eval_result_list)
@@ -107,103 +113,69 @@ class EvalData:
         return cls(num_steps, eval_result_list)
 
 
-class Evaluator:
-    def __init__(
-        self,
-        model_wrapper: PremiseModelWrapper,
-        data_loc: str,
-        sentence_db: SentenceDB,
-        data_split: DataSplit,
-        split: Split,
-    ) -> None:
-        self.model_wrapper = model_wrapper
-        self.data_loc = data_loc
-        self.sentence_db = sentence_db
-        self.data_split = data_split
-        self.split = split
+def run_and_save_evaluation(eval_conf: PremiseEvalConf) -> None:
+    if eval_conf.save_loc.exists():
+        print(f"{eval_conf.save_loc} exists.", file=sys.stderr)
+        exit(1)
+    eval_data = run_evaluation(eval_conf)
+    with eval_conf.save_loc.open("w") as fout:
+        fout.write(json.dumps(eval_data.to_json(), indent=2))
 
-    def run_and_save_evaluation(self, save_loc: str) -> None:
-        if os.path.exists(save_loc):
-            print(f"{save_loc} exists.", file=sys.stderr)
-            exit(1)
-        eval_data = self.run_evaluation()
-        with open(save_loc, "w") as fout:
-            fout.write(json.dumps(eval_data.to_json(), indent=2))
 
-    def run_evaluation(self) -> EvalData:
-        """Note that |eval_results| = # steps requiring at least one premise."""
-        num_steps = 0
-        eval_results: list[EvalResult] = []
-        for file_info in tqdm(self.data_split.get_file_list(self.split)):
-            dset_file = file_info.get_dp(self.data_loc, self.sentence_db)
-            for proof in dset_file.proofs:
-                for step in proof.steps:
-                    num_steps += 1
-                    filter_result = (
-                        self.model_wrapper.premise_filter.get_pos_and_avail_premises(
-                            step, proof, dset_file
-                        )
+def run_evaluation(eval_conf: PremiseEvalConf) -> EvalData:
+    """Note that |eval_results| = # steps requiring at least one premise."""
+    num_steps = 0
+    eval_results: list[EvalResult] = []
+    data_split = DataSplit.load(eval_conf.data_split_loc)
+    sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
+    split = str2split(eval_conf.split_name)
+    premise_client = premise_client_from_conf(eval_conf.premise_conf)
+    for file_info in tqdm(data_split.get_file_list(split)):
+        dset_file = file_info.get_dp(eval_conf.data_loc, sentence_db)
+        for proof in dset_file.proofs:
+            for step in proof.steps:
+                num_steps += 1
+                filter_result = (
+                    premise_client.premise_filter.get_pos_and_avail_premises(
+                        step, proof, dset_file
                     )
-                    num_positive_premises = len(filter_result.pos_premises)
-                    num_avail_premises = len(filter_result.avail_premises)
-                    if (num_positive_premises == 0) or (num_avail_premises == 0):
-                        continue
-                    ranked_premises_generator = get_ranked_premise_generator(
-                        self.model_wrapper, step, proof, filter_result.avail_premises
-                    )
+                )
+                num_positive_premises = len(filter_result.pos_premises)
+                num_avail_premises = len(filter_result.avail_premises)
+                if (num_positive_premises == 0) or (num_avail_premises == 0):
+                    continue
+                ranked_premises_generator = premise_client.get_ranked_premise_generator(
+                    step, proof, filter_result.avail_premises
+                )
 
-                    hits_on: list[int] = []
-                    premises_to_cover = filter_result.pos_premises
-                    for i, premise_rec in enumerate(ranked_premises_generator):
-                        if self.attempt_premise_remove(premises_to_cover, premise_rec):
-                            hits_on.append(i + 1)
-                            if len(premises_to_cover) == 0:
-                                break
-                    eval_results.append(
-                        EvalResult(num_avail_premises, hits_on, num_positive_premises)
-                    )
-            tmp_data = EvalData(num_steps, eval_results)
-            _logger.info(
-                f"Recalls: @1: {tmp_data.recall_at(1)}; @10: {tmp_data.recall_at(10)}; @100: {tmp_data.recall_at(100)}"
-            )
-        return EvalData(num_steps, eval_results)
+                hits_on: list[int] = []
+                premises_to_cover = filter_result.pos_premises
+                for i, premise_rec in enumerate(ranked_premises_generator):
+                    if attempt_premise_remove(premises_to_cover, premise_rec):
+                        hits_on.append(i + 1)
+                        if len(premises_to_cover) == 0:
+                            break
+                eval_results.append(
+                    EvalResult(num_avail_premises, hits_on, num_positive_premises)
+                )
+        tmp_data = EvalData(num_steps, eval_results)
+        _logger.info(
+            f"Recalls: @1: {tmp_data.recall_at(1)}; @10: {tmp_data.recall_at(10)}; @100: {tmp_data.recall_at(100)}"
+        )
+    return EvalData(num_steps, eval_results)
 
-    @staticmethod
-    def attempt_premise_remove(
-        premise_list: list[Sentence], to_remove: Sentence
-    ) -> bool:
-        try:
-            premise_list.remove(to_remove)
-            return True
-        except ValueError:
-            return False
+
+def attempt_premise_remove(premise_list: list[Sentence], to_remove: Sentence) -> bool:
+    try:
+        premise_list.remove(to_remove)
+        return True
+    except ValueError:
+        return False
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Conduct an evaluation of a premise selection model."
-    )
-    parser.add_argument("checkpoint_loc", help="Path to model checkpoint to evaluate.")
-    parser.add_argument("--vdb", help="Optional location of the vector database")
-    parser.add_argument("data_loc", help="Path to dataset.")
-    parser.add_argument("sentence_db_loc", help="Path to sentence db")
-    parser.add_argument("data_split_loc", help="Path to data split")
-    parser.add_argument("save_loc", help="Where to save eval results.")
+    conf_loc = Path(f"./{CLEAN_CONFIG}")
+    with conf_loc.open("rb") as fin:
+        eval_config: PremiseEvalConf = pickle.load(fin)
 
-    args = parser.parse_args(sys.argv[1:])
-
-    if args.checkpoint_loc == TFIdf.ALIAS or args.checkpoint_loc == BM25Okapi.ALIAS:
-        model_wrapper = premise_wrapper_from_conf({"alias": args.checkpoint_loc})
-    elif "rerank" in args.checkpoint_loc.lower():
-        model_wrapper = RerankWrapper.from_checkpoint(args.checkpoint_loc)
-    else:
-        model_wrapper = SelectWrapper.from_checkpoint(args.checkpoint_loc, args.vdb)
-
-    move_prem_wrapper_to(model_wrapper, "cuda")
-    sentence_db = SentenceDB.load(args.sentence_db_loc)
-    data_split = DataSplit.load(args.data_split_loc)
-
-    evaluator = Evaluator(
-        model_wrapper, args.data_loc, sentence_db, data_split, Split.VAL
-    )
-    evaluator.run_and_save_evaluation(args.save_loc)
+    run_and_save_evaluation(eval_config)

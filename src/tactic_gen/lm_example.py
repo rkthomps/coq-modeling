@@ -7,6 +7,7 @@ import functools
 import os
 import ipdb
 import heapq
+from pathlib import Path
 from dataclasses import dataclass
 
 from data_management.splits import FileInfo
@@ -25,6 +26,8 @@ from model_deployment.premise_client import (
 )
 from model_deployment.mine_goals import FileGoals, GoalRecord
 from model_deployment.transform_ast import AdjTree
+from data_management.sentence_db import SentenceDB
+from data_management.splits import DATA_POINTS_NAME
 
 
 GOAL_SEP = "<G>"
@@ -92,13 +95,13 @@ class BasicFormatterConf:
 @dataclass
 class ProofRetrievalFormatterConf:
     ALIAS = "proof"
-    proof_bank_loc: str
+    proof_bank_loc: Path
     n_step_conf: NStepConf
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofRetrievalFormatterConf:
         return cls(
-            yaml_data["proof_bank_loc"],
+            Path(yaml_data["proof_bank_loc"]),
             n_step_conf_from_yaml(yaml_data["n_step_sampler"]),
         )
 
@@ -116,6 +119,7 @@ class PremiseFormatterConf:
             n_step_conf_from_yaml(yaml_data["n_step_sampler"]),
         )
 
+
 @dataclass
 class GPTVanillaFormatterConf:
     ALIAS = "gpt-vanilla"
@@ -124,8 +128,42 @@ class GPTVanillaFormatterConf:
     def from_yaml(cls, yaml_data: Any) -> GPTVanillaFormatterConf:
         return cls()
 
+
+@dataclass
+class GPTProofFormatterConf:
+    ALIAS = "gpt-proof"
+    proof_bank_loc: Path
+    data_loc: Path
+    sentence_db_loc: Path
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> GPTProofFormatterConf:
+        return cls(
+            Path(yaml_data["proof_bank_loc"]),
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+        )
+
+
+@dataclass
+class GPTPremiseFormatterConf:
+    ALIAS = "gpt-premise"
+    premise_conf: PremiseConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> GPTPremiseFormatterConf:
+        return cls(premise_conf_from_yaml(yaml_data["premise_conf"]))
+
+
 GPTFormatterConf = GPTVanillaFormatterConf
-FormatterConf = BasicFormatterConf | ProofRetrievalFormatterConf | PremiseFormatterConf | GPTVanillaFormatterConf
+FormatterConf = (
+    BasicFormatterConf
+    | ProofRetrievalFormatterConf
+    | PremiseFormatterConf
+    | GPTVanillaFormatterConf
+    | GPTProofFormatterConf
+    | GPTPremiseFormatterConf
+)
 
 
 def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
@@ -138,7 +176,11 @@ def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
         case PremiseFormatterConf.ALIAS:
             return PremiseFormatterConf.from_yaml(yaml_data)
         case GPTVanillaFormatterConf.ALIAS:
-            return GPTVanillaFormatterConf.from_yaml(yaml_data) 
+            return GPTVanillaFormatterConf.from_yaml(yaml_data)
+        case GPTProofFormatterConf.ALIAS:
+            return GPTProofFormatterConf.from_yaml(yaml_data)
+        case GPTPremiseFormatterConf.ALIAS:
+            return GPTPremiseFormatterConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Formatter conf not found: " + attempted_alias)
 
@@ -153,6 +195,10 @@ def formatter_from_conf(conf: FormatterConf) -> LmFormatter:
             return PremiseFormatter.from_conf(conf)
         case GPTVanillaFormatterConf():
             return GPTVanillaFormatter.from_conf(conf)
+        case GPTProofFormatterConf():
+            return GPTProofFormatter.from_conf(conf)
+        case GPTPremiseFormatterConf():
+            return GPTPremiseFormatter.from_conf(conf)
 
 
 class BasicFormatter:
@@ -179,9 +225,10 @@ class BasicFormatter:
 
 
 class ProofCandidate:
-    def __init__(self, distance: int, candidate: GoalRecord):
+    def __init__(self, distance: int, candidate: GoalRecord, origin: str):
         self.distance = distance
         self.candidate = candidate
+        self.origin = origin
 
     def __lt__(self, other: ProofCandidate) -> bool:
         return self.distance < other.distance
@@ -193,24 +240,21 @@ class ProofCandidate:
 
 
 class ProofCandidateReversed(ProofCandidate):
-    def __init__(self, distance: int, candidate: GoalRecord):
-        super(ProofCandidateReversed, self).__init__(distance, candidate)
+    def __init__(self, distance: int, candidate: GoalRecord, origin: str):
+        super(ProofCandidateReversed, self).__init__(distance, candidate, origin)
 
     def __lt__(self, other: ProofCandidate) -> bool:
         return other.distance < self.distance
 
 
-class ProofRetrievalFormatter:
-    MAX_N_EXAMPLES = 20
-
-    def __init__(
-        self,
-        proof_bank_loc: str,
-        n_step_sampler: NStepSampler,
-    ) -> None:
+class ProofRetriever:
+    def __init__(self, proof_bank_loc: Path, max_examples: int):
         self.proof_bank_loc = proof_bank_loc
-        self.n_step_sampler = n_step_sampler
-        self.basic_formatter = BasicFormatter(self.n_step_sampler)
+        self.max_examples = max_examples
+
+        self.__cached_dps: dict[str, DatasetFile] = {}
+        self.__cached_keys: list[str] = []
+        self.__cache_size = 128
 
     @functools.lru_cache()
     def __get_file_goals(self, key: str) -> Optional[FileGoals]:
@@ -219,6 +263,23 @@ class ProofRetrievalFormatter:
             return None
         goals = FileGoals.load(goal_loc)
         return goals
+
+    def __get_dp(
+        self, dp_name: str, data_loc: Path, sentence_db: SentenceDB
+    ) -> DatasetFile:
+        assert len(self.__cached_keys) == len(self.__cached_dps)
+        if dp_name in self.__cached_dps:
+            cur_idx = self.__cached_keys.index(dp_name)
+            self.__cached_keys.pop(cur_idx)
+            self.__cached_keys.insert(0, dp_name)
+            return self.__cached_dps[dp_name]
+        dp_loc = data_loc / DATA_POINTS_NAME / dp_name
+        dp_obj = DatasetFile.load(dp_loc, sentence_db)
+        self.__cached_dps[dp_name] = dp_obj
+        self.__cached_keys.insert(0, dp_name)
+        if self.__cache_size < len(self.__cached_keys):
+            self.__cached_keys.pop()
+        return dp_obj
 
     def get_record_and_cutoff_index(
         self, step_idx: int, proof: Proof, file_goals: FileGoals
@@ -247,26 +308,49 @@ class ProofRetrievalFormatter:
         return record_idx, proof_start_idx
 
     def get_in_file_candidates(
-        self, cutoff_idx: int, file_goals: Optional[FileGoals]
-    ) -> list[GoalRecord]:
+        self, cutoff_idx: int, file_goals: Optional[FileGoals], file_dp_name: str
+    ) -> list[tuple[GoalRecord, str]]:
         if file_goals is None:
             return []
-        candidate_records: list[GoalRecord] = []
+        candidate_records: list[tuple[GoalRecord, str]] = []
         for record in file_goals.records:
             if cutoff_idx <= record.step_idx:
                 break
-            candidate_records.append(record)
+            candidate_records.append((record, file_dp_name))
         return candidate_records
 
-    def get_out_of_file_candidates(self, dp_obj: DatasetFile):
-        candidates: list[GoalRecord] = []
+    def get_out_of_file_candidates(
+        self, dp_obj: DatasetFile
+    ) -> list[tuple[GoalRecord, str]]:
+        candidates: list[tuple[GoalRecord, str]] = []
         for dependency in dp_obj.dependencies:
             dependency_goals = self.__get_file_goals(dependency)
             if dependency_goals is None:
                 continue
             for record in dependency_goals.records:
-                candidates.append(record)
+                candidates.append((record, dependency))
         return candidates
+
+    def get_whole_proof(
+        self, candidate: ProofCandidateReversed, data_loc: Path, sentence_db: SentenceDB
+    ) -> tuple[str, str]:
+        candidate_dp = self.__get_dp(candidate.origin, data_loc, sentence_db)
+        record_proof_str = "".join(candidate.candidate.proof)
+        for proof in candidate_dp.proofs:
+            for i, step in enumerate(proof.steps):
+                if 0 == len(step.goals):
+                    continue
+                current_ground_truth = [s.step.text for s in proof.steps[i:]]
+                cur_ground_truth_str = "".join(current_ground_truth)
+                pretty_proof_goal = step.goals[0].to_string().strip()
+                if candidate.candidate.pretty_goal.strip() == pretty_proof_goal and (
+                    cur_ground_truth_str.startswith(record_proof_str)
+                    or record_proof_str.startswith(cur_ground_truth_str)
+                ):
+                    return proof.proof_text_to_string(), candidate.origin
+        raise ValueError(
+            "Could not find corresponding candidate's corresponding proof."
+        )
 
     def get_similar_proofs(
         self,
@@ -278,7 +362,7 @@ class ProofRetrievalFormatter:
         cutoff_idx: Optional[int] = None,
         max_num_nodes: int = 30,
         max_num_steps: int = 500,
-    ) -> list[GoalRecord]:
+    ) -> list[ProofCandidateReversed]:
         file_goals = self.__get_file_goals(file_info.dp_name)
         if key_record is None and cutoff_idx is None:
             if file_goals is None:
@@ -293,7 +377,9 @@ class ProofRetrievalFormatter:
         elif key_record is None or cutoff_idx is None:
             return []
 
-        in_file_candidates = self.get_in_file_candidates(cutoff_idx, file_goals)
+        in_file_candidates = self.get_in_file_candidates(
+            cutoff_idx, file_goals, file_info.dp_name
+        )
         in_file_candidates.reverse()
         out_of_file_candidates = self.get_out_of_file_candidates(dp_obj)
         all_raw_candidates = in_file_candidates + out_of_file_candidates
@@ -306,17 +392,32 @@ class ProofRetrievalFormatter:
         else:
             selected_raw_candidates = all_raw_candidates
 
-        for c in selected_raw_candidates:
+        for c, o in selected_raw_candidates:
             c_prefix = c.term.get_breadth_prefix(max_num_nodes)
             c_adjtree = AdjTree.from_stree(c_prefix)
             c_distance = key_adjtree.distance(c_adjtree)
-            heapq.heappush(best_record_candiates, ProofCandidateReversed(c_distance, c))
-            if self.MAX_N_EXAMPLES < len(best_record_candiates):
+            heapq.heappush(
+                best_record_candiates, ProofCandidateReversed(c_distance, c, o)
+            )
+            if self.max_examples < len(best_record_candiates):
                 heapq.heappop(best_record_candiates)
         sorted_candidates = heapq.nlargest(
             len(best_record_candiates), best_record_candiates
         )
-        return [c.candidate for c in sorted_candidates]
+        return sorted_candidates
+
+
+class ProofRetrievalFormatter:
+    MAX_N_EXAMPLES = 20
+
+    def __init__(
+        self,
+        proof_retriever: ProofRetriever,
+        n_step_sampler: NStepSampler,
+    ) -> None:
+        self.proof_retriever = proof_retriever
+        self.n_step_sampler = n_step_sampler
+        self.basic_formatter = BasicFormatter(self.n_step_sampler)
 
     def example_from_step(
         self,
@@ -328,13 +429,13 @@ class ProofRetrievalFormatter:
         cutoff_idx: Optional[int] = None,
         **kwargs: Any,
     ) -> LmExample:
-        similar_proof_result = self.get_similar_proofs(
+        similar_proof_result = self.proof_retriever.get_similar_proofs(
             step_idx, proof, dp_obj, file_info, key_record, cutoff_idx
         )
         passages: list[str] = []
-        for record in similar_proof_result:
+        for candidate in similar_proof_result:
             passages.append(
-                f"{record.pretty_goal}{PROOF_RET_SEP}{''.join(record.proof)}"
+                f"{candidate.candidate.pretty_goal}{PROOF_RET_SEP}{''.join(candidate.candidate.proof)}"
             )
 
         basic_example = self.basic_formatter.example_from_step(step_idx, proof)
@@ -343,7 +444,7 @@ class ProofRetrievalFormatter:
     @classmethod
     def from_conf(cls, conf: ProofRetrievalFormatterConf) -> ProofRetrievalFormatter:
         return cls(
-            conf.proof_bank_loc,
+            ProofRetriever(conf.proof_bank_loc, cls.MAX_N_EXAMPLES),
             n_step_from_conf(conf.n_step_conf),
         )
 
@@ -408,15 +509,105 @@ class GPTVanillaFormatter:
     SYSTEM_MSG = "You complete the given proof in Coq. You continue from where the prompt left off."
 
     def example_from_step(
-        self, step_idx: int, proof: Proof, dp_obj: DatasetFile, **kwargs: Any,
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        **kwargs: Any,
     ) -> LmExample:
-        format = f"{proof.theorem.term.text}\n{proof.theorem.term.text}"
+        format = f"{proof.theorem.term.text}"
         return LmExample(format, "out", None)
-    
+
     @classmethod
     def from_conf(cls, conf: GPTVanillaFormatterConf) -> GPTVanillaFormatter:
         return cls()
 
 
-GPTFormatter = GPTVanillaFormatter
-LmFormatter = BasicFormatter | PremiseFormatter | ProofRetrievalFormatter | GPTVanillaFormatter
+@dataclass
+class GPTProofFormatter:
+    proof_retriever: ProofRetriever
+    data_loc: Path
+    sentence_db: SentenceDB
+    NUM_STEPS = 8
+    SYSTEM_MSG = (
+        "You complete the given proof in Coq. You continue from where the prompt left off. "
+        "In the context, you are given proofs that at some point in the proof, solve "
+        "a goal similar to the current theorem."
+        "Stop after proving a single theorem. "
+    )
+
+    def example_from_step(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        key_record: Optional[GoalRecord] = None,
+        cutoff_idx: Optional[int] = None,
+        **kwargs: Any,
+    ) -> LmExample:
+        similar_proof_result = self.proof_retriever.get_similar_proofs(
+            step_idx, proof, dp_obj, file_info, key_record, cutoff_idx
+        )
+        similar_whole_proofs = [
+            self.proof_retriever.get_whole_proof(r, self.data_loc, self.sentence_db)
+            for r in similar_proof_result
+        ]
+        filtered_whole_proofs: list[tuple[str, str]] = []
+
+        for s in similar_whole_proofs:
+            if s in filtered_whole_proofs:
+                continue
+            filtered_whole_proofs.append(s)
+            if self.NUM_STEPS <= len(filtered_whole_proofs):
+                break
+
+        filtered_whole_proofs.reverse()
+        print("proofs", filtered_whole_proofs)
+        context = "\n\n".join([p for p, _ in filtered_whole_proofs])
+        format = f"{context}\n\n{proof.theorem.term.text}"
+        print(format)
+        return LmExample(format, "out", None)
+
+    @classmethod
+    def from_conf(cls, conf: GPTProofFormatterConf) -> GPTProofFormatter:
+        return cls(
+            ProofRetriever(conf.proof_bank_loc, cls.NUM_STEPS),
+            conf.data_loc,
+            SentenceDB.load(conf.sentence_db_loc),
+        )
+
+
+@dataclass
+class GPTPremiseFormatter:
+    premise_client: PremiseClient
+    SYSTEM_MSG = (
+        "You complete the given proof in Coq. You continue from where the prompt left off. "
+        "In the context, you are given theorems, definitions, and notations that might be helpful "
+        "for completing the proof."
+    )
+
+    def example_from_step(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        **kwargs: Any,
+    ) -> LmExample:
+        format = f"{proof.theorem.term.text}"
+        return LmExample(format, "out", None)
+
+    @classmethod
+    def from_conf(cls, conf: GPTPremiseFormatterConf) -> GPTPremiseFormatter:
+        return cls(premise_client_from_conf(conf.premise_conf))
+
+
+GPTFormatter = GPTVanillaFormatter | GPTProofFormatter | GPTPremiseFormatter
+LmFormatter = (
+    BasicFormatter
+    | PremiseFormatter
+    | ProofRetrievalFormatter
+    | GPTVanillaFormatter
+    | GPTProofFormatter
+    | GPTPremiseFormatter
+)

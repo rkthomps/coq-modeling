@@ -11,6 +11,24 @@ proofs:
   - test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
     theorem_name: pos_test_anti_sym
 
+  - test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+    theorem_name: pos_test_exact
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+    theorem_name: valid_pos_eq
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+    theorem_name: next_pos
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+    theorem_name: valid_pos_next
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+    theorem_name: get_nil
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+    theorem_name: get_next
+
   # # If some literal l1 is in the list resulting from inserting another literal l2
   # # into a clause, then the literals must be equal, or l1 must have been in the original clause
   - test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
@@ -19,6 +37,9 @@ proofs:
   ## Anything choose 0 is 1
   - test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
     theorem_name: binomial_def1
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
+    theorem_name: binomial_fact
   
   ## n choose m with n < m is 0
   - test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
@@ -31,6 +52,15 @@ proofs:
   ## Pascals identity 
   - test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
     theorem_name: binomial_def4
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Div.v
+    theorem_name: ominus_id 
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Div.v
+    theorem_name: div_le
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Div.v
+    theorem_name: div_mult_lt
   
   ## Contropositive of monotononicity
   - test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/sqrt2.v 
@@ -44,8 +74,14 @@ proofs:
   - test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Qabs.v 
     theorem_name: Qabs_Qminus_Zero_eq
 
+  - test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Qpositive.v 
+    theorem_name: absolu_inj_nat 
+
+  - test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Qpositive.v 
+    theorem_name: Qpositive_c_equiv'
+
   
-n_procs: 4
+n_procs: 16
 save_loc: ./dev-results.csv
 
 data_loc: raw-data/coq-dataset
@@ -58,6 +94,57 @@ search:
   max_expansions: 500
   depth_limit: 30
   timeout: 120
+
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-premise-final/checkpoint-92000
+#   formatter:
+#     alias: premise
+#     premise_conf:
+#       alias: tfidf
+#       context_format_alias: basic
+#       premise_format_alias: basic
+#       premise_filter:
+#         coq_excludes:
+#         - DEFINITION
+#         - FACT
+#         - REMARK
+#         - COROLLARY
+#         - PROPOSITION
+#         - PROPERTY
+#         non_coq_excludes:
+#         - DEFINITION
+#         - FACT
+#         - REMARK
+#         - COROLLARY
+#         - PROPOSITION
+#         - PROPERTY
+#         general_excludes: []
+#     n_step_sampler:
+#       alias: one
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-premise-final/checkpoint-92000
+#   formatter:
+#     alias: premise
+#     premise_conf:
+#       alias: rerank
+#       checkpoint_loc: models/rerank/checkpoint-10100
+#       rerank_num: 64
+#       select:
+#         alias: tfidf
+#         context_format_alias: basic
+#         premise_format_alias: basic
+#         premise_filter:
+#           coq_excludes: []
+#           non_coq_excludes: []
+#           general_excludes: []
+#     n_step_sampler:
+#       alias: one
+
+
 
 tactic_gen:
   alias: fid
@@ -74,3 +161,32 @@ tactic_gen:
 # tactic_gen:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-small-basic-final/checkpoint-110500
+
+
+
+
+        # - THEOREM
+        # - LEMMA
+        # - DEFINITION
+        # - NOTATION
+        # - INDUCTIVE
+        # - COINDUCTIVE
+        # - RECORD
+        # - CLASS
+        # - INSTANCE
+        # - FIXPOINT
+        # - COFIXPOINT
+        # - SCHEME
+        # - VARIANT
+        # - FACT
+        # - REMARK
+        # - COROLLARY
+        # - PROPOSITION
+        # - PROPERTY
+        # - OBLIGATION
+        # - TACTIC
+        # - RELATION
+        # - SETOID
+        # - FUNCTION
+        # - DERIVE
+        # - OTHER

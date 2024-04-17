@@ -48,6 +48,7 @@ src/tactic_gen/confs/**
 evals-before-*
 evals-small
 evals-bad-imports
+dev-results
 dev-results.csv
 build-coq
 src/evaluation/confs/**

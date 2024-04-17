@@ -14,7 +14,7 @@ from model_deployment.tactic_gen_client import (
     tactic_gen_client_from_conf,
 )
 
-from util.constants import CLEAN_CONFIG 
+from util.constants import CLEAN_CONFIG
 
 
 @dataclass
@@ -70,12 +70,12 @@ if __name__ == "__main__":
     conf_loc = Path(f"./{CLEAN_CONFIG}")
     with conf_loc.open("rb") as fin:
         conf: TestWholeProofConf = pickle.load(fin)
-        assert "TestProofConf" in str(conf.__class__)  # isinstance didn't work
+        assert "TestWholeProofConf" in str(conf.__class__)  # isinstance didn't work
         result = run_proof(conf.to_run_conf())
         print("Successful attempts:")
         for s in result.successes:
             print(s)
-        
+
         print()
         print("Failed attempts:")
         for s in result.failures:

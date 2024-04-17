@@ -16,12 +16,20 @@ from data_management.create_premise_dataset import SelectDataConfig
 from data_management.create_goal_dataset import GoalDatasetConf
 from premise_selection.premise_filter import PremiseFilterConf
 from premise_selection.rerank_formatter import RerankFormatterConf
+from premise_selection.evaluate import PremiseEvalConf
 
 from tactic_gen.lm_example import (
     FormatterConf,
     PremiseFormatterConf,
+    GPTPremiseFormatterConf,
 )
-from model_deployment.premise_client import PremiseConf, SelectConf, SelectClientConf
+from model_deployment.premise_client import (
+    PremiseConf,
+    SelectConf,
+    SelectClientConf,
+    RerankConf,
+    RerankClientConf,
+)
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
     FidTacticGenConf,
@@ -29,11 +37,25 @@ from model_deployment.tactic_gen_client import (
 )
 from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
-from util.constants import PREMISE_DATA_CONF_NAME, DATA_CONF_NAME, CLEAN_CONFIG
+from model_deployment.run_whole_proof import TestWholeProofConf
+from model_deployment.run_whole_proofs import TestWholeProofsConf
+from util.constants import (
+    PREMISE_DATA_CONF_NAME,
+    RERANK_DATA_CONF_NAME,
+    DATA_CONF_NAME,
+    CLEAN_CONFIG,
+)
 
 
 TopLevelConf = (
-    LmDatasetConf | TestProofConf | TestProofsConf | RerankDatasetConf | GoalDatasetConf
+    LmDatasetConf
+    | TestProofConf
+    | TestProofsConf
+    | TestWholeProofConf
+    | TestWholeProofsConf
+    | RerankDatasetConf
+    | GoalDatasetConf
+    | PremiseEvalConf
 )
 
 next_port = 8000
@@ -41,6 +63,7 @@ open_servers: list[str] = []
 started_processes: list[subprocess.Popen[bytes]] = []
 
 SELECT_SERVER_SCRIPT = Path("src/model_deployment/select_server.py")
+RERANK_SERVER_SCRIPT = Path("src/model_deployment/rerank_server.py")
 TACTIC_GEN_SERVER_SCRIPT = Path("src/model_deployment/tactic_gen_server.py")
 
 
@@ -55,7 +78,7 @@ def __make_select_command(select_conf: SelectConf) -> list[str]:
     else:
         command = [
             "python3",
-            f"SELECT_SERVER_SCRIPT",
+            f"{SELECT_SERVER_SCRIPT}",
             "--vector_db_loc",
             f"{select_conf.vector_db_loc}",
             f"{select_conf.checkpoint_loc}",
@@ -70,6 +93,26 @@ def start_select_servers(select_conf: SelectConf, use_devices: list[int]) -> lis
     for device in use_devices:
         env = os.environ | {"CUDA_VISIBLE_DEVICES": f"{device}"}
         command = __make_select_command(select_conf)
+        process = subprocess.Popen(command, env=env)
+        url = f"http://localhost:{next_port}"
+        open_servers.append(url)
+        urls.append(url)
+        next_port += 1
+        started_processes.append(process)
+    return urls
+
+
+def start_rerank_servers(rerank_conf: RerankConf, use_devices: list[int]) -> list[str]:
+    global next_port
+    urls: list[str] = []
+    for device in use_devices:
+        env = os.environ | {"CUDA_VISIBLE_DEVICES": f"{device}"}
+        command = [
+            "python3",
+            RERANK_SERVER_SCRIPT,
+            f"{rerank_conf.checkpoint_loc}",
+            f"{next_port}",
+        ]
         process = subprocess.Popen(command, env=env)
         url = f"http://localhost:{next_port}"
         open_servers.append(url)
@@ -100,6 +143,23 @@ def start_servers_premise_conf(
                 filter_conf,
                 data_conf.sentence_db_loc,
             )
+        case RerankConf():
+            if conf.select_conf is None:
+                assert 0 < len(conf.checkpoint_loc.parents)
+                model_loc = conf.checkpoint_loc.parents[0]
+                data_conf_loc = model_loc / RERANK_DATA_CONF_NAME
+                assert data_conf_loc.exists()
+                with data_conf_loc.open("r") as fin:
+                    yaml_data = yaml.load(fin, Loader=yaml.Loader)
+                data_conf = RerankDatasetConf.from_yaml(yaml_data)
+                rerank_formatter = start_servers_rerank_formatter_conf(
+                    data_conf.rerank_formatter_conf, use_devices
+                )
+                select_conf = rerank_formatter.select_conf
+            else:
+                select_conf = start_servers_premise_conf(conf.select_conf, use_devices)
+            rerank_urls = start_rerank_servers(conf, use_devices)
+            return RerankClientConf(rerank_urls, select_conf, conf.rerank_num)
         case _:
             return conf
 
@@ -112,6 +172,10 @@ def start_servers_formatter_conf(
             return PremiseFormatterConf(
                 start_servers_premise_conf(conf.premise_conf, use_devices),
                 conf.n_step_conf,
+            )
+        case GPTPremiseFormatterConf():
+            return GPTPremiseFormatterConf(
+                start_servers_premise_conf(conf.premise_conf, use_devices),
             )
         case _:
             return conf
@@ -170,14 +234,17 @@ def start_servers_tactic_gen(
     match conf:
         case FidTacticGenConf():
             assert conf.checkpoint_loc.exists()
-            assert 0 < len(conf.checkpoint_loc.parents)
-            model_loc = conf.checkpoint_loc.parents[0]
-            lm_data_conf = model_loc / DATA_CONF_NAME
-            assert lm_data_conf.exists()
-            with lm_data_conf.open("r") as fin:
-                yaml_data = yaml.load(fin, Loader=yaml.Loader)
-            data_conf = LmDatasetConf.from_yaml(yaml_data)
-            formatter_conf = data_conf.lm_formatter_conf
+            if conf.formatter_conf is None:
+                assert 0 < len(conf.checkpoint_loc.parents)
+                model_loc = conf.checkpoint_loc.parents[0]
+                lm_data_conf = model_loc / DATA_CONF_NAME
+                assert lm_data_conf.exists()
+                with lm_data_conf.open("r") as fin:
+                    yaml_data = yaml.load(fin, Loader=yaml.Loader)
+                data_conf = LmDatasetConf.from_yaml(yaml_data)
+                formatter_conf = data_conf.lm_formatter_conf
+            else:
+                formatter_conf = conf.formatter_conf
             formatter_client_conf = start_servers_formatter_conf(
                 formatter_conf, use_devices
             )
@@ -232,6 +299,33 @@ def start_servers(conf: TopLevelConf, use_devices: list[int]) -> TopLevelConf:
             )
         case GoalDatasetConf():
             return conf
+        case PremiseEvalConf():
+            premise_conf = start_servers_premise_conf(conf.premise_conf, use_devices)
+            return PremiseEvalConf(
+                premise_conf,
+                conf.data_loc,
+                conf.sentence_db_loc,
+                conf.data_split_loc,
+                conf.split_name,
+                conf.save_loc,
+            )
+        case TestWholeProofConf():
+            tactic_client_conf = start_servers_tactic_gen(conf.tactic_conf, use_devices)
+            return TestWholeProofConf(
+                conf.theorem_location_info, tactic_client_conf, conf.n_attempts
+            )
+        case TestWholeProofsConf():
+            tactic_client_conf = start_servers_tactic_gen(conf.tactic_conf, use_devices)
+            return TestWholeProofsConf(
+                conf.proofs,
+                conf.n_procs,
+                conf.save_loc,
+                conf.data_loc,
+                conf.sentence_db_loc,
+                conf.data_split_loc,
+                conf.tactic_conf,
+                conf.n_attempts,
+            )
 
 
 @dataclass
@@ -243,6 +337,12 @@ class Command:
 COMMANDS = {
     "prove": Command(TestProofConf, Path("src/model_deployment/run_proof.py")),
     "run-dev": Command(TestProofsConf, Path("src/model_deployment/run_proofs.py")),
+    "prove-whole": Command(
+        TestWholeProofConf, Path("src/model_deployment/run_whole_proof.py")
+    ),
+    "run-dev-whole": Command(
+        TestWholeProofsConf, Path("src/model_deployment/run_whole_proofs.py")
+    ),
     "rerank-data": Command(
         RerankDatasetConf, Path("src/data_management/create_rerank_dataset.py")
     ),
@@ -250,6 +350,7 @@ COMMANDS = {
     "goal-data": Command(
         GoalDatasetConf, Path("src/data_management/create_goal_dataset.py")
     ),
+    "eval-premise": Command(PremiseEvalConf, Path("src/premise_selection/evaluate.py")),
 }
 
 

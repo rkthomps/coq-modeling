@@ -4,6 +4,11 @@ import argparse
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
 
+import logging
+
+log = logging.getLogger("werkzeug")
+log.setLevel(logging.ERROR)
+
 import requests
 from jsonrpc import JSONRPCResponseManager, dispatcher
 

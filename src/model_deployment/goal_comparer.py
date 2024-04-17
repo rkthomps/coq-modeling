@@ -2,8 +2,10 @@ from __future__ import annotations
 from coqpyt.coq.structs import Step, RangedSpan
 from coqpyt.coq.lsp.structs import Goal, GoalAnswer
 from typing import Any, Optional
+import functools
 import ipdb
 import re
+import edist
 
 from typeguard import typechecked
 
@@ -11,6 +13,9 @@ from model_deployment.search_tree import SearchNode
 from model_deployment.fast_client import ClientWrapper
 
 from util.coqpyt_utils import get_all_goals
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 def extract_body_from_step(step: Step) -> Any:
@@ -436,19 +441,68 @@ def extract_last_definition_body(ast: list[RangedSpan]) -> Any:
     return def_expr[3]
 
 
+class GoalScorer:
+    """TODO: THIS COULD BE ACTUAL SYNTACTIC DISTANCE. THIS IS A PROTOTYPE"""
+
+    def __init__(self, available_lemmas: list[str]):
+        self.available_lemmas = available_lemmas
+
+    def __clean_token(self, s: str) -> str:
+        s = s.lstrip("(,:{")
+        s = s.rstrip("),:}")
+        return s
+
+    @functools.lru_cache(50000)
+    def tokenizer(self, s: str) -> list[str]:
+        whitespace_split = s.split()
+        clean_tokens: list[str] = []
+        for t in whitespace_split:
+            clean_t = self.__clean_token(t)
+            if 0 < len(clean_t):
+                clean_tokens.append(clean_t)
+        return clean_tokens
+
+    def score_goal(self, goal: Goal) -> float:
+        min_dist = len(goal.ty)
+        # goal_toks = self.tokenizer(goal.ty)
+        for h in goal.hyps:
+            if min_dist < abs(len(goal.ty) - len(h.ty)):
+                continue
+            # h_dist: int = edist.sed.standard_sed(goal_toks, self.tokenizer(h.ty))
+            h_dist: int = edist.sed.standard_sed(goal.ty, h.ty)
+            if h_dist < min_dist:
+                min_dist = h_dist
+
+        # for l in self.available_lemmas:
+        #     if min_dist < abs(len(goal.ty) - len(l)):
+        #         continue
+        #     l_dist = edist.sed.standard_sed(goal.ty, l)
+        #     if l_dist < min_dist:
+        #         min_dist = l_dist
+        return min_dist / len(goal.ty)
+
+    def score_goals(self, goals: list[Goal]) -> float:
+        """String distance from the goal to a hyp or to an available lemma."""
+        return -1 * sum([self.score_goal(g) for g in goals])
+
+
 class AlphaGoalComparer:
     def __init__(self):
         self.__parsed_goal_cache: dict[str, Optional[ParsedObligations]] = {}
 
     def __goal_as_hard_as(self, g1: Goal, g2: Goal) -> bool:
         if g1.ty == g2.ty:
-            hyp_set_1: set[str] = set([" ".join(h.names) + "; " + h.ty for h in g1.hyps])
-            hyp_set_2: set[str] = set([" ".join(h.names) + "; " + h.ty for h in g1.hyps])
+            hyp_set_1: set[str] = set(
+                [" ".join(h.names) + "; " + h.ty for h in g1.hyps]
+            )
+            hyp_set_2: set[str] = set(
+                [" ".join(h.names) + "; " + h.ty for h in g1.hyps]
+            )
             return hyp_set_1.issubset(hyp_set_2)
         return False
 
     def __goal_set_as_hard_as(self, gs1: list[Goal], gs2: list[Goal]) -> bool:
-        for g2 in gs2: 
+        for g2 in gs2:
             covered = False
             for g1 in gs1:
                 if self.__goal_as_hard_as(g1, g2):
@@ -461,7 +515,7 @@ class AlphaGoalComparer:
     def __goals_to_str(self, gs: list[Goal]) -> str:
         reprs = [repr(g) for g in gs]
         return ";;".join(sorted(reprs))
-    
+
     def __get_goal_strs(self, gs: list[Goal]) -> list[str]:
         final_strings: list[str] = []
         for i, goal in enumerate(gs):
@@ -469,7 +523,7 @@ class AlphaGoalComparer:
                 final_strings.append(f"Definition g_{i}_h_{j} := ({hyp.ty}).")
             final_strings.append(f"Definition g_{i} := ({goal.ty}).")
         return final_strings
-    
+
     def __read_definition(
         self, steps: list[Step], num_definitions: int, num_read: int
     ) -> tuple[Any, int]:
@@ -477,9 +531,12 @@ class AlphaGoalComparer:
         read_idx = num_steps - num_definitions + num_read
         ast_def_body = extract_body_from_step(steps[read_idx])
         return ast_def_body, num_read + 1
-    
+
     def get_parsed_goals(
-        self, gs: list[Goal], client: ClientWrapper, file_prefix: str,
+        self,
+        gs: list[Goal],
+        client: ClientWrapper,
+        file_prefix: str,
     ) -> ParsedObligations:
         goal_as_definitions = self.__get_goal_strs(gs)
         goal_str = "\n\n".join(goal_as_definitions)
@@ -502,28 +559,33 @@ class AlphaGoalComparer:
             parsed_goal = ParsedObligation(parsed_hyps, goal_ast, goal.ty)
             parsed_goals.append(parsed_goal)
         return ParsedObligations(parsed_goals)
-    
 
-    def parse_goal_list(self, gs: list[Goal], client: ClientWrapper, file_prefix: str) -> Optional[ParsedObligations]:
-        g_str = self.__goals_to_str(gs) 
+    def parse_goal_list(
+        self, gs: list[Goal], client: ClientWrapper, file_prefix: str
+    ) -> Optional[ParsedObligations]:
+        g_str = self.__goals_to_str(gs)
         if g_str in self.__parsed_goal_cache:
             return self.__parsed_goal_cache[g_str]
         try:
             result = self.get_parsed_goals(gs, client, file_prefix)
         except:
-            #TODO: DEBUG ERRORS
+            # TODO: DEBUG ERRORS
             result = None
         self.__parsed_goal_cache[g_str] = result
-        return result 
-        
+        return result
 
-    def as_hard_as(self, gs1: list[Goal], gs2: list[Goal], client: ClientWrapper, file_prefix: str) -> bool:
+    def as_hard_as(
+        self, gs1: list[Goal], gs2: list[Goal], client: ClientWrapper, file_prefix: str
+    ) -> bool:
         if self.__goal_set_as_hard_as(gs1, gs2):
             return True
-        parsed1 = self.parse_goal_list(gs1, client, file_prefix) 
-        parsed2 = self.parse_goal_list(gs2, client, file_prefix)
-        if parsed1 is not None and parsed2 is not None:
-            return parsed1.as_hard_as(parsed2) 
-        else:
+        try:
+            parsed1 = self.parse_goal_list(gs1, client, file_prefix)
+            parsed2 = self.parse_goal_list(gs2, client, file_prefix)
+            if parsed1 is not None and parsed2 is not None:
+                return parsed1.as_hard_as(parsed2)
+            else:
+                return False
+        except ValueError:
+            _logger.warning("Got value error when parsing.")
             return False
-

@@ -1,13 +1,7 @@
 from __future__ import annotations
 from typing import Iterable, Any, Optional, TypeVar
 
-import time
 import sys, os
-import json
-import requests
-import math
-import ipdb
-
 from tqdm import tqdm
 import torch
 from transformers import GPT2Tokenizer
@@ -30,13 +24,6 @@ from premise_selection.rerank_model import PremiseReranker
 from premise_selection.datamodule import tokenize_strings
 from premise_selection.rerank_datamodule import collate_examples
 from premise_selection.rerank_example import RerankExample
-from model_deployment.serve_prem_utils import (
-    FORMAT_ENDPOINT,
-    PREMISE_ENDPOINT,
-    FormatResponse,
-    PremiseRequest,
-    PremiseResponse,
-)
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
 from data_management.sentence_db import SentenceDB
 from data_management.create_premise_dataset import (
@@ -110,6 +97,7 @@ class RerankWrapper:
         max_seq_len = get_required_arg("max_seq_len", model_conf)
         tokenizer = GPT2Tokenizer.from_pretrained(model_conf["model_name"])
         reranker = PremiseReranker.from_pretrained(checkpoint_loc)
+        reranker = reranker.to("cuda")
         return cls(reranker, tokenizer, max_seq_len)
 
 

@@ -24,7 +24,12 @@ from data_management.dataset_file import (
 )
 from data_management.splits import Split, FileInfo
 
-from tactic_gen.lm_example import LmExample, LmFormatter, ProofRetrievalFormatter
+from tactic_gen.lm_example import (
+    LmExample,
+    LmFormatter,
+    ProofRetrievalFormatter,
+    GPTProofFormatter,
+)
 
 from model_deployment.fast_client import FastLspClient, ClientWrapper
 from model_deployment.mine_goals import get_goal_record, GoalRecord
@@ -55,20 +60,13 @@ class TacticResult(Enum):
     INVALID = 3
 
 
+@dataclass
 class ProofCheckResult:
-    def __init__(
-        self,
-        tactic_result: TacticResult,
-        attempted_steps: list[str],
-        current_goals: Optional[list[Goal]],
-        goal_record: Optional[GoalRecord],
-        new_proof: Optional[Proof],
-    ) -> None:
-        self.tactic_result = tactic_result
-        self.attempted_steps = attempted_steps
-        self.current_goals = current_goals
-        self.goal_record = goal_record
-        self.new_proof = new_proof
+    tactic_result: TacticResult
+    attempted_steps: list[str]
+    current_goals: Optional[list[Goal]]
+    goal_record: Optional[GoalRecord]
+    new_proof: Optional[Proof]
 
     @classmethod
     def get_invalid(cls) -> ProofCheckResult:
@@ -194,7 +192,9 @@ class ProofManager:
         return True
 
     def get_goal_record(self, steps: list[CStep]) -> Optional[GoalRecord]:
-        if not isinstance(self.lm_formatter, ProofRetrievalFormatter):
+        if not isinstance(
+            self.lm_formatter, ProofRetrievalFormatter | GPTProofFormatter
+        ):
             return None
         new_step_idx = len(steps) - 1
         end_pos = steps[new_step_idx].ast.range.end
@@ -240,7 +240,11 @@ class ProofManager:
         partial_steps = [s.text for s in steps[(self.proof_info.proof_point + 1) :]]
         # end_pos = steps[-1].ast.range.end
         num_lines = len(contents.split("\n"))
-        farther_end = Position(num_lines + 1, 0)
+        if 0 < len(partial_proof) and "Qed." in steps[-1].text:
+            # We detect qed ourselves.
+            steps = steps[:-1]
+
+        farther_end = steps[-1].ast.range.end
         try:
             current_goals = self.fast_client.client.proof_goals(
                 TextDocumentIdentifier(self.fast_client.file_uri), farther_end
@@ -267,10 +271,6 @@ class ProofManager:
         #     exp = partial_proof
         #     _logger.warning(f"Partial proof mismatch: expected '{exp}' got '{act}'")
         #     # ipdb.set_trace()
-
-        if 0 < len(partial_proof) and "Qed." in steps[-1].text:
-            # We detect qed ourselves.
-            steps = steps[:-1]
 
         if self.__can_close_proof(current_goals):
             goal_record = None

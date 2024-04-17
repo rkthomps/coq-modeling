@@ -12,10 +12,10 @@ from coqpyt.coq.lsp.structs import Goal
 from util.coqpyt_utils import get_all_goals
 
 from model_deployment.tactic_gen_client import TacticGenClient
-from model_deployment.node_score import NodeScore, NODE_SCORE_ALIASES
+from model_deployment.node_score import NodeScore, OverrideScore, NODE_SCORE_ALIASES
 from model_deployment.proof_manager import ProofManager, TacticResult, ProofCheckResult
 from model_deployment.search_tree import SearchNode, SearchTree
-from model_deployment.goal_comparer import AlphaGoalComparer
+from model_deployment.goal_comparer import AlphaGoalComparer, GoalScorer
 from util.util import get_basic_logger
 
 from data_management.sentence_db import SentenceDB
@@ -159,6 +159,7 @@ class SearchTreeManager:
         initial_dset_file = proof_manager.get_initial_context()
         if initial_dset_file is None:
             raise ValueError("Could not get initial datasetfile")
+        self.goal_scorer = self.__get_goal_scorer(initial_dset_file)
         self.initial_proof_obj = initial_dset_file.proofs[-1]
         initial_check_result = proof_manager.check_proof(
             initial_proof, self.initial_proof_obj.theorem
@@ -219,6 +220,16 @@ class SearchTreeManager:
                     self.search_tree, possible_complete_node, self.total_model_time
                 )
         return FailedSearch(self.search_tree, self.total_model_time)
+
+    def __get_goal_scorer(self, dset_file: DatasetFile) -> GoalScorer:
+        avail_lemmmas: list[str] = []
+        for p in dset_file.in_file_avail_premises:
+            if p.is_lemma_or_axiom():
+                avail_lemmmas.append(p.text)
+        for p in dset_file.out_of_file_avail_premises:
+            if p.is_lemma_or_axiom():
+                avail_lemmmas.append(p.text)
+        return GoalScorer(avail_lemmmas)
 
     def __get_complete_child_node(
         self,
@@ -353,18 +364,22 @@ class SearchTreeManager:
         children: list[SearchNode] = []
         next_frontier_pool: list[SearchNode] = []
         next_frontier_goals: list[list[Goal]] = []
+        # print(result.next_tactic_list)
         for tactic, score, num_tokens in zip(
             result.next_tactic_list, result.score_list, result.num_tokens_list
         ):
+            cur_time = time.time_ns()
+            if self.timeout <= (cur_time - search_start_time) / 1e9:
+                return None
             proof_script = leaf_subtree.total_proof_str() + tactic
             proof_check_result = self.proof_manager.check_proof(
                 proof_script, leaf_subtree.proof.theorem
             )
             match proof_check_result.tactic_result:
                 case TacticResult.COMPLETE:
-                    goal_length = 0
+                    goal_score = 0
                     node_score = self.score_type.from_unit_score(
-                        score, num_tokens, goal_length, self.max_branch
+                        score, num_tokens, goal_score, self.max_branch
                     )
                     complete_node = self.__get_complete_child_node(
                         proof_check_result,
@@ -378,9 +393,9 @@ class SearchTreeManager:
                     return complete_node
 
                 case TacticResult.INVALID:
-                    goal_length = 1000000
+                    goal_score = -10000
                     node_score = self.score_type.from_unit_score(
-                        score, num_tokens, goal_length, self.max_branch
+                        score, num_tokens, goal_score, self.max_branch
                     )
                     invalid_node = self.__get_invalid_child_node(
                         proof_check_result,
@@ -393,11 +408,11 @@ class SearchTreeManager:
 
                 case TacticResult.VALID:
                     assert proof_check_result.current_goals is not None
-                    goal_length = sum(
-                        [len(repr(g)) for g in proof_check_result.current_goals]
+                    goal_score = self.goal_scorer.score_goals(
+                        proof_check_result.current_goals
                     )
                     node_score = self.score_type.from_unit_score(
-                        score, num_tokens, goal_length, self.max_branch
+                        score, num_tokens, goal_score, self.max_branch
                     )
                     valid_node = self.__get_valid_child_node(
                         proof_check_result,
@@ -431,5 +446,6 @@ class SearchTreeManager:
                     node.makes_progress = False
             self.frontier = next_frontier
 
+        # print([n.score.compute() for n, _ in self.frontier])
         leaf_subtree.children = children
         return None

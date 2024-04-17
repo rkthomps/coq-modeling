@@ -5,8 +5,8 @@ thm_info:
   # theorem_name: h_pos
 
   # The width of the board is positive
-  test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
-  theorem_name: w_pos
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: w_pos
 
   # # Positions on the board are antisymmetric
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
@@ -30,8 +30,8 @@ thm_info:
   # theorem_name: binomial_def3
 
   # ## Pascals identity 
-  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
-  # theorem_name: binomial_def4
+  test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
+  theorem_name: binomial_def4
     
   # ## Contropositive of monotononicity
   # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/sqrt2.v 
@@ -50,12 +50,6 @@ thm_info:
   sentence_db_loc: sentences.db
   data_split_loc: splits/final-split.json
 
-search:
-  node_score_alias: token-normalized-score 
-  max_branch: 32
-  max_expansions: 500
-  depth_limit: 30
-  timeout: 120
 
 # tactic_gen:
 #   alias: client
@@ -80,24 +74,12 @@ search:
 #       alias: one
 
 tactic_gen:
-  alias: fid
-  checkpoint_loc: models/t5-fid-small-premise-final/checkpoint-92000
+  alias: openai
+  formatter:
+    alias: gpt-proof
+    proof_bank_loc: proof-goals
+    data_loc: raw-data/coq-dataset
+    sentence_db_loc: sentences.db
+  model_name: "gpt-3.5-turbo"
 
-# tactic_gen:
-#   alias: fid
-#   checkpoint_loc: models/t5-fid-small-proof-ret-final/checkpoint-107500
-
-# tactic_gen:
-#   alias: fid
-#   checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
-
-# tactic_gen:
-#   alias: fid
-#   checkpoint_loc: models/t5-fid-base-basic-final/checkpoint-110500
-
-# tactic_gen:
-#   alias: fid
-#   checkpoint_loc: models/t5-fid-small-basic-final/checkpoint-110500
-
-print_proofs: True
-print_trees: False 
+n_attempts: 1

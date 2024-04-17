@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Optional
 import os
 
 import requests
@@ -7,10 +7,10 @@ import random
 from pathlib import Path
 from dataclasses import dataclass
 
-# import openai
+import openai
 
-# openai.api_key = os.environ["OPENAI_API_KEY"]
-# from openai import OpenAI
+openai.api_key = os.environ["OPENAI_API_KEY"]
+from openai import OpenAI
 
 from tactic_gen.lm_example import (
     LmExample,
@@ -31,11 +31,16 @@ from model_deployment.model_result import ModelResult
 class FidTacticGenConf:
     ALIAS = "fid"
     checkpoint_loc: Path
+    formatter_conf: Optional[FormatterConf]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> FidTacticGenConf:
+        formatter_conf = None
+        if "formatter" in yaml_data:
+            formatter_conf = formatter_conf_from_yaml(yaml_data["formatter"])
         return cls(
             Path(yaml_data["checkpoint_loc"]),
+            formatter_conf,
         )
 
 
@@ -61,7 +66,7 @@ class OpenAiCientConf:
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> OpenAiCientConf:
-        formatter_conf = formatter_conf_from_yaml(yaml_data)
+        formatter_conf = formatter_conf_from_yaml(yaml_data["formatter"])
         return cls(yaml_data["model_name"], formatter_conf)
 
 
@@ -73,7 +78,7 @@ class OpenAiClient:
 
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         completion = self.client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=self.model_name,
             messages=[
                 {"role": "system", "content": self.formatter.SYSTEM_MSG},
                 {"role": "user", "content": example.input},
@@ -82,7 +87,11 @@ class OpenAiClient:
         )
         messages: list[str] = []
         for choice in completion.choices:
-            messages.append(choice.message)
+            messages.append(choice.message.content)
+        print(messages)
+        # messages = [
+        #     "Proof.\n  intro n.\n  unfold binomial.\n  destruct n.\n  - simpl. reflexivity.\n  - simpl. reflexivity.\nQed.  ",
+        # ]
         return ModelResult(messages, [], [])
 
     @classmethod

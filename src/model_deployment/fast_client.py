@@ -3,6 +3,7 @@ import sys
 import threading
 import subprocess
 import time
+import ipdb
 
 from coqpyt.coq.structs import Step
 from coqpyt.lsp.structs import *
@@ -38,16 +39,16 @@ class ClientWrapper:
         steps: list[Step] = []
         prev_line, prev_char = (0, 0)
         for i, span in enumerate(spans):
-            if i == len(spans) - 1 and span.span is None:
-                continue
+            # if i == len(spans) - 1 and span.span is None:
+            #     continue
             end_line, end_char = (spans[i].range.end.line, spans[i].range.end.character)
-            cur_lines = lines[prev_line : (end_line + 1)]
-            cur_lines[0] = cur_lines[0][prev_char:]
+            cur_lines = lines[prev_line : (end_line + 1)].copy()
             cur_lines[-1] = cur_lines[-1][:end_char]
+            cur_lines[0] = cur_lines[0][prev_char:]
             prev_line, prev_char = end_line, end_char
             text = "\n".join(cur_lines)
             steps.append(Step(text, "", span))
-        return steps
+        return steps[:-1]
 
     def close(self) -> None:
         self.client.shutdown()
