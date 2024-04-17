@@ -10,7 +10,6 @@ import random
 import json
 import jsonlines
 import numpy as np
-from pathlib import Path
 
 from transformers import T5Tokenizer, BatchEncoding
 from tactic_gen.lm_example import LmExample
@@ -19,7 +18,7 @@ from tactic_gen.lm_example import LmExample
 class FidDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        data_path: Optional[Path],
+        data_path: Optional[str],
         tokenizer: T5Tokenizer,
         max_encode_len: int,
         max_decode_len: int,
@@ -52,12 +51,16 @@ class FidDataset(torch.utils.data.Dataset):
         if (
             example.passages is None
             or len(example.passages) == 0
-            or self.max_num_passages <= 0
+            or self.max_num_passages == 0
         ):
-            return [example.input]
-        return [
-            f"{example.input} {p}" for p in example.passages[: self.max_num_passages]
-        ]
+            passage_inputs = [f"{example.input}"]
+        else:
+            passage_inputs = [
+                f"{example.input} {p}"
+                for p in example.passages[: self.max_num_passages]
+            ]
+        padding = ["" for _ in range(self.max_num_passages - len(passage_inputs))]
+        return passage_inputs + padding
 
     def collate(self, examples: list[LmExample]) -> Any:
         targets = [e.output for e in examples]
