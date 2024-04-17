@@ -50,10 +50,11 @@ class LmDatasetConf:
     test_sample_loc: Path
     sentence_db_loc: Path
     output_dataset_loc: Path
-    lm_formatter_conf: FormatterConf
+    lm_formatter_confs: list[FormatterConf]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LmDatasetConf:
+        assert 0 < len(yaml_data["lm_formatters"])
         return cls(
             yaml_data["n_procs"],
             Path(yaml_data["train_sample_loc"]),
@@ -61,7 +62,7 @@ class LmDatasetConf:
             Path(yaml_data["test_sample_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["output_dataset_loc"]),
-            formatter_conf_from_yaml(yaml_data["lm_formatter"]),
+            [formatter_conf_from_yaml(f) for f in yaml_data["lm_formatters"]],
         )
 
 
@@ -82,7 +83,7 @@ def writer(q: Queue[Optional[LmExample]], out_file: str) -> None:
 
 def examples_to_queue(
     example_sample: ExampleSample,
-    lm_formatter: LmFormatter,
+    lm_formatters: list[LmFormatter],
     file_info: FileInfo,
     sentence_db_loc: Path,
     selected_steps: SelectedSteps,
@@ -92,11 +93,29 @@ def examples_to_queue(
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
     match selected_steps:
         case AllSteps():
-            for proof in dp_obj.proofs:
-                ground_truth_steps = [s.step.text for s in proof.steps]
-                for i in range(len(proof.steps)):
-                    example = lm_formatter.example_from_step(
-                        i,
+            for f in lm_formatters:
+                for proof in dp_obj.proofs:
+                    ground_truth_steps = [s.step.text for s in proof.steps]
+                    for i in range(len(proof.steps)):
+                        example = f.example_from_step(
+                            i,
+                            proof,
+                            dp_obj=dp_obj,
+                            file_info=file_info,
+                            split=example_sample.split,
+                            data_loc=example_sample.data_loc,
+                            ground_truth_steps=ground_truth_steps,
+                            key_record=None,
+                            cutoff_idx=None,
+                        )
+                        q.put(example)
+        case CertainSteps(steps=step_idxs):
+            for f in lm_formatters:
+                for step_idx in step_idxs:
+                    proof = dp_obj.proofs[step_idx.proof_idx]
+                    ground_truth_steps = [s.step.text for s in proof.steps]
+                    example = f.example_from_step(
+                        step_idx.step_idx,
                         proof,
                         dp_obj=dp_obj,
                         file_info=file_info,
@@ -107,27 +126,11 @@ def examples_to_queue(
                         cutoff_idx=None,
                     )
                     q.put(example)
-        case CertainSteps(steps=step_idxs):
-            for step_idx in step_idxs:
-                proof = dp_obj.proofs[step_idx.proof_idx]
-                ground_truth_steps = [s.step.text for s in proof.steps]
-                example = lm_formatter.example_from_step(
-                    step_idx.step_idx,
-                    proof,
-                    dp_obj=dp_obj,
-                    file_info=file_info,
-                    split=example_sample.split,
-                    data_loc=example_sample.data_loc,
-                    ground_truth_steps=ground_truth_steps,
-                    key_record=None,
-                    cutoff_idx=None,
-                )
-                q.put(example)
 
 
 __ArgTuple = tuple[
     ExampleSample,
-    LmFormatter,
+    list[LmFormatter],
     FileInfo,
     Path,
     SelectedSteps,
@@ -137,7 +140,7 @@ __ArgTuple = tuple[
 
 def __get_split_transformation_args(
     example_sampler: ExampleSample,
-    formatter: LmFormatter,
+    formatters: list[LmFormatter],
     sentence_db_loc: Path,
     q: Queue[LmExample | None],
 ) -> list[__ArgTuple]:
@@ -146,7 +149,7 @@ def __get_split_transformation_args(
         arg_list.append(
             (
                 example_sampler,
-                formatter,
+                formatters,
                 file,
                 sentence_db_loc,
                 selected_steps,
@@ -169,10 +172,10 @@ def get_split_transformation_args(
         case Split.TEST:
             sample = load_sample(data_config.test_sample_loc)
 
-    lm_formatter = formatter_from_conf(data_config.lm_formatter_conf)
+    lm_formatters = [formatter_from_conf(f) for f in data_config.lm_formatter_confs]
     return __get_split_transformation_args(
         sample,
-        lm_formatter,
+        lm_formatters,
         data_config.sentence_db_loc,
         q,
     )

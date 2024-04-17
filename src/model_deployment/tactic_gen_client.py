@@ -31,16 +31,18 @@ from model_deployment.model_result import ModelResult
 class FidTacticGenConf:
     ALIAS = "fid"
     checkpoint_loc: Path
-    formatter_conf: Optional[FormatterConf]
+    formatter_confs: Optional[list[FormatterConf]]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> FidTacticGenConf:
-        formatter_conf = None
+        formatter_confs = None
         if "formatter" in yaml_data:
-            formatter_conf = formatter_conf_from_yaml(yaml_data["formatter"])
+            formatter_confs = [
+                formatter_conf_from_yaml(f) for f in yaml_data["formatters"]
+            ]
         return cls(
             Path(yaml_data["checkpoint_loc"]),
-            formatter_conf,
+            formatter_confs,
         )
 
 
@@ -48,13 +50,13 @@ class FidTacticGenConf:
 class LocalTacticGenClientConf:
     ALIAS = "client"
     urls: list[str]
-    formatter_conf: FormatterConf
+    formatter_confs: list[FormatterConf]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LocalTacticGenClientConf:
         return cls(
             yaml_data["urls"],
-            formatter_conf_from_yaml(yaml_data["formatter"]),
+            [formatter_conf_from_yaml(f) for f in yaml_data["formatters"]],
         )
 
 
@@ -104,7 +106,7 @@ class OpenAiClient:
 @dataclass
 class LocalTacticGenClient:
     urls: list[str]
-    formatter: LmFormatter
+    formatters: list[LmFormatter]
 
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         request_data = {
@@ -120,7 +122,7 @@ class LocalTacticGenClient:
 
     @classmethod
     def from_conf(cls, conf: LocalTacticGenClientConf) -> TacticGenClient:
-        return cls(conf.urls, formatter_from_conf(conf.formatter_conf))
+        return cls(conf.urls, [formatter_from_conf(f) for f in conf.formatter_confs])
 
 
 TacticGenClient = LocalTacticGenClient | OpenAiClient

@@ -193,7 +193,9 @@ def start_servers_rerank_formatter_conf(
 def start_servers_lm_dataset_conf(
     conf: LmDatasetConf, use_devices: list[int]
 ) -> LmDatasetConf:
-    lm_conf = start_servers_formatter_conf(conf.lm_formatter_conf, use_devices)
+    lm_confs: list[FormatterConf] = []
+    for f in conf.lm_formatter_confs:
+        lm_confs.append(start_servers_formatter_conf(f, use_devices))
     return LmDatasetConf(
         conf.n_procs,
         conf.train_sample_loc,
@@ -201,7 +203,7 @@ def start_servers_lm_dataset_conf(
         conf.test_sample_loc,
         conf.sentence_db_loc,
         conf.output_dataset_loc,
-        lm_conf,
+        lm_confs,
     )
 
 
@@ -234,7 +236,7 @@ def start_servers_tactic_gen(
     match conf:
         case FidTacticGenConf():
             assert conf.checkpoint_loc.exists()
-            if conf.formatter_conf is None:
+            if conf.formatter_confs is None:
                 assert 0 < len(conf.checkpoint_loc.parents)
                 model_loc = conf.checkpoint_loc.parents[0]
                 lm_data_conf = model_loc / DATA_CONF_NAME
@@ -242,14 +244,14 @@ def start_servers_tactic_gen(
                 with lm_data_conf.open("r") as fin:
                     yaml_data = yaml.load(fin, Loader=yaml.Loader)
                 data_conf = LmDatasetConf.from_yaml(yaml_data)
-                formatter_conf = data_conf.lm_formatter_conf
+                formatter_confs = data_conf.lm_formatter_confs
             else:
-                formatter_conf = conf.formatter_conf
-            formatter_client_conf = start_servers_formatter_conf(
-                formatter_conf, use_devices
-            )
+                formatter_confs = conf.formatter_confs
+            formatter_client_confs = [
+                start_servers_formatter_conf(f, use_devices) for f in formatter_confs
+            ]
             tactic_urls = start_tactic_gen_servers(conf, use_devices)
-            return LocalTacticGenClientConf(tactic_urls, formatter_client_conf)
+            return LocalTacticGenClientConf(tactic_urls, formatter_client_confs)
         case _:
             return conf
 
