@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Any, Iterable, Optional
 
 import edist
@@ -7,6 +8,8 @@ import json
 import random
 import os
 import shutil
+import functools
+from sqlite3 import Connection, Cursor, connect
 from pathlib import Path
 from tqdm import tqdm
 
@@ -118,3 +121,113 @@ def deduplicate(in_file: Path, out_file: Path, buffer_size: int = 100000) -> int
         num_duplicates += init_num_dups + vet_num_dups
         __write_chunk(chunk_set, out_file)
     return num_duplicates
+
+
+def to_db(in_file: Path, db_file: Path, insert_freq: int = 100000):
+    db = ExampleDB.create(db_file)
+    batch: list[tuple[str,]] = []
+    with in_file.open("r") as fin:
+        for i, line in enumerate(fin):
+            batch.append((line.strip(),))
+            if 0 < i and i % insert_freq == 0:
+                db.insert_examples(batch)
+                print(f"\rFinished {i} examples.", end="")
+                batch = []
+    if 0 < len(batch):
+        db.insert_examples(batch)
+
+
+class ExampleDB:
+    TABLE_NAME = "example"
+
+    def __init__(self, connection: Connection, cursor: Cursor) -> None:
+        self.connection = connection
+        self.cursor = cursor
+        self.__size: Optional[int] = None
+
+    def insert_examples(self, examples: list[tuple[str,]]):
+        self.cursor.executemany(
+            f"""
+            INSERT INTO {self.TABLE_NAME}  (text) VALUES
+            (?)
+            """,
+            examples,
+        )
+        self.connection.commit()
+
+    def insert_example(self, example: str) -> int:
+        result = self.cursor.execute(
+            f"""
+            INSERT INTO {self.TABLE_NAME}  (text) VALUES
+            (?)
+            RETURNING id""",
+            (example,),
+        ).fetchall()
+        self.connection.commit()
+
+        if len(result) != 1:
+            raise ValueError(
+                f"Something went wrong in query. Got {len(result)} after insert."
+            )
+        (resulting_id,) = result[0]
+        return resulting_id
+
+    def size(self) -> int:
+        if self.__size is not None:
+            return self.__size
+        result = self.cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM {self.TABLE_NAME}
+                            """
+        ).fetchall()
+        if len(result) != 1:
+            raise ValueError("Problem executing size query.")
+        (count,) = result[0]
+        self.__size = count
+        return count
+
+    def retrieve(self, id: int) -> str:
+        result = self.cursor.execute(
+            f"""
+            SELECT * FROM {self.TABLE_NAME} WHERE id=?
+                            """,
+            (id,),
+        ).fetchall()
+        if len(result) != 1:
+            raise ValueError(
+                f"Expected single result from sentence db. Got {len(result)}"
+            )
+        _, text = result[0]
+        return text
+
+    def commit(self) -> None:
+        self.connection.commit()
+
+    def close(self) -> None:
+        self.cursor.close()
+        self.connection.close()
+
+    @classmethod
+    def load(cls, db_path: Path) -> ExampleDB:
+        if not db_path.exists():
+            raise ValueError(f"Database {db_path} does not exis does not exist.")
+        con = connect(
+            db_path,
+        )
+        cur = con.cursor()
+        return cls(con, cur)
+
+    @classmethod
+    def create(cls, db_path: Path) -> ExampleDB:
+        if db_path.exists():
+            raise ValueError(f"DB {db_path} already exists")
+        con = connect(db_path)
+        cur = con.cursor()
+        cur.execute(
+            f"""
+            CREATE TABLE {cls.TABLE_NAME} (
+                id INTEGER PRIMARY KEY, 
+                text TEXT)
+        """
+        )
+        return cls(con, cur)

@@ -69,13 +69,13 @@ class ProofCheckResult:
     new_proof: Optional[Proof]
 
     @classmethod
-    def get_invalid(cls) -> ProofCheckResult:
+    def get_invalid(cls, attempted_steps: list[str]) -> ProofCheckResult:
         current_goals = None
         goal_record = None
         new_dataset_file = None
         return cls(
             TacticResult.INVALID,
-            [],
+            attempted_steps,
             current_goals,
             goal_record,
             new_dataset_file,
@@ -219,21 +219,23 @@ class ProofManager:
             or ("admit." in partial_proof)
             or ("Abort." in partial_proof)
         ):
-            return ProofCheckResult.get_invalid()
+            return ProofCheckResult.get_invalid([])
         contents = f"{self.file_prefix}{partial_proof}"
+        # print(contents)
         try:
             steps = self.fast_client.write_and_get_steps(contents)
         except ResponseError as e:
             _logger.warning(f"Got repsonse error on proof: {partial_proof[-30:]}")
             self.__restart_clients()
-            return ProofCheckResult.get_invalid()
+            return ProofCheckResult.get_invalid([])
         except TimeoutError as t:
             _logger.warning(f"Got timeout error on proof: {partial_proof[-30:]}")
             self.__restart_clients()
-            return ProofCheckResult.get_invalid()
+            return ProofCheckResult.get_invalid([])
 
+        attempted_step_strs = [s.text for s in steps[self.proof_info.proof_point :]]
         if not self.check_valid(self.fast_client.client):
-            return ProofCheckResult.get_invalid()
+            return ProofCheckResult.get_invalid(attempted_step_strs)
         partial_steps = [s.text for s in steps[(self.proof_info.proof_point + 1) :]]
         # end_pos = steps[-1].ast.range.end
         num_lines = len(contents.split("\n"))
@@ -249,17 +251,17 @@ class ProofManager:
         except ResponseError as e:
             _logger.warning(f"Got repsonse error on proof: {partial_proof[-10:]}")
             self.__restart_clients()
-            return ProofCheckResult.get_invalid()
+            return ProofCheckResult.get_invalid(attempted_step_strs)
         except TimeoutError as t:
             _logger.warning(f"Got timeout error on proof: {partial_proof[-10:]}")
             self.__restart_clients()
-            return ProofCheckResult.get_invalid()
+            return ProofCheckResult.get_invalid(attempted_step_strs)
         self.fast_client.client.lsp_endpoint.timeout = 5
 
         if current_goals is None:
-            return ProofCheckResult.get_invalid()
+            return ProofCheckResult.get_invalid(attempted_step_strs)
         if current_goals.goals is None:
-            return ProofCheckResult.get_invalid()
+            return ProofCheckResult.get_invalid(attempted_step_strs)
 
         # try:
         #     assert "".join(partial_steps) == partial_proof
@@ -272,6 +274,10 @@ class ProofManager:
         if self.__can_close_proof(current_goals):
             goal_record = None
             proof = None
+            must_be_valid = "".join([s.text for s in steps]) + "\nQed."
+            steps = self.fast_client.write_and_get_steps(must_be_valid)
+            if not self.check_valid(self.fast_client.client):
+                return ProofCheckResult.get_invalid(attempted_step_strs)
             return ProofCheckResult(
                 TacticResult.COMPLETE,
                 partial_steps,

@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Iterable, Any, Optional
 import sys, os
 import argparse
+import re
 import functools
 from pathlib import Path
 import random
@@ -9,6 +10,7 @@ import math
 import requests
 from dataclasses import dataclass
 
+from data_management.dataset_file import Goal
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import FocusedStep, Proof, Sentence
 from premise_selection.premise_formatter import (
@@ -18,6 +20,7 @@ from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
 )
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
+from coqpyt.coq.structs import TermType
 
 
 @dataclass
@@ -81,6 +84,22 @@ class BM250OkapiConf:
 
 
 @dataclass
+class LookupClientConf:
+    ALIAS = "lookup"
+    context_format_alias: str
+    premise_format_alias: str
+    premise_filter_conf: PremiseFilterConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> LookupClientConf:
+        return cls(
+            yaml_data["context_format_alias"],
+            yaml_data["premise_format_alias"],
+            PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
+        )
+
+
+@dataclass
 class SelectClientConf:
     ALIAS = "select-client"
     urls: list[str]
@@ -123,23 +142,27 @@ PremiseConf = (
     | RerankClientConf
     | TFIdfConf
     | BM250OkapiConf
+    | LookupClientConf
 )
 
 
 def premise_conf_from_yaml(yaml_data: Any) -> PremiseConf:
-    match yaml_data["alias"]:
-        case "select":
+    attempted_alias = yaml_data["alias"]
+    match attempted_alias:
+        case SelectConf.ALIAS:
             return SelectConf.from_yaml(yaml_data)
-        case "select-client":
+        case SelectClientConf.ALIAS:
             return SelectClientConf.from_yaml(yaml_data)
-        case "rerank":
+        case RerankConf.ALIAS:
             return RerankConf.from_yaml(yaml_data)
-        case "rerank-client":
+        case RerankClientConf.ALIAS:
             return RerankClientConf.from_yaml(yaml_data)
-        case "tfidf":
+        case TFIdfConf.ALIAS:
             return TFIdfConf.from_yaml(yaml_data)
-        case "bm25":
+        case BM250OkapiConf.ALIAS:
             return BM250OkapiConf.from_yaml(yaml_data)
+        case LookupClientConf.ALIAS:
+            return LookupClientConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Unknown Configuration")
 
@@ -158,6 +181,8 @@ def premise_client_from_conf(conf: PremiseConf) -> PremiseClient:
             return TFIdfClient.from_conf(conf)
         case BM250OkapiConf():
             return BM25OkapiClient.from_conf(conf)
+        case LookupClientConf():
+            return LookupClient.from_conf(conf)
 
 
 class RerankClient:
@@ -285,18 +310,11 @@ class SelectPremiseClient:
         )
 
 
+@dataclass
 class TFIdfClient:
-    ALIAS = "tfidf"
-
-    def __init__(
-        self,
-        context_format: type[ContextFormat],
-        premise_format: type[PremiseFormat],
-        premise_filter: PremiseFilter,
-    ):
-        self.context_format = context_format
-        self.premise_format = premise_format
-        self.premise_filter = premise_filter
+    context_format: type[ContextFormat]
+    premise_format: type[PremiseFormat]
+    premise_filter: PremiseFilter
 
     def __clean_token(self, s: str) -> str:
         s = s.lstrip("(,:{")
@@ -413,6 +431,106 @@ class TFIdfClient:
         )
 
 
+@dataclass
+class LookupClient:
+    context_format: type[ContextFormat]
+    premise_format: type[PremiseFormat]
+    premise_filter: PremiseFilter
+    HYP_PENALTY = 0.7
+    COQ_PENALTY = 0.5
+
+    name_forms = [
+        re.compile(r"Definition\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Fixpoint\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"CoFixpoint\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Inductive\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"CoInductive\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Variant\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Class\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Module Type\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Module\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Instance\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+    ]
+
+    id_form = re.compile(r"[^\[\]\{\}\(\):=,\s]+")
+
+    def get_ids_from_goal(self, goal: Goal) -> tuple[list[str], list[str]]:
+        goal_search_str = goal.goal
+        hyp_search_str = ""
+        h_ids: set[str] = set()
+        for h in goal.hyps:
+            h_ty = h.split(":")
+            if len(h_ty) == 1:
+                hyp_search_str += " " + h_ty[0]
+            else:
+                h_ids.add(h_ty[0])
+                hyp_search_str += " " + "".join(h_ty[1:])
+        hyp_found_ids = re.findall(self.id_form, hyp_search_str)
+        filtered_hyp_ids = [f for f in hyp_found_ids if f not in h_ids]
+        goal_found_ids = re.findall(self.id_form, goal_search_str)
+        filtered_goal_ids = [f for f in goal_found_ids if f not in h_ids]
+        return filtered_hyp_ids, filtered_goal_ids
+
+    def get_name_from_premise(self, premise: Sentence) -> Optional[str]:
+        for name_form in self.name_forms:
+            search_match = name_form.search(premise.text)
+            if search_match is not None:
+                (name,) = search_match.groups()
+                return name
+        return None
+
+    def get_ranked_premise_generator(
+        self,
+        step: FocusedStep,
+        proof: Proof,
+        premises: list[Sentence],
+    ) -> Iterable[Sentence]:
+        if len(step.goals) == 0:
+            empty_premises: list[Sentence] = []
+            return empty_premises
+        focused_goal = step.goals[0]
+        premise_names = [self.get_name_from_premise(p) for p in premises]
+        # print(premise_names)
+        premise_scores: list[float] = []
+        hyp_id_list, goal_id_list = self.get_ids_from_goal(focused_goal)
+        hyp_ids = set(hyp_id_list)
+        goal_ids = set(goal_id_list)
+        for sentence, name in zip(premises, premise_names):
+            if name is None:
+                premise_scores.append(0)
+            elif name in goal_ids:
+                from_coq = os.path.join("lib", "coq", "theories") in sentence.file_path
+                premise_score = self.COQ_PENALTY if from_coq else 1
+                premise_scores.append(premise_score)
+            elif name in hyp_ids:
+                from_coq = os.path.join("lib", "coq", "theories") in sentence.file_path
+                premise_score = (
+                    self.COQ_PENALTY * self.HYP_PENALTY
+                    if from_coq
+                    else self.HYP_PENALTY
+                )
+                premise_scores.append(premise_score)
+            else:
+                premise_scores.append(0)
+
+        num_premises = len(premise_scores)
+        arg_sorted_premise_scores = sorted(
+            range(num_premises), key=lambda idx: -1 * premise_scores[idx]
+        )
+        for idx in arg_sorted_premise_scores:
+            if premise_scores[idx] == 0:
+                break
+            yield premises[idx]
+
+    @classmethod
+    def from_conf(cls, conf: LookupClientConf) -> LookupClient:
+        return cls(
+            CONTEXT_ALIASES[conf.context_format_alias],
+            PREMISE_ALIASES[conf.premise_format_alias],
+            PremiseFilter.from_conf(conf.premise_filter_conf),
+        )
+
+
 class BM25OkapiClient:
     def __init__(
         self,
@@ -501,4 +619,6 @@ class BM25OkapiClient:
         )
 
 
-PremiseClient = SelectPremiseClient | RerankClient | TFIdfClient | BM25OkapiClient
+PremiseClient = (
+    SelectPremiseClient | RerankClient | TFIdfClient | BM25OkapiClient | LookupClient
+)

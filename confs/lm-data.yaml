@@ -3,17 +3,25 @@ train_sample_loc: samples/final/train.json
 val_sample_loc: samples/final/val.json
 test_sample_loc: samples/final/test.json
 sentence_db_loc: sentences.db
-output_dataset_loc: data/tfidf
+output_dataset_loc: data/lookup
 
-lm_formatter:
-  alias: premise
-  premise_conf:
-    alias: tfidf
-    context_format_alias: basic
-    premise_format_alias: basic
-    premise_filter:
-      coq_excludes: []    
-      non_coq_excludes: []
-      general_excludes: []
-  n_step_sampler:
-    alias: one
+# lm_formatters:
+#   - alias: whole-proof-ret 
+#     proof_bank_loc: proof-goals
+#     data_loc: raw-data/coq-dataset
+#     sentence_db_loc: sentences.db
+#     n_step_sampler:
+#       alias: one
+
+lm_formatters:
+  - alias: premise
+    premise_conf:
+      alias: lookup 
+      context_format_alias: basic
+      premise_format_alias: basic
+      premise_filter:
+        coq_excludes: []    
+        non_coq_excludes: []
+        general_excludes: []
+    n_step_sampler:
+      alias: one

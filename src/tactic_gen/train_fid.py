@@ -28,9 +28,9 @@ def get_datasets(
     max_num_passages = get_required_arg("max_num_passages", conf)
 
     data_path = Path(get_required_arg("data_path", conf))
-    num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
 
-    train_path = split_file_path(data_path, Split.TRAIN)
+    # train_path = split_file_path(data_path, Split.TRAIN)
+    train_path = data_path / "train.db"
     train_dataset = FidDataset(
         train_path,
         tokenizer,
@@ -38,14 +38,15 @@ def get_datasets(
         max_decode_len,
         max_num_passages,
     )
-    val_path = split_file_path(data_path, Split.VAL)
+    # val_path = split_file_path(data_path, Split.VAL)
+    val_path = data_path / "val.db"
     val_dataset = FidDataset(
         val_path,
         tokenizer,
         max_encode_len,
         max_decode_len,
         max_num_passages,
-        num_eval_examples,
+        max_num_examples=2000,
     )
     return train_dataset, val_dataset
 

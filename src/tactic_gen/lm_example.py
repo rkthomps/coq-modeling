@@ -1,11 +1,9 @@
 from __future__ import annotations
 from typing import Any, Optional
-import time
-import datetime
 import random
 import functools
-import os
 import ipdb
+import os
 import heapq
 from pathlib import Path
 from dataclasses import dataclass
@@ -28,6 +26,9 @@ from model_deployment.mine_goals import FileGoals, GoalRecord
 from model_deployment.transform_ast import AdjTree
 from data_management.sentence_db import SentenceDB
 from data_management.splits import DATA_POINTS_NAME
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 GOAL_SEP = "<G>"
@@ -107,6 +108,24 @@ class ProofRetrievalFormatterConf:
 
 
 @dataclass
+class WholeProofRetrievalFormatterConf:
+    ALIAS = "whole-proof-ret"
+    proof_bank_loc: Path
+    data_loc: Path
+    sentence_db_loc: Path
+    n_step_conf: NStepConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> WholeProofRetrievalFormatterConf:
+        return cls(
+            Path(yaml_data["proof_bank_loc"]),
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            n_step_conf_from_yaml(yaml_data["n_step_sampler"]),
+        )
+
+
+@dataclass
 class PremiseFormatterConf:
     ALIAS = "premise"
     premise_conf: PremiseConf
@@ -159,6 +178,7 @@ GPTFormatterConf = GPTVanillaFormatterConf
 FormatterConf = (
     BasicFormatterConf
     | ProofRetrievalFormatterConf
+    | WholeProofRetrievalFormatterConf
     | PremiseFormatterConf
     | GPTVanillaFormatterConf
     | GPTProofFormatterConf
@@ -173,6 +193,8 @@ def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
             return BasicFormatterConf.from_yaml(yaml_data)
         case ProofRetrievalFormatterConf.ALIAS:
             return ProofRetrievalFormatterConf.from_yaml(yaml_data)
+        case WholeProofRetrievalFormatterConf.ALIAS:
+            return WholeProofRetrievalFormatterConf.from_yaml(yaml_data)
         case PremiseFormatterConf.ALIAS:
             return PremiseFormatterConf.from_yaml(yaml_data)
         case GPTVanillaFormatterConf.ALIAS:
@@ -191,6 +213,8 @@ def formatter_from_conf(conf: FormatterConf) -> LmFormatter:
             return BasicFormatter.from_conf(conf)
         case ProofRetrievalFormatterConf():
             return ProofRetrievalFormatter.from_conf(conf)
+        case WholeProofRetrievalFormatterConf():
+            return WholeProofRetrievalFormatter.from_conf(conf)
         case PremiseFormatterConf():
             return PremiseFormatter.from_conf(conf)
         case GPTVanillaFormatterConf():
@@ -290,10 +314,13 @@ class ProofRetriever:
         cur_ground_truth_str = "".join(current_ground_truth)
         if len(proof.steps[step_idx].goals) <= 0:
             return None
-        pretty_proof_goal = proof.steps[step_idx].goals[0].to_string().strip()
+        norm_pretty_proof_goal = " ".join(
+            proof.steps[step_idx].goals[0].to_string().split()
+        )
         for i, record in enumerate(file_goals.records):
             record_proof_str = "".join(record.proof)
-            if record.pretty_goal.strip() == pretty_proof_goal and (
+            norm_record_goal = " ".join(record.pretty_goal.split())
+            if norm_record_goal == norm_pretty_proof_goal and (
                 cur_ground_truth_str.startswith(record_proof_str)
                 or record_proof_str.startswith(cur_ground_truth_str)
             ):
@@ -336,18 +363,20 @@ class ProofRetriever:
     ) -> tuple[str, str]:
         candidate_dp = self.__get_dp(candidate.origin, data_loc, sentence_db)
         record_proof_str = "".join(candidate.candidate.proof)
+        pretty_candidate_goal = " ".join(candidate.candidate.pretty_goal.split())
         for proof in candidate_dp.proofs:
             for i, step in enumerate(proof.steps):
                 if 0 == len(step.goals):
                     continue
                 current_ground_truth = [s.step.text for s in proof.steps[i:]]
                 cur_ground_truth_str = "".join(current_ground_truth)
-                pretty_proof_goal = step.goals[0].to_string().strip()
-                if candidate.candidate.pretty_goal.strip() == pretty_proof_goal and (
+                pretty_proof_goal = " ".join(step.goals[0].to_string().split())
+                if pretty_candidate_goal == pretty_proof_goal and (
                     cur_ground_truth_str.startswith(record_proof_str)
                     or record_proof_str.startswith(cur_ground_truth_str)
                 ):
                     return proof.proof_text_to_string(), candidate.origin
+        print(candidate.candidate.pretty_goal)
         raise ValueError(
             "Could not find corresponding candidate's corresponding proof."
         )
@@ -405,6 +434,66 @@ class ProofRetriever:
             len(best_record_candiates), best_record_candiates
         )
         return sorted_candidates
+
+
+class WholeProofRetrievalFormatter:
+    MAX_N_EXAMPLES = 20
+
+    def __init__(
+        self,
+        proof_retriever: ProofRetriever,
+        data_loc: Path,
+        sentence_db: SentenceDB,
+        n_step_sampler: NStepSampler,
+    ) -> None:
+        self.proof_retriever = proof_retriever
+        self.data_loc = data_loc
+        self.sentence_db = sentence_db
+        self.n_step_sampler = n_step_sampler
+        self.basic_formatter = BasicFormatter(self.n_step_sampler)
+
+    def example_from_step(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        key_record: Optional[GoalRecord] = None,
+        cutoff_idx: Optional[int] = None,
+        **kwargs: Any,
+    ) -> LmExample:
+        similar_proof_result = self.proof_retriever.get_similar_proofs(
+            step_idx, proof, dp_obj, file_info, key_record, cutoff_idx
+        )
+        similar_whole_proofs: list[tuple[str, str]] = []
+        for r in similar_proof_result:
+            try:
+                whole_proof_and_origin = self.proof_retriever.get_whole_proof(
+                    r, self.data_loc, self.sentence_db
+                )
+                if whole_proof_and_origin in similar_whole_proofs:
+                    continue
+                if self.MAX_N_EXAMPLES <= len(similar_whole_proofs):
+                    break
+                similar_whole_proofs.append(whole_proof_and_origin)
+            except ValueError:
+                _logger.warning(f"Couldn't find corresponding proof with {r.origin}")
+
+        passages = [s for s, _ in similar_whole_proofs]
+        basic_example = self.basic_formatter.example_from_step(step_idx, proof)
+        return LmExample(basic_example.input, basic_example.output, passages)
+
+    @classmethod
+    def from_conf(
+        cls, conf: WholeProofRetrievalFormatterConf
+    ) -> WholeProofRetrievalFormatter:
+        sentence_db = SentenceDB.load(conf.sentence_db_loc)
+        return cls(
+            ProofRetriever(conf.proof_bank_loc, cls.MAX_N_EXAMPLES),
+            conf.data_loc,
+            sentence_db,
+            n_step_from_conf(conf.n_step_conf),
+        )
 
 
 class ProofRetrievalFormatter:
@@ -506,7 +595,7 @@ class PremiseFormatter:
 
 
 class GPTVanillaFormatter:
-    SYSTEM_MSG = "You complete the given proof in Coq. You continue from where the prompt left off."
+    SYSTEM_MSG = "You complete the given proof in Coq. You continue from where the prompt left off. You only write Coq code."
 
     def example_from_step(
         self,
@@ -515,7 +604,8 @@ class GPTVanillaFormatter:
         dp_obj: DatasetFile,
         **kwargs: Any,
     ) -> LmExample:
-        format = f"{proof.theorem.term.text}"
+        format = f"{proof.theorem.term.text}\nProof. "
+        print(format)
         return LmExample(format, "out", None)
 
     @classmethod
@@ -530,7 +620,7 @@ class GPTProofFormatter:
     sentence_db: SentenceDB
     NUM_STEPS = 8
     SYSTEM_MSG = (
-        "You complete the given proof in Coq. You continue from where the prompt left off. "
+        "You complete the given proof in Coq. You continue from where the prompt left off. You only write Coq code."
         "In the context, you are given proofs that at some point in the proof, solve "
         "a goal similar to the current theorem."
         "Stop after proving a single theorem. "
@@ -549,25 +639,27 @@ class GPTProofFormatter:
         similar_proof_result = self.proof_retriever.get_similar_proofs(
             step_idx, proof, dp_obj, file_info, key_record, cutoff_idx
         )
-        similar_whole_proofs = [
-            self.proof_retriever.get_whole_proof(r, self.data_loc, self.sentence_db)
-            for r in similar_proof_result
-        ]
-        filtered_whole_proofs: list[tuple[str, str]] = []
+        similar_whole_proofs: list[tuple[str, str]] = []
+        for r in similar_proof_result:
+            try:
+                whole_proof_and_origin = self.proof_retriever.get_whole_proof(
+                    r, self.data_loc, self.sentence_db
+                )
+                if whole_proof_and_origin in similar_whole_proofs:
+                    continue
+                if self.NUM_STEPS <= len(similar_whole_proofs):
+                    break
+                similar_whole_proofs.append(whole_proof_and_origin)
+            except ValueError:
+                _logger.warning(f"Couldn't find corresponding proof with {r.origin}")
 
-        for s in similar_whole_proofs:
-            if s in filtered_whole_proofs:
-                continue
-            filtered_whole_proofs.append(s)
-            if self.NUM_STEPS <= len(filtered_whole_proofs):
-                break
-
-        filtered_whole_proofs.reverse()
-        print("proofs", filtered_whole_proofs)
-        context = "\n\n".join([p for p, _ in filtered_whole_proofs])
-        format = f"{context}\n\n{proof.theorem.term.text}"
+        passages = [s for s, _ in similar_whole_proofs]
+        similar_whole_proofs.reverse()
+        print("proofs", similar_whole_proofs)
+        context = "\n\n".join([p for p, _ in similar_whole_proofs])
+        format = f"{context}\n\n{proof.theorem.term.text}\nProof. "
         print(format)
-        return LmExample(format, "out", None)
+        return LmExample(format, "out", passages)
 
     @classmethod
     def from_conf(cls, conf: GPTProofFormatterConf) -> GPTProofFormatter:
@@ -582,7 +674,7 @@ class GPTProofFormatter:
 class GPTPremiseFormatter:
     premise_client: PremiseClient
     SYSTEM_MSG = (
-        "You complete the given proof in Coq. You continue from where the prompt left off. "
+        "You complete the given proof in Coq. You continue from where the prompt left off. You only write Coq code."
         "In the context, you are given theorems, definitions, and notations that might be helpful "
         "for completing the proof."
     )
@@ -594,7 +686,7 @@ class GPTPremiseFormatter:
         dp_obj: DatasetFile,
         **kwargs: Any,
     ) -> LmExample:
-        format = f"{proof.theorem.term.text}"
+        format = f"{proof.theorem.term.text}\nProof. "
         return LmExample(format, "out", None)
 
     @classmethod
@@ -607,6 +699,7 @@ LmFormatter = (
     BasicFormatter
     | PremiseFormatter
     | ProofRetrievalFormatter
+    | WholeProofRetrievalFormatter
     | GPTVanillaFormatter
     | GPTProofFormatter
     | GPTPremiseFormatter

@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from util.constants import CLEAN_CONFIG
 
-
 import json
 from tqdm import tqdm
 import yaml
@@ -26,6 +25,7 @@ from data_management.splits import (
     FileInfo,
     Split,
     split_file_path,
+    split2str,
 )
 from data_management.sentence_db import SentenceDB
 from data_management.samples import (
@@ -35,7 +35,7 @@ from data_management.samples import (
     AllSteps,
     CertainSteps,
 )
-from data_management.jsonl_utils import shuffle, deduplicate
+from data_management.jsonl_utils import shuffle, deduplicate, to_db
 from util.util import get_basic_logger
 from util.constants import DATA_CONF_NAME
 
@@ -83,7 +83,7 @@ def writer(q: Queue[Optional[LmExample]], out_file: str) -> None:
 
 def examples_to_queue(
     example_sample: ExampleSample,
-    lm_formatters: list[LmFormatter],
+    lm_formatter_confs: list[FormatterConf],
     file_info: FileInfo,
     sentence_db_loc: Path,
     selected_steps: SelectedSteps,
@@ -91,6 +91,7 @@ def examples_to_queue(
 ) -> None:
     sentence_db = SentenceDB.load(sentence_db_loc)
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
+    lm_formatters = [formatter_from_conf(c) for c in lm_formatter_confs]
     match selected_steps:
         case AllSteps():
             for f in lm_formatters:
@@ -130,7 +131,7 @@ def examples_to_queue(
 
 __ArgTuple = tuple[
     ExampleSample,
-    list[LmFormatter],
+    list[FormatterConf],
     FileInfo,
     Path,
     SelectedSteps,
@@ -140,7 +141,7 @@ __ArgTuple = tuple[
 
 def __get_split_transformation_args(
     example_sampler: ExampleSample,
-    formatters: list[LmFormatter],
+    formatters: list[FormatterConf],
     sentence_db_loc: Path,
     q: Queue[LmExample | None],
 ) -> list[__ArgTuple]:
@@ -172,10 +173,9 @@ def get_split_transformation_args(
         case Split.TEST:
             sample = load_sample(data_config.test_sample_loc)
 
-    lm_formatters = [formatter_from_conf(f) for f in data_config.lm_formatter_confs]
     return __get_split_transformation_args(
         sample,
-        lm_formatters,
+        data_config.lm_formatter_confs,
         data_config.sentence_db_loc,
         q,
     )
@@ -236,6 +236,9 @@ if __name__ == "__main__":
                 os.remove(raw_path)
                 shuffle(deduped_path, shuffled_path)
                 os.remove(deduped_path)
+                db_path = data_conf.output_dataset_loc / f"{split2str(split)}.db"
+                to_db(shuffled_path, db_path)
+                os.remove(shuffled_path)
 
     conf_out_loc = os.path.join(data_conf.output_dataset_loc, DATA_CONF_NAME)
     shutil.copy(args.lm_data_config_loc, conf_out_loc)

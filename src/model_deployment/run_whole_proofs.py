@@ -75,6 +75,8 @@ class WholeProofSummary:
     total_time: float
 
     def __lt__(self, other: WholeProofSummary) -> bool:
+        if self.file == other.file:
+            return self.theorem < other.theorem
         return self.file < other.file
 
     def to_json(self) -> Any:
@@ -143,7 +145,6 @@ def run_proof(conf: RunWholeProofConf) -> WholeProofResult:
     with ProofManager(
         conf.location_info.dataset_file.file_context,
         proof_info,
-        conf.tactic_gen.formatter,
         conf.location_info.file_info,
         conf.location_info.sentence_db,
         conf.location_info.split,

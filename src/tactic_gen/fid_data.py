@@ -10,7 +10,9 @@ import random
 import json
 import jsonlines
 import numpy as np
+from pathlib import Path
 
+from data_management.jsonl_utils import ExampleDB
 from transformers import T5Tokenizer, BatchEncoding
 from tactic_gen.lm_example import LmExample
 
@@ -18,34 +20,33 @@ from tactic_gen.lm_example import LmExample
 class FidDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        data_path: Optional[str],
+        data_path: Optional[Path],
         tokenizer: T5Tokenizer,
         max_encode_len: int,
         max_decode_len: int,
         max_num_passages: int,
-        max_n_examples: Optional[int] = None,
+        max_num_examples: Optional[int] = None,
     ):
         self.max_encode_len = max_encode_len
         self.max_decode_len = max_decode_len
         self.max_num_passages = max_num_passages
-        self.max_n_examples = max_n_examples
         self.tokenizer = tokenizer
+        self.max_num_examples = max_num_examples
 
-        self.raw_examples: list[LmExample] = []
         if data_path is not None:
-            with jsonlines.open(data_path) as fin:
-                for i, obj in enumerate(fin):
-                    if i % 10000 == 0:
-                        print(f"\rLoading example: {i}", end="")
-                    self.raw_examples.append(LmExample.from_json(obj))
-                    if max_n_examples and len(self.raw_examples) >= max_n_examples:
-                        break
+            self.example_db = ExampleDB.load(data_path)
+        else:
+            self.example_db = None
 
     def __len__(self) -> int:
-        return len(self.raw_examples)
+        assert self.example_db is not None
+        if self.max_num_examples is not None:
+            return self.max_num_examples
+        return self.example_db.size()
 
     def __getitem__(self, idx: int) -> LmExample:
-        return self.raw_examples[idx]
+        assert self.example_db is not None
+        return LmExample.from_json(json.loads(self.example_db.retrieve(idx + 1)))
 
     def get_example_inputs(self, example: LmExample) -> list[str]:
         if (

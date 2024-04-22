@@ -119,15 +119,21 @@ class SearchConf:
     max_expansions: int
     depth_limit: int
     timeout: int
+    initial_proof: Optional[str]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SearchConf:
+        if "initial_proof" not in yaml_data:
+            initial_proof = None
+        else:
+            initial_proof = yaml_data["initial_proof"]
         return cls(
             yaml_data["node_score_alias"],
             yaml_data["max_branch"],
             yaml_data["max_expansions"],
             yaml_data["depth_limit"],
             yaml_data["timeout"],
+            initial_proof,
         )
 
 
@@ -141,6 +147,7 @@ class SearchTreeManager:
         max_num_leaf_expansions: int,
         depth_limit: int,
         timeout: int,
+        initial_proof: Optional[str] = None,
     ) -> None:
         self.tactic_client = tactic_client
         self.proof_manager = proof_manager
@@ -149,15 +156,20 @@ class SearchTreeManager:
         self.max_num_leaf_expansions = max_num_leaf_expansions
         self.depth_limit = depth_limit
         self.timeout = timeout
+
+        self.stop_early = initial_proof is not None
+        if initial_proof is None:
+            initial_proof = ""
+
+        # print("INITIAL PROOF:")
+        # print(initial_proof)
+
         initial_validity = True
         final_tactic = False
         makes_progress = True
         self.comparer = AlphaGoalComparer()
         self.total_model_time = 0
 
-        initial_tactic: str = ""
-        combined_valid_steps: list[str] = []
-        initial_proof = SearchNode.steps_to_str(combined_valid_steps)
         initial_dset_file = proof_manager.get_initial_context()
         if initial_dset_file is None:
             raise ValueError("Could not get initial datasetfile")
@@ -166,16 +178,22 @@ class SearchTreeManager:
         initial_check_result = proof_manager.check_proof(
             initial_proof, self.initial_proof_obj.theorem, self.need_goal_record
         )
+        # print(initial_check_result)
         assert initial_check_result.tactic_result == TacticResult.VALID
         assert initial_check_result.current_goals is not None
         assert initial_check_result.new_proof is not None
+
+        self.initial_num_goals = len(initial_check_result.current_goals)
+
+        combined_valid_steps: list[str] = initial_check_result.attempted_steps
+        initial_proof = SearchNode.steps_to_str(combined_valid_steps)
         initial_score = self.score_type.get_initial_score(max_branch)
         creation_time = -1
         self.root = SearchNode(
             initial_validity,
             final_tactic,
             makes_progress,
-            initial_tactic,
+            initial_proof,
             combined_valid_steps,
             initial_score,
             creation_time,
@@ -201,6 +219,7 @@ class SearchTreeManager:
             conf.max_expansions,
             conf.depth_limit,
             conf.timeout,
+            conf.initial_proof,
         )
 
     @property
@@ -251,7 +270,10 @@ class SearchTreeManager:
         search_start_time: int,
     ) -> SearchNode:
         assert proof_check_result.current_goals is not None
-        assert proof_check_result.current_goals == []
+        assert proof_check_result.current_goals == [] or (
+            self.stop_early
+            and len(proof_check_result.current_goals) < self.initial_num_goals
+        )
         valid = True
         final_tactic = True
         makes_progress = True
@@ -444,6 +466,21 @@ class SearchTreeManager:
                     node_score = self.score_type.from_unit_score(
                         score, num_tokens, goal_score, self.max_branch
                     )
+                    if (
+                        self.stop_early
+                        and len(proof_check_result.current_goals)
+                        < self.initial_num_goals
+                    ):
+                        complete_node = self.__get_complete_child_node(
+                            proof_check_result,
+                            tactic,
+                            leaf_subtree,
+                            node_score,
+                            search_start_time,
+                        )
+                        children.append(complete_node)
+                        return complete_node
+
                     valid_node = self.__get_valid_child_node(
                         proof_check_result,
                         tactic,
@@ -451,6 +488,7 @@ class SearchTreeManager:
                         node_score,
                         search_start_time,
                     )
+
                     children.append(valid_node)
                     # We will check again if the candide makes progress to make
                     # sure it isn't superceded by later candidates.
