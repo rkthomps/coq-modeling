@@ -26,6 +26,8 @@ from tactic_gen.lm_example import (
 )
 from model_deployment.model_result import ModelResult
 
+from util.socket_client import ServerAdapter
+
 
 @dataclass
 class FidTacticGenConf:
@@ -49,13 +51,13 @@ class FidTacticGenConf:
 @dataclass
 class LocalTacticGenClientConf:
     ALIAS = "client"
-    urls: list[str]
+    socket_paths: list[Path]
     formatter_confs: list[FormatterConf]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LocalTacticGenClientConf:
         return cls(
-            yaml_data["urls"],
+            [Path(p) for p in yaml_data["socket_paths"]],
             [formatter_conf_from_yaml(f) for f in yaml_data["formatters"]],
         )
 
@@ -104,10 +106,16 @@ class OpenAiClient:
         return cls(conf.model_name, formatter)
 
 
-@dataclass
 class LocalTacticGenClient:
-    urls: list[str]
-    formatters: list[LmFormatter]
+    def __init__(self, socket_paths: list[Path], formatters: list[LmFormatter]) -> None:
+        self.socket_paths = socket_paths
+        self.formatters = formatters
+        self.session = requests.Session()
+        self.urls: list[str] = []
+        for i, path in enumerate(socket_paths):
+            url = f"http://servers-{i}/"
+            self.session.mount(f"http://servers-{i}/", ServerAdapter(path))
+            self.urls.append(url)
 
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         request_data = {
@@ -118,12 +126,14 @@ class LocalTacticGenClient:
         }
 
         chosen_url = random.choice(self.urls)
-        response = requests.post(chosen_url, json=request_data).json()
+        response = self.session.post(chosen_url, json=request_data).json()
         return ModelResult.from_json(response["result"])
 
     @classmethod
     def from_conf(cls, conf: LocalTacticGenClientConf) -> TacticGenClient:
-        return cls(conf.urls, [formatter_from_conf(f) for f in conf.formatter_confs])
+        return cls(
+            conf.socket_paths, [formatter_from_conf(f) for f in conf.formatter_confs]
+        )
 
 
 TacticGenClient = LocalTacticGenClient | OpenAiClient

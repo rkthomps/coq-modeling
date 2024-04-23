@@ -8,3 +8,4 @@ PREMISE_DATA_CONF_NAME = "premise-data-config.yaml"
 RERANK_DATA_CONF_NAME = "rerank-data-config.yaml"
 
 CLEAN_CONFIG = "conf.pkl"
+SERVER_LOC = "./servers"

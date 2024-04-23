@@ -19,6 +19,7 @@ from premise_selection.premise_formatter import (
     CONTEXT_ALIASES,
     PREMISE_ALIASES,
 )
+from util.socket_client import ServerAdapter
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
 from coqpyt.coq.structs import TermType
 
@@ -102,7 +103,7 @@ class LookupClientConf:
 @dataclass
 class SelectClientConf:
     ALIAS = "select-client"
-    urls: list[str]
+    socket_paths: list[Path]
     context_format_alias: str
     premise_format_alias: str
     premise_filter_conf: PremiseFilterConf
@@ -111,7 +112,7 @@ class SelectClientConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectClientConf:
         return cls(
-            yaml_data["urls"],
+            [Path(p) for p in yaml_data["socket_paths"]],
             yaml_data["context_format_alias"],
             yaml_data["premise_format_alias"],
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
@@ -122,14 +123,14 @@ class SelectClientConf:
 @dataclass
 class RerankClientConf:
     ALIAS = "rerank-client"
-    urls: list[str]
+    socket_paths: list[Path]
     select_client: PremiseConf
     rerank_num: int
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RerankClientConf:
         return cls(
-            yaml_data["urls"],
+            [Path(p) for p in yaml_data["socket_paths"]],
             premise_conf_from_yaml(yaml_data["select"]),
             yaml_data["rerank_num"],
         )
@@ -186,13 +187,20 @@ def premise_client_from_conf(conf: PremiseConf) -> PremiseClient:
 
 
 class RerankClient:
-    def __init__(self, urls: list[str], select_client: PremiseClient, rerank_num: int):
-        self.urls = urls
+    def __init__(
+        self, socket_paths: list[Path], select_client: PremiseClient, rerank_num: int
+    ):
         self.select_client = select_client
         self.rerank_num = rerank_num
         self.context_format = self.select_client.context_format
         self.premise_format = self.select_client.premise_format
         self.premise_filter = self.select_client.premise_filter
+        self.session = requests.Session()
+        self.urls: list[str] = []
+        for i, path in enumerate(socket_paths):
+            url = f"http://servers-{i}/"
+            self.session.mount(f"http://servers-{i}/", ServerAdapter(path))
+            self.urls.append(url)
 
     def get_premise_scores_from_strings(
         self, context_str: str, premises: list[Sentence]
@@ -205,7 +213,7 @@ class RerankClient:
             "id": 0,
         }
         request_url = random.choice(self.urls)
-        response = requests.post(request_url, json=request_data).json()
+        response = self.session.post(request_url, json=request_data).json()
         return response["result"]
 
     def get_ranked_premise_generator(
@@ -232,24 +240,31 @@ class RerankClient:
     @classmethod
     def from_conf(cls, conf: RerankClientConf) -> RerankClient:
         return cls(
-            conf.urls, premise_client_from_conf(conf.select_client), conf.rerank_num
+            conf.socket_paths,
+            premise_client_from_conf(conf.select_client),
+            conf.rerank_num,
         )
 
 
 class SelectPremiseClient:
     def __init__(
         self,
-        urls: list[str],
+        socket_paths: list[Path],
         context_format: type[ContextFormat],
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
         sentence_db: SentenceDB,
     ):
-        self.urls = urls
         self.context_format = context_format
         self.premise_format = premise_format
         self.premise_filter = premise_filter
         self.sentence_db = sentence_db
+        self.session = requests.Session()
+        self.urls: list[str] = []
+        for i, path in enumerate(socket_paths):
+            url = f"http://servers-{i}/"
+            self.session.mount(f"http://servers-{i}/", ServerAdapter(path))
+            self.urls.append(url)
 
     def get_premise_scores_from_strings(
         self, context_str: str, premises: list[Sentence]
@@ -276,7 +291,7 @@ class SelectPremiseClient:
             "id": 0,
         }
         request_url = random.choice(self.urls)
-        response = requests.post(request_url, json=request_data).json()
+        response = self.session.post(request_url, json=request_data).json()
 
         orig_idxs = orig_idxs + orig_idxs_other
         new_order = sorted(range(len(orig_idxs)), key=lambda idx: orig_idxs[idx])
@@ -302,12 +317,84 @@ class SelectPremiseClient:
     @classmethod
     def from_conf(cls, conf: SelectClientConf) -> SelectPremiseClient:
         return cls(
-            conf.urls,
+            conf.socket_paths,
             CONTEXT_ALIASES[conf.context_format_alias],
             PREMISE_ALIASES[conf.premise_format_alias],
             PremiseFilter.from_conf(conf.premise_filter_conf),
             SentenceDB.load(conf.sentence_db_loc),
         )
+
+
+def clean_token(s: str) -> str:
+    s = s.lstrip("(,:{")
+    s = s.rstrip("),:}")
+    return s
+
+
+@functools.lru_cache(50000)
+def tokenize(s: str) -> list[str]:
+    whitespace_split = s.split()
+    clean_tokens: list[str] = []
+    for t in whitespace_split:
+        clean_t = clean_token(t)
+        if 0 < len(clean_t):
+            clean_tokens.append(clean_t)
+    return clean_tokens
+
+
+def compute_idfs(corpus: list[str]) -> dict[str, float]:
+    if 0 == len(corpus):
+        return {}
+    assert 0 < len(corpus)
+    doc_freqs: dict[str, int] = {}
+    for premise in corpus:
+        doc = tokenize(premise)
+        for word in set(doc):
+            if word not in doc_freqs:
+                doc_freqs[word] = 0
+            doc_freqs[word] += 1
+
+    idfs: dict[str, float] = {}
+    for k, v in doc_freqs.items():
+        idfs[k] = math.log(len(corpus) / v)
+    return idfs
+
+
+@functools.lru_cache(10000)
+def compute_doc_tf(premise: str) -> dict[str, float]:
+    doc = tokenize(premise)
+    if 0 == len(doc):
+        return {}
+    assert 0 < len(doc)
+    term_freqs: dict[str, int] = {}
+    for word in doc:
+        if word not in term_freqs:
+            term_freqs[word] = 0
+        term_freqs[word] += 1
+
+    tfs: dict[str, float] = {}
+    for k, v in term_freqs.items():
+        tfs[k] = v / len(doc)
+    return tfs
+
+
+def compute_query_tf(query: list[str]) -> dict[str, float]:
+    if 0 == len(query):
+        return {}
+    assert 0 < len(query)
+    term_freqs: dict[str, int] = {}
+    max_term_freq = 0
+    for word in query:
+        if word not in term_freqs:
+            term_freqs[word] = 0
+        term_freqs[word] += 1
+        if max_term_freq < term_freqs[word]:
+            max_term_freq = term_freqs[word]
+
+    tfs: dict[str, float] = {}
+    for k, v in term_freqs.items():
+        tfs[k] = 0.5 + 0.5 * (v / max_term_freq)
+    return tfs
 
 
 @dataclass
@@ -316,81 +403,14 @@ class TFIdfClient:
     premise_format: type[PremiseFormat]
     premise_filter: PremiseFilter
 
-    def __clean_token(self, s: str) -> str:
-        s = s.lstrip("(,:{")
-        s = s.rstrip("),:}")
-        return s
-
-    @functools.lru_cache(50000)
-    def tokenizer(self, s: str) -> list[str]:
-        whitespace_split = s.split()
-        clean_tokens: list[str] = []
-        for t in whitespace_split:
-            clean_t = self.__clean_token(t)
-            if 0 < len(clean_t):
-                clean_tokens.append(clean_t)
-        return clean_tokens
-
-    def compute_idfs(self, corpus: list[str]) -> dict[str, float]:
-        if 0 == len(corpus):
-            return {}
-        assert 0 < len(corpus)
-        doc_freqs: dict[str, int] = {}
-        for premise in corpus:
-            doc = self.tokenizer(premise)
-            for word in set(doc):
-                if word not in doc_freqs:
-                    doc_freqs[word] = 0
-                doc_freqs[word] += 1
-
-        idfs: dict[str, float] = {}
-        for k, v in doc_freqs.items():
-            idfs[k] = math.log(len(corpus) / v)
-        return idfs
-
-    @functools.lru_cache(10000)
-    def compute_doc_tf(self, premise: str) -> dict[str, float]:
-        doc = self.tokenizer(premise)
-        if 0 == len(doc):
-            return {}
-        assert 0 < len(doc)
-        term_freqs: dict[str, int] = {}
-        for word in doc:
-            if word not in term_freqs:
-                term_freqs[word] = 0
-            term_freqs[word] += 1
-
-        tfs: dict[str, float] = {}
-        for k, v in term_freqs.items():
-            tfs[k] = v / len(doc)
-        return tfs
-
-    def compute_query_tf(self, query: list[str]) -> dict[str, float]:
-        if 0 == len(query):
-            return {}
-        assert 0 < len(query)
-        term_freqs: dict[str, int] = {}
-        max_term_freq = 0
-        for word in query:
-            if word not in term_freqs:
-                term_freqs[word] = 0
-            term_freqs[word] += 1
-            if max_term_freq < term_freqs[word]:
-                max_term_freq = term_freqs[word]
-
-        tfs: dict[str, float] = {}
-        for k, v in term_freqs.items():
-            tfs[k] = 0.5 + 0.5 * (v / max_term_freq)
-        return tfs
-
     def get_premise_scores_from_strings(
         self, context_str: str, premises: list[Sentence]
     ) -> list[float]:
         premise_strs = [self.premise_format.format(p) for p in premises]
-        query = self.tokenizer(context_str)
-        idfs = self.compute_idfs(premise_strs)
-        query_tfs = self.compute_query_tf(query)
-        doc_tfs = [self.compute_doc_tf(p) for p in premise_strs]
+        query = tokenize(context_str)
+        idfs = compute_idfs(premise_strs)
+        query_tfs = compute_query_tf(query)
+        doc_tfs = [compute_doc_tf(p) for p in premise_strs]
         similarities: list[float] = []
         for doc_tf_dict in doc_tfs:
             dot_prod = 0

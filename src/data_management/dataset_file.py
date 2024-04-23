@@ -465,6 +465,15 @@ class FileContext:
 
 
 class DatasetFile:
+    name_matches = [
+        re.compile(r"Theorem\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Lemma\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Proposition\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Remark\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Corollary\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Property\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+    ]
+
     def __init__(self, file_context: FileContext, proofs: list[Proof]) -> None:
         # TODO: Turn into list of proofs.
         self.file_context = file_context
@@ -543,6 +552,16 @@ class DatasetFile:
             "file_context": self.file_context.to_jsonlines(sentence_db, insert_allowed),
             "proofs": [p.to_json(sentence_db, insert_allowed) for p in self.proofs],
         }
+
+    def get_theorem(self, theorem_name: str) -> Proof:
+        for proof in self.proofs:
+            for name_pattern in self.name_matches:
+                name_match = name_pattern.search(proof.theorem.term.text)
+                if name_match is not None:
+                    (name,) = name_match.groups()
+                    if name == theorem_name:
+                        return proof
+        raise ValueError(f"Theorem {theorem_name} not found.")
 
     @classmethod
     def load(

@@ -1,13 +1,14 @@
 from typing import Any
 import sys, os
 import argparse
+from pathlib import Path
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
 
 import logging
 
-log = logging.getLogger("werkzeug")
-log.setLevel(logging.ERROR)
+# log = logging.getLogger("werkzeug")
+# log.setLevel(logging.ERROR)
 
 import requests
 from jsonrpc import JSONRPCResponseManager, dispatcher
@@ -43,4 +44,5 @@ if __name__ == "__main__":
     }
     wrapper = wrapper_from_conf(conf)
     print("serving model at checkpoint ", args.checkpoint_loc)
-    run_simple("localhost", args.port, application)
+    serve_path = (Path("./servers") / str(args.port)).resolve()
+    run_simple(f"unix://{serve_path}", args.port, application)

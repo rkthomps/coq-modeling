@@ -39,11 +39,13 @@ from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
 from model_deployment.run_whole_proofs import TestWholeProofsConf
+from util.socket_client import ServerAdapter
 from util.constants import (
     PREMISE_DATA_CONF_NAME,
     RERANK_DATA_CONF_NAME,
     DATA_CONF_NAME,
     CLEAN_CONFIG,
+    SERVER_LOC,
 )
 
 
@@ -58,8 +60,8 @@ TopLevelConf = (
     | PremiseEvalConf
 )
 
-next_port = 8000
-open_servers: list[str] = []
+next_port = 0
+open_servers: list[Path] = []
 started_processes: list[subprocess.Popen[bytes]] = []
 
 SELECT_SERVER_SCRIPT = Path("src/model_deployment/select_server.py")
@@ -87,24 +89,24 @@ def __make_select_command(select_conf: SelectConf) -> list[str]:
     return command
 
 
-def start_select_servers(select_conf: SelectConf, use_devices: list[int]) -> list[str]:
+def start_select_servers(select_conf: SelectConf, use_devices: list[int]) -> list[Path]:
     global next_port
-    urls: list[str] = []
+    server_paths: list[Path] = []
     for device in use_devices:
         env = os.environ | {"CUDA_VISIBLE_DEVICES": f"{device}"}
         command = __make_select_command(select_conf)
         process = subprocess.Popen(command, env=env)
-        url = f"http://localhost:{next_port}"
-        open_servers.append(url)
-        urls.append(url)
+        server_loc = Path(SERVER_LOC) / str(next_port)
+        open_servers.append(server_loc)
+        server_paths.append(server_loc)
         next_port += 1
         started_processes.append(process)
-    return urls
+    return server_paths
 
 
-def start_rerank_servers(rerank_conf: RerankConf, use_devices: list[int]) -> list[str]:
+def start_rerank_servers(rerank_conf: RerankConf, use_devices: list[int]) -> list[Path]:
     global next_port
-    urls: list[str] = []
+    server_paths: list[Path] = []
     for device in use_devices:
         env = os.environ | {"CUDA_VISIBLE_DEVICES": f"{device}"}
         command = [
@@ -114,12 +116,12 @@ def start_rerank_servers(rerank_conf: RerankConf, use_devices: list[int]) -> lis
             f"{next_port}",
         ]
         process = subprocess.Popen(command, env=env)
-        url = f"http://localhost:{next_port}"
-        open_servers.append(url)
-        urls.append(url)
+        server_loc = Path(SERVER_LOC) / str(next_port)
+        open_servers.append(server_loc)
+        server_paths.append(server_loc)
         next_port += 1
         started_processes.append(process)
-    return urls
+    return server_paths
 
 
 def start_servers_premise_conf(
@@ -127,7 +129,7 @@ def start_servers_premise_conf(
 ) -> PremiseConf:
     match conf:
         case SelectConf():
-            urls = start_select_servers(conf, use_devices)
+            socket_paths = start_select_servers(conf, use_devices)
             assert 0 < len(conf.checkpoint_loc.parents)
             model_loc = conf.checkpoint_loc.parents[0]
             data_conf_loc = model_loc / PREMISE_DATA_CONF_NAME
@@ -137,7 +139,7 @@ def start_servers_premise_conf(
             data_conf = SelectDataConfig.from_yaml(yaml_data)
             filter_conf = PremiseFilterConf.from_yaml(yaml_data["premise_filter"])
             return SelectClientConf(
-                urls,
+                socket_paths,
                 data_conf.context_format_type_alias,
                 data_conf.premise_format_type_alias,
                 filter_conf,
@@ -158,8 +160,8 @@ def start_servers_premise_conf(
                 select_conf = rerank_formatter.select_conf
             else:
                 select_conf = start_servers_premise_conf(conf.select_conf, use_devices)
-            rerank_urls = start_rerank_servers(conf, use_devices)
-            return RerankClientConf(rerank_urls, select_conf, conf.rerank_num)
+            rerank_paths = start_rerank_servers(conf, use_devices)
+            return RerankClientConf(rerank_paths, select_conf, conf.rerank_num)
         case _:
             return conf
 
@@ -209,9 +211,9 @@ def start_servers_lm_dataset_conf(
 
 def start_tactic_gen_servers(
     conf: FidTacticGenConf, use_devices: list[int]
-) -> list[str]:
+) -> list[Path]:
     global next_port
-    urls: list[str] = []
+    server_paths: list[Path] = []
     for device in use_devices:
         env = os.environ | {"CUDA_VISIBLE_DEVICES": f"{device}"}
         command = [
@@ -222,12 +224,12 @@ def start_tactic_gen_servers(
             f"{next_port}",
         ]
         process = subprocess.Popen(command, env=env)
-        url = f"http://localhost:{next_port}"
-        open_servers.append(url)
-        urls.append(url)
+        server_loc = Path(SERVER_LOC) / str(next_port)
+        open_servers.append(server_loc)
+        server_paths.append(server_loc)
         next_port += 1
         started_processes.append(process)
-    return urls
+    return server_paths
 
 
 def start_servers_tactic_gen(
@@ -250,8 +252,8 @@ def start_servers_tactic_gen(
             formatter_client_confs = [
                 start_servers_formatter_conf(f, use_devices) for f in formatter_confs
             ]
-            tactic_urls = start_tactic_gen_servers(conf, use_devices)
-            return LocalTacticGenClientConf(tactic_urls, formatter_client_confs)
+            tactic_paths = start_tactic_gen_servers(conf, use_devices)
+            return LocalTacticGenClientConf(tactic_paths, formatter_client_confs)
         case _:
             return conf
 
@@ -366,13 +368,20 @@ class ServerFailedError(Exception):
 
 def wait_for_servers():
     print(open_servers)
-    for process, server_url in zip(started_processes, open_servers):
+    session = requests.Session()
+    urls: list[str] = []
+    for i, path in enumerate(open_servers):
+        url = f"http://servers-{i}/"
+        session.mount(f"http://servers-{i}/", ServerAdapter(path))
+        urls.append(url)
+
+    for process, server_url in zip(started_processes, urls):
         while True:
             try:
                 poll_result = subprocess.Popen.poll(process)
                 if poll_result is not None:
                     raise ServerFailedError
-                response = requests.get(server_url)
+                response = session.get(server_url)
                 break
             except requests.exceptions.RequestException:
                 continue
@@ -393,6 +402,9 @@ if __name__ == "__main__":
 
     if args.command not in COMMANDS:
         raise (CommandNotFoundError(f"{args.command} not one of {command_list}"))
+
+    if not Path(SERVER_LOC).exists():
+        os.makedirs(SERVER_LOC)
 
     command = COMMANDS[args.command]
     config_loc = Path(args.config)

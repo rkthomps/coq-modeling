@@ -1,8 +1,8 @@
 # File Paths
-data_path: "data/whole-proof-ret"
+data_path: "data/lookup"
 model_name: "google-t5/t5-small"
   #model_name: "google-t5/t5-base"
-output_dir: "models/t5-fid-small-whole-proof-ret" 
+output_dir: "models/t5-fid-small-lookup" 
 
 # Training Args
 max_encode_len: 448 

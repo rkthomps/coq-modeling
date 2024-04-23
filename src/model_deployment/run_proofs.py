@@ -6,13 +6,24 @@ import ipdb
 from typing import Any
 from pathlib import Path
 from dataclasses import dataclass
+from threading import Thread
 import multiprocessing as mp
+from multiprocessing import context
+from multiprocessing.pool import AsyncResult
 import pickle
 
-from model_deployment.run_proof import run_proof, TestProofConf, TheoremLocationInfo
+from model_deployment.run_proof import (
+    run_proof,
+    TestProofConf,
+    TheoremLocationInfo,
+    RunProofConf,
+)
 from model_deployment.searcher import SearchConf, SuccessfulSearch, FailedSearch
 from model_deployment.tactic_gen_client import TacticGenConf, tactic_gen_conf_from_yaml
 from util.constants import CLEAN_CONFIG
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 @dataclass
@@ -75,13 +86,18 @@ class SearchSummary:
     file: Path
     theorem: str
     success: bool
-    search_steps: int
-    max_depth: int
-    num_proofs_attempted: int
-    search_time: float
-    model_time: float
-    num_tactic_errors: int
-    num_nodes_pruned: int
+    search_steps: int | None
+    max_depth: int | None
+    num_proofs_attempted: int | None
+    search_time: float | None
+    model_time: float | None
+    num_tactic_errors: int | None
+    num_nodes_pruned: int | None
+
+    def save(self, save_dir: Path) -> None:
+        save_loc = save_dir / str(self.file / self.theorem).replace(os.path.sep, "-")
+        with save_loc.open("wb") as fout:
+            fout.write(pickle.dumps(self))
 
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
         headers = [
@@ -123,13 +139,14 @@ class SearchSummary:
 
     @classmethod
     def from_search_result(
-        cls, file: Path, theorem: str, result: SuccessfulSearch | FailedSearch
+        cls, file: Path, theorem: str, result: SuccessfulSearch | FailedSearch | None
     ) -> SearchSummary:
+        if result is None:
+            return cls(file, theorem, False, None, None, None, None, None, None, None)
         search_size = result.search_tree.root.size()
         num_errors = result.search_tree.root.num_errors()
         num_pruned = result.search_tree.root.num_pruned()
         _, max_depth = result.search_tree.root.get_deepest_node()
-        print("depth", max_depth)
         match result:
             case SuccessfulSearch():
                 path_to_qed = result.search_tree.root.get_path_to_qed()
@@ -166,8 +183,9 @@ class SearchSummary:
                 )
 
 
-def run_test(test_proof: TestProofConf) -> SearchSummary:
-    result = run_proof(test_proof.to_run_conf())
+def run_test(test_proof: TestProofConf, save_dir: Path):
+    run_conf = test_proof.to_run_conf()
+    result = run_proof(run_conf)
     summary = SearchSummary.from_search_result(
         test_proof.theorem_location_info.test_file.relative_to(
             test_proof.theorem_location_info.data_loc
@@ -176,7 +194,16 @@ def run_test(test_proof: TestProofConf) -> SearchSummary:
         result,
     )
     summary.pretty_print()
-    return summary
+    summary.save(save_dir)
+
+
+def load_results(save_dir: Path) -> list[SearchSummary]:
+    summaries: list[SearchSummary] = []
+    for f in os.listdir(save_dir):
+        with (save_dir / f).open("rb") as fin:
+            summary = pickle.load(fin)
+            summaries.append(summary)
+    return summaries
 
 
 if __name__ == "__main__":
@@ -185,18 +212,27 @@ if __name__ == "__main__":
         conf: TestProofsConf = pickle.load(fin)
         assert "TestProofsConf" in str(conf.__class__)  # isinstance didn't work
 
-    if not conf.save_loc.parents[0].exists():
-        os.makedirs(conf.save_loc.parents[0], exist_ok=True)
+    assert not conf.save_loc.exists()
+    os.makedirs(conf.save_loc)
 
     test_proof_confs = conf.to_test_proof_list()
+    process_results: list[AsyncResult] = []
     with mp.Pool(conf.n_procs) as pool:
-        results = pool.map(run_test, test_proof_confs)
+        for t in test_proof_confs:
+            res = pool.apply_async(run_test, (t, conf.save_loc))
+            process_results.append(res)
 
+        for r in process_results:
+            r.get(1.1 * conf.search_conf.timeout)
+            # except Exception as e:
+            #     _logger.warning(f"Got exception: {e}")
+
+    results = load_results(conf.save_loc)
     results.sort()
     if 0 == len(results):
         print("Nothing to write.", file=sys.stderr)
 
-    with conf.save_loc.open("w", newline="") as fout:
+    with (conf.save_loc / "results.csv").open("w", newline="") as fout:
         field_names, _ = results[0].to_csv_dict()
         writer = csv.DictWriter(fout, field_names)
         writer.writeheader()

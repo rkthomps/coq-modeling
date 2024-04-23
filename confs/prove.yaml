@@ -22,8 +22,8 @@ thm_info:
   # theorem_name: binomial_def1
     
   ## n choose m with n < m is 0
-  test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
-  theorem_name: binomial_def2
+  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
+  # theorem_name: binomial_def2
 
   # ## n choose n is 1 
   # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
@@ -32,6 +32,9 @@ thm_info:
   # ## Pascals identity 
   # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
   # theorem_name: binomial_def4
+
+  test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Div.v
+  theorem_name: div_le
     
   # ## Contropositive of monotononicity
   # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/sqrt2.v 
@@ -52,18 +55,17 @@ thm_info:
 
 search:
   node_score_alias: token-normalized-score 
-  max_branch: 32
+  max_branch: 64
   max_expansions: 500
   depth_limit: 30
   timeout: 120
   initial_proof: "\n
-    intros n.\n
-    induction n.\n
-    - intros m H. simpl. destruct m; auto with arith.\n
-    - intros m H. destruct m.\n
-      + apply Nat.nlt_0_r in H. contradiction.\n
-      + simpl.\n
-  "  
+  intros m n H.\n
+  unfold div, pdiv.\n
+  remember (pdiv_aux m n m) as p.\n
+  destruct p as (d, r).\n
+  remember (ominus m n) as m_sub_n.\n
+  destruct m_sub_n. "  
 
 tactic_gen:
   alias: client
