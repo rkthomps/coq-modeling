@@ -1,309 +1,192 @@
 from __future__ import annotations
-from typing import Any, Optional, Generator
+import os
+import sys
+import csv
+import ipdb
+import random
+from typing import Any, Generator, Optional
+from pathlib import Path
 from dataclasses import dataclass
-import json
-import time
-import sys, os
-import argparse
-import shutil
-import traceback
 from threading import Thread
-
-from typeguard import typechecked
-from yaml import load, Loader
+import multiprocessing as mp
+from multiprocessing import context
+from multiprocessing.pool import AsyncResult
+import pickle
 
 from data_management.sentence_db import SentenceDB
-from data_management.splits import FileInfo, Split, DataSplit, str2split
-from model_deployment.searcher import (
-    SearchTreeManager,
-    SuccessfulSearch,
-    FailedSearch,
-    ErroredSearch,
-    SearchResult,
-    search_result_from_json,
-    search_result_to_json,
+from data_management.splits import Split, DataSplit, FileInfo, split2str, str2split
+from model_deployment.run_proofs import SearchSummary
+from model_deployment.run_proof import (
+    run_proof,
+    TestProofConf,
+    RunProofConf,
+    LocationInfo,
 )
-from model_deployment.proof_manager import (
-    ProofManager,
+from model_deployment.searcher import SearchConf, SuccessfulSearch, FailedSearch
+from model_deployment.tactic_gen_client import (
+    TacticGenConf,
+    tactic_gen_conf_from_yaml,
+    tactic_gen_client_from_conf,
 )
-from model_deployment.model_wrapper import ModelWrapper, wrapper_from_conf
-from model_deployment.node_score import NodeScore, NODE_SCORE_ALIASES
-
+from util.constants import CLEAN_CONFIG
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
 
 
-@typechecked
-class EvalSearchResult:
-    ATTEMPTS_NAME = "attempts"
-
-    def __init__(
-        self,
-        search_result: SearchResult,
-        file: FileInfo,
-        thm_idx: int,
-        statement: str,
-        ground_truth_steps: list[str],
-    ) -> None:
-        self.search_result = search_result
-        self.file = file
-        self.thm_idx = thm_idx
-        self.statement = statement
-        self.ground_truth_steps = ground_truth_steps
-
-    def to_json(self, sentence_db: SentenceDB) -> Any:
-        return {
-            "search_result": search_result_to_json(self.search_result, sentence_db),
-            "file": self.file.to_json(),
-            "thm_idx": self.thm_idx,
-            "statement": self.statement,
-            "ground_truth_steps": self.ground_truth_steps,
-        }
-
-    @classmethod
-    def save_path(cls, dp_name: str, thm_idx: int, out_dir: str) -> str:
-        save_name = f"{dp_name}:{thm_idx}.json"
-        return os.path.join(out_dir, cls.ATTEMPTS_NAME, save_name)
-
-    def get_ground_truth_str(self) -> str:
-        return "".join(self.ground_truth_steps)
-
-    def save(self, out_dir: str, sentence_db: SentenceDB) -> None:
-        os.makedirs(os.path.join(out_dir, self.ATTEMPTS_NAME), exist_ok=True)
-        save_loc = self.save_path(self.file.dp_name, self.thm_idx, out_dir)
-        with open(save_loc, "w") as fout:
-            fout.write(json.dumps(self.to_json(sentence_db), indent=2))
-
-    @classmethod
-    def from_json(
-        cls, json_data: Any, sentence_db: SentenceDB 
-    ) -> EvalSearchResult:
-        search_result_data = json_data["search_result"]
-        search_result = search_result_from_json(search_result_data, sentence_db)
-        file = FileInfo.from_json(json_data["file"])
-        thm_idx = json_data["thm_idx"]
-        statement = json_data["statement"]
-        ground_truth_steps = json_data["ground_truth_steps"]
-        return cls(search_result, file, thm_idx, statement, ground_truth_steps)
-
-    @classmethod
-    def load(cls, path: str, sentence_db: SentenceDB) -> EvalSearchResult:
-        with open(path, "r") as fin:
-            json_data = json.load(fin)
-            return cls.from_json(json_data, sentence_db)
-
-
-@dataclass
-class ThreadReturnObj:
-    num_proofs_found: int
-    num_proofs_attempted: int
-    num_errors: int
-
-
 @dataclass
 class EvalConf:
-    results_loc: str
-    data_split: DataSplit
+    n_procs: int
     split: Split
-    sentence_db_loc: str 
-    timeout: int
-    branching_factor: int
-    max_leaf_expansions: int
-    model_wrapper: ModelWrapper
-    node_score_type: type[NodeScore]
-    ## THINK ABOUT MODEL SCORER
-    ## HOW TO LOAD MODELS?  
-    ## MAYBE I SHOULD SPLIT THE PROOFS MANUALLY TO HAVE MORE CONTROLL
+    save_loc: Path
+    data_loc: Path
+    sentence_db_loc: Path
+    data_split_loc: Path
+    search_conf: SearchConf
+    tactic_conf: TacticGenConf
+    max_eval_proofs: Optional[int]
+
+    def get_proof_confs(self) -> Generator[EvalProofConf, None, None]:
+        data_split = DataSplit.load(self.data_split_loc)
+        sentence_db = SentenceDB.load(self.sentence_db_loc)
+        file_list = data_split.get_file_list(self.split)
+        if self.max_eval_proofs is not None and self.max_eval_proofs < len(file_list):
+            random.seed(0)
+            file_list = random.sample(file_list, self.max_eval_proofs)
+        for file_info in file_list:
+            proofs = file_info.get_proofs(self.data_loc, sentence_db)
+            for i, proof in enumerate(proofs):
+                try:
+                    proof.get_theorem_name()
+                except ValueError:
+                    _logger.debug(f"Skipping {proof.theorem.term.text}")
+                    continue
+                yield EvalProofConf(
+                    file_info,
+                    i,
+                    self.split,
+                    self.data_loc,
+                    self.sentence_db_loc,
+                    self.data_split_loc,
+                    self.search_conf,
+                    self.tactic_conf,
+                )
 
     @classmethod
-    def from_conf(cls, conf: Any) -> EvalConf:
-        results_loc = conf["results_loc"]
-        data_split = DataSplit.load(conf["data_split_loc"])
-        split = str2split(conf["split"]) 
-        sentence_db_loc = conf["sentence_db_loc"]
-        timeout = conf["timeout"]
-        branching_factor = conf["branching_factor"]
-        max_leaf_expansions = conf["max_leaf_expansions"]
-        model_wrapper = wrapper_from_conf(conf["model_wrapper"])
-        node_score_type = NODE_SCORE_ALIASES[conf["node_score_type"]]
+    def from_yaml(cls, yaml_data: Any) -> EvalConf:
+        max_eval_proofs = None
+        if "max_eval_proofs" in yaml_data:
+            max_eval_proofs = yaml_data["max_eval_proofs"]
         return cls(
-            results_loc,
-            data_split, 
-            split,
-            sentence_db_loc,
-            timeout,
-            branching_factor,
-            max_leaf_expansions,
-            model_wrapper,
-            node_score_type,
+            yaml_data["n_procs"],
+            str2split(yaml_data["split"]),
+            Path(yaml_data["save_loc"]),
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            Path(yaml_data["data_split_loc"]),
+            SearchConf.from_yaml(yaml_data["search"]),
+            tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
+            max_eval_proofs,
         )
 
 
+@dataclass
+class EvalProofConf:
+    file_info: FileInfo
+    proof_idx: int
+    split: Split
+    data_loc: Path
+    sentence_db_loc: Path
+    data_split_loc: Path
+    search_conf: SearchConf
+    tactic_conf: TacticGenConf
 
-# Need a proof
-@typechecked
-class Evaluator:
-    def __init__(
-        self,
-    ) -> None:
-        self.results_loc = results_loc
-        self.data_split = data_split 
-        self.split = split
-        self.sentence_db = sentence_db
-        self.timeout = timeout
-        self.branching_factor = branching_factor
-        self.max_leaf_expansions = max_leaf_expansions
-        self.model_wrapper = model_wrapper
-        self.node_score_type = node_score_type
-        self.coq_file_timeout = coq_file_timeout
-
-    @classmethod
-    def from_conf(cls, conf: Any) -> Evaluator:
-        results_loc = conf["results_loc"]
-        data_split = DataSplit.load(conf["data_split_loc"])
-        split = str2split(conf["split"]) 
-        sentence_db = SentenceDB.load(conf["sentence_db_loc"])
-        timeout = conf["timeout"]
-        branching_factor = conf["branching_factor"]
-        max_leaf_expansions = conf["max_leaf_expansions"]
-        model_wrapper = wrapper_from_conf(conf["model_wrapper"])
-        node_score_type = NODE_SCORE_ALIASES[conf["node_score_type"]]
-        return cls(
-            results_loc,
-            data_split, 
-            split,
+    def to_run_conf(self) -> RunProofConf:
+        sentence_db = SentenceDB.load(self.sentence_db_loc)
+        dp_obj = self.file_info.get_dp(self.data_loc, sentence_db)
+        data_split = DataSplit.load(self.data_split_loc)
+        location_info = LocationInfo(
+            self.data_loc,
+            self.file_info,
+            self.split,
+            dp_obj,
+            self.proof_idx,
             sentence_db,
-            timeout,
-            branching_factor,
-            max_leaf_expansions,
-            model_wrapper,
-            node_score_type,
+            data_split,
+        )
+        tactic_client = tactic_gen_client_from_conf(self.tactic_conf)
+        return RunProofConf(
+            location_info, self.search_conf, tactic_client, False, False
         )
 
-    def get_search_result(
-        self, proof: ProofInfo, file: FileInfo
-    ) -> SuccessfulSearch | FailedSearch:
-        match self.eval_set:
-            case DataSplitEvalSet():
-                split = self.eval_set.split
-            case _:
-                split = Split.TEST
-        with ProofManager(
-            proof.file_loc,
-            proof.proof_file,
-            proof.idx,
-            self.model_wrapper.formatter,
-            file,
-            self.sentence_db,
-            split,
-            self.eval_set.data_loc,
-        ) as proof_manager:
-            searcher = SearchTreeManager(
-                self.model_wrapper,
-                proof_manager,
-                self.node_score_type,
-                self.branching_factor,
-                self.max_leaf_expansions,
-                self.timeout,
-            )
-            search_result = searcher.search()
-            return search_result
 
-    def search_thread(
-        self,
-        file: FileInfo,
-        result_hole: ThreadReturnObj,
-    ) -> None:
-        "This is ugly but I want the evaluation to not crash."
-        try:
-            proof_gen = self.eval_set.get_proof_gen(file)
-        except:
-            error_str = traceback.format_exc()
-            _logger.error(f"Could not evaluate {file.file} with error: {error_str}")
-            return
-        while True:
-            try:
-                proof = next(proof_gen)
-            except StopIteration:
-                break
-            except:
-                error_str = traceback.format_exc()
-                _logger.error(
-                    f"Trouble getting next proof in file {file.file} with error {error_str}"
-                )
-                continue
-            save_path = EvalSearchResult.save_path(
-                file.dp_name, proof.idx, self.results_loc
-            )
-            if os.path.exists(save_path):
-                _logger.info(f"{save_path} exists. Continuing.")
-                continue
-            statement = proof.statement()
-            ground_truth = proof.ground_truth_steps()
-            start = time.time()
-            try:
-                search_result = self.get_search_result(proof, file)
-            except:
-                error_str = traceback.format_exc()
-                stop = time.time()
-                search_result = ErroredSearch(error_str, stop - start)
-            finally:
-                eval_search_result = EvalSearchResult(
-                    search_result,
-                    file,
-                    proof.idx,
-                    statement,
-                    ground_truth,
-                )
-                eval_search_result.save(self.results_loc, self.sentence_db)
-
-                match search_result:
-                    case SuccessfulSearch():
-                        result_hole.num_proofs_found += 1
-                    case ErroredSearch():
-                        result_hole.num_errors += 1
-                    case _:
-                        pass
-                result_hole.num_proofs_attempted += 1
-
-    def evaluate(self) -> None:
-        num_proof_attempts = 0
-        num_correct_proofs = 0
-        num_errors = 0
-        for file in self.eval_set.get_file_gen():
-            try:
-                file_timeout = (
-                    self.timeout * 1.5 * self.eval_set.rough_proof_count(file)
-                )
-            except FileNotFoundError:
-                _logger.warning(f"{file.file} not found.")
-                continue
-            _logger.debug(f"Giving {file.file} {file_timeout} seconds.")
-            thread_result = ThreadReturnObj(0, 0, 0)
-            search_thread = Thread(
-                target=self.search_thread, args=(file, thread_result)
-            )
-            search_thread.start()
-            search_thread.join(timeout=file_timeout)
-            num_correct_proofs += thread_result.num_proofs_found
-            num_proof_attempts += thread_result.num_proofs_attempted
-            num_errors += thread_result.num_errors
-
-            _logger.info(f"Correct Proofs: {num_correct_proofs}")
-            _logger.info(f"Proof Attempts: {num_proof_attempts}")
-            _logger.info(f"Num Errors: {num_errors}")
+def eval_proof(eval_conf: EvalProofConf, save_dir: Path):
+    run_conf = eval_conf.to_run_conf()
+    result = run_proof(run_conf)
+    file = eval_conf.data_loc / eval_conf.file_info.file
+    theorem_name = (
+        run_conf.location_info.dataset_file.proofs[
+            run_conf.location_info.dp_proof_idx
+        ].get_theorem_name()
+        + "-"
+        + str(run_conf.location_info.dp_proof_idx)
+    )
+    summary = SearchSummary.from_search_result(
+        file,
+        theorem_name,
+        result,
+    )
+    summary.pretty_print()
+    summary.save(save_dir)
 
 
-def evaluate(evaluate_conf_loc: str) -> None:
-    with open(evaluate_conf_loc, "r") as fin:
-        evaluate_conf = load(fin, Loader=Loader)
-    evaluator = Evaluator.from_conf(evaluate_conf)
-    evaluator.evaluate()
+def load_results(save_dir: Path) -> list[SearchSummary]:
+    summaries: list[SearchSummary] = []
+    for f in os.listdir(save_dir):
+        with (save_dir / f).open("rb") as fin:
+            summary = pickle.load(fin)
+            summaries.append(summary)
+    return summaries
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=("Run evaluation on a given model."))
-    parser.add_argument("eval_config", help="Path to eval configuration file.")
-    args = parser.parse_args(sys.argv[1:])
-    evaluate(args.eval_config)
+    conf_loc = Path(f"./{CLEAN_CONFIG}")
+    with conf_loc.open("rb") as fin:
+        conf: EvalConf = pickle.load(fin)
+        assert "EvalConf" in str(conf.__class__)  # isinstance didn't work
+
+    assert not conf.save_loc.exists()
+    os.makedirs(conf.save_loc)
+
+    process_results: list[AsyncResult] = []
+    print("Getting individual proof confs...")
+    eval_proofs = list(conf.get_proof_confs())
+    random.seed(0)
+    random.shuffle(eval_proofs)
+    if conf.max_eval_proofs is not None:
+        eval_proofs = eval_proofs[: conf.max_eval_proofs]
+
+    print("Running Evaluation...")
+    with mp.Pool(conf.n_procs) as pool:
+        for eval_proof_conf in eval_proofs:
+            res = pool.apply_async(eval_proof, (eval_proof_conf, conf.save_loc))
+            process_results.append(res)
+
+        for r in process_results:
+            try:
+                r.get(1.1 * conf.search_conf.timeout)
+            except Exception as e:
+                _logger.warning(f"Got exception: {e}")
+
+    results = load_results(conf.save_loc)
+    results.sort()
+    if 0 == len(results):
+        print("Nothing to write.", file=sys.stderr)
+
+    with (conf.save_loc / "results.csv").open("w", newline="") as fout:
+        field_names, _ = results[0].to_csv_dict()
+        writer = csv.DictWriter(fout, field_names)
+        writer.writeheader()
+        for r in results:
+            _, r_dict = r.to_csv_dict()
+            writer.writerow(r_dict)

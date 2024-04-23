@@ -1,9 +1,11 @@
 from typing import Optional, Any
 import argparse
 import sys, os
+from pathlib import Path
 
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
+from util.constants import SERVER_LOC
 
 import logging
 
@@ -46,4 +48,5 @@ if __name__ == "__main__":
     )
     args = parser.parse_args(sys.argv[1:])
     wrapper = SelectWrapper.from_checkpoint(args.checkpoint_loc, args.vector_db_loc)
-    run_simple("localhost", args.port, application)
+    serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
+    run_simple(f"unix://{serve_path}", args.port, application)

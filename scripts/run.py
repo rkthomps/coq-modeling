@@ -39,6 +39,7 @@ from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
 from model_deployment.run_whole_proofs import TestWholeProofsConf
+from evaluation.evaluate import EvalConf
 from util.socket_client import ServerAdapter
 from util.constants import (
     PREMISE_DATA_CONF_NAME,
@@ -55,6 +56,7 @@ TopLevelConf = (
     | TestProofsConf
     | TestWholeProofConf
     | TestWholeProofsConf
+    | EvalConf
     | RerankDatasetConf
     | GoalDatasetConf
     | PremiseEvalConf
@@ -330,6 +332,19 @@ def start_servers(conf: TopLevelConf, use_devices: list[int]) -> TopLevelConf:
                 conf.tactic_conf,
                 conf.n_attempts,
             )
+        case EvalConf():
+            tactic_client_conf = start_servers_tactic_gen(conf.tactic_conf, use_devices)
+            return EvalConf(
+                conf.n_procs,
+                conf.split,
+                conf.save_loc,
+                conf.data_loc,
+                conf.sentence_db_loc,
+                conf.data_split_loc,
+                conf.search_conf,
+                tactic_client_conf,
+                conf.max_eval_proofs,
+            )
 
 
 @dataclass
@@ -341,6 +356,7 @@ class Command:
 COMMANDS = {
     "prove": Command(TestProofConf, Path("src/model_deployment/run_proof.py")),
     "run-dev": Command(TestProofsConf, Path("src/model_deployment/run_proofs.py")),
+    "eval": Command(EvalConf, Path("src/evaluation/evaluate.py")),
     "prove-whole": Command(
         TestWholeProofConf, Path("src/model_deployment/run_whole_proof.py")
     ),

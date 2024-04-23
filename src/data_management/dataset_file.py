@@ -334,6 +334,15 @@ class FocusedStep:
 
 
 class Proof:
+    name_matches = [
+        re.compile(r"Theorem\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Lemma\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Proposition\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Remark\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Corollary\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Property\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+    ]
+
     def __init__(self, theorem: Term, steps: list[FocusedStep]) -> None:
         self.theorem = theorem
         self.steps = steps
@@ -346,6 +355,14 @@ class Proof:
             return f"{theorem_text}{proof_text}"
         else:
             return proof_text
+
+    def get_theorem_name(self) -> str:
+        for name_pattern in self.name_matches:
+            name_match = name_pattern.search(self.theorem.term.text)
+            if name_match is not None:
+                (name,) = name_match.groups()
+                return name
+        raise ValueError("Could not find name for theorem: ", self.theorem.term.text)
 
     def proof_prefix_to_string(
         self,
@@ -465,14 +482,6 @@ class FileContext:
 
 
 class DatasetFile:
-    name_matches = [
-        re.compile(r"Theorem\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Lemma\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Proposition\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Remark\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Corollary\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Property\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-    ]
 
     def __init__(self, file_context: FileContext, proofs: list[Proof]) -> None:
         # TODO: Turn into list of proofs.
@@ -555,12 +564,8 @@ class DatasetFile:
 
     def get_theorem(self, theorem_name: str) -> Proof:
         for proof in self.proofs:
-            for name_pattern in self.name_matches:
-                name_match = name_pattern.search(proof.theorem.term.text)
-                if name_match is not None:
-                    (name,) = name_match.groups()
-                    if name == theorem_name:
-                        return proof
+            if proof.get_theorem_name() == theorem_name:
+                return proof
         raise ValueError(f"Theorem {theorem_name} not found.")
 
     @classmethod
