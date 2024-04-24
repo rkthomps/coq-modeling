@@ -172,11 +172,23 @@ if __name__ == "__main__":
             res = pool.apply_async(eval_proof, (eval_proof_conf, conf.save_loc))
             process_results.append(res)
 
-        for r in process_results:
+        for r, eval_proof_conf in zip(process_results, eval_proofs):
             try:
                 r.get(1.1 * conf.search_conf.timeout)
             except Exception as e:
                 _logger.warning(f"Got exception: {e}")
+                run_conf = eval_proof_conf.to_run_conf()
+                file = eval_proof_conf.data_loc / eval_proof_conf.file_info.file
+                theorem_name = (
+                    run_conf.location_info.dataset_file.proofs[
+                        run_conf.location_info.dp_proof_idx
+                    ].get_theorem_name()
+                    + "-"
+                    + str(run_conf.location_info.dp_proof_idx)
+                )
+                summary = SearchSummary.from_search_result(file, theorem_name, None)
+                summary.pretty_print()
+                summary.save(conf.save_loc)
 
     results = load_results(conf.save_loc)
     results.sort()
