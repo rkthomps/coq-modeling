@@ -98,12 +98,8 @@ class TokenLengthNormalizedScore(NodeScore):
         if self.proof_num_tokens == 0:
             assert self.sequence_score == 0
             return 0
-        # return self.sequence_score - self.proof_num_tokens * math.log(0.1)
         model_term = self.sequence_score / self.proof_num_tokens
-        goal_term = self.goal_score * self.proof_num_tokens
-        # print("model:", model_term)
-        # print("goal:", goal_term)
-        return model_term + goal_term
+        return model_term
 
     def agg(self, other: NodeScore) -> NodeScore:
         if not isinstance(other, TokenLengthNormalizedScore):
@@ -151,6 +147,78 @@ class TokenLengthNormalizedScore(NodeScore):
     @staticmethod
     def get_alias() -> str:
         return "token-normalized-score"
+
+
+class HeuristicScore(NodeScore):
+    def __init__(
+        self,
+        sequence_score: int | float,
+        proof_num_tokens: int,
+        steps: int,
+        goal_score: float,
+    ):
+        self.sequence_score = sequence_score
+        self.proof_num_tokens = proof_num_tokens
+        self.steps = steps
+        self.goal_score = goal_score
+
+    def compute(self) -> float:
+        if self.proof_num_tokens == 0:
+            assert self.sequence_score == 0
+            return 0
+        # return self.sequence_score - self.proof_num_tokens * math.log(0.1)
+        model_term = self.sequence_score / self.proof_num_tokens
+        goal_term = self.goal_score * self.proof_num_tokens
+        # print("model:", model_term)
+        # print("goal:", goal_term)
+        return model_term + goal_term
+
+    def agg(self, other: NodeScore) -> NodeScore:
+        if not isinstance(other, HeuristicScore):
+            raise ValueError(f"Other nodescore must be {self.get_alias()}")
+        new_sequence_score = self.sequence_score + other.sequence_score
+        new_proof_num_tokens = self.proof_num_tokens + other.proof_num_tokens
+        new_steps = self.steps + other.steps
+        return HeuristicScore(
+            new_sequence_score, new_proof_num_tokens, new_steps, other.goal_score
+        )
+
+    def to_json(self) -> Any:
+        parent_json = super(HeuristicScore, self).to_json()
+        self_json = {
+            "sequence_score": self.sequence_score,
+            "proof_num_tokens": self.proof_num_tokens,
+            "steps": self.steps,
+            "goal_score": self.goal_score,
+        }
+        return parent_json | self_json
+
+    @classmethod
+    def from_unit_score(
+        cls, unit_score: float, num_tokens: int, goal_score: float, max_branch: int
+    ) -> NodeScore:
+        unit_steps = 1
+        return cls(unit_score, num_tokens, unit_steps, goal_score)
+
+    @classmethod
+    def get_initial_score(cls, branching_factor: int) -> NodeScore:
+        score = 0
+        num_tokens = 0
+        goal_score = 0
+        initial_steps = 0
+        return cls(score, num_tokens, initial_steps, goal_score)
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> HeuristicScore:
+        sequence_score = json_data["sequence_score"]
+        proof_num_tokens = json_data["proof_num_tokens"]
+        steps = json_data["steps"]
+        goal_score = json_data["goal_score"]
+        return cls(sequence_score, proof_num_tokens, steps, goal_score)
+
+    @staticmethod
+    def get_alias() -> str:
+        return "heuristic-score"
 
 
 class DepthFirstScore(NodeScore):
@@ -270,6 +338,7 @@ class BranchNormalizedScore(NodeScore):
 NODE_SCORE_ALIASES: dict[str, type[NodeScore]] = {
     BranchNormalizedScore.get_alias(): BranchNormalizedScore,
     TokenLengthNormalizedScore.get_alias(): TokenLengthNormalizedScore,
+    HeuristicScore.get_alias(): HeuristicScore,
     DepthFirstScore.get_alias(): DepthFirstScore,
     OverrideScore.get_alias(): OverrideScore,
 }

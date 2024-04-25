@@ -335,12 +335,12 @@ class FocusedStep:
 
 class Proof:
     name_matches = [
-        re.compile(r"Theorem\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Lemma\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Proposition\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Remark\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Corollary\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Property\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Theorem\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Lemma\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Proposition\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Remark\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Corollary\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Property\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
     ]
 
     def __init__(self, theorem: Term, steps: list[FocusedStep]) -> None:

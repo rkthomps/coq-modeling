@@ -22,7 +22,11 @@ from model_deployment.run_proof import (
     RunProofConf,
     LocationInfo,
 )
-from model_deployment.searcher import SearchConf, SuccessfulSearch, FailedSearch
+from model_deployment.classical_searcher import (
+    ClassicalSearchConf,
+    SuccessfulSearch,
+    FailedSearch,
+)
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
     tactic_gen_conf_from_yaml,
@@ -42,7 +46,7 @@ class EvalConf:
     data_loc: Path
     sentence_db_loc: Path
     data_split_loc: Path
-    search_conf: SearchConf
+    search_conf: ClassicalSearchConf
     tactic_conf: TacticGenConf
     max_eval_proofs: Optional[int]
 
@@ -84,7 +88,7 @@ class EvalConf:
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["data_split_loc"]),
-            SearchConf.from_yaml(yaml_data["search"]),
+            ClassicalSearchConf.from_yaml(yaml_data["search"]),
             tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
             max_eval_proofs,
         )
@@ -98,7 +102,7 @@ class EvalProofConf:
     data_loc: Path
     sentence_db_loc: Path
     data_split_loc: Path
-    search_conf: SearchConf
+    search_conf: ClassicalSearchConf
     tactic_conf: TacticGenConf
 
     def to_run_conf(self) -> RunProofConf:

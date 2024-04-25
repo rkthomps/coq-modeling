@@ -11,7 +11,7 @@ from model_deployment.premise_model_wrapper import (
     SelectWrapper,
     get_ranked_premise_generator,
 )
-from model_deployment.searcher import ProofManager
+from model_deployment.classical_searcher import ProofManager
 
 from coqpyt.coq.base_file import CoqFile
 from coqpyt.coq.proof_file import ProofFile

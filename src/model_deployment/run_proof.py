@@ -9,10 +9,14 @@ from pathlib import Path
 from data_management.splits import FileInfo, Split, DataSplit
 from data_management.dataset_file import Term, DatasetFile
 from model_deployment.searcher import (
-    SearchTreeManager,
+    Searcher,
     SuccessfulSearch,
     FailedSearch,
+    SearcherConf,
+    searcher_conf_from_yaml,
+    searcher_from_conf,
 )
+
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
     TacticGenClient,
@@ -20,7 +24,6 @@ from model_deployment.tactic_gen_client import (
     tactic_gen_client_from_conf,
 )
 from model_deployment.proof_manager import ProofInfo, ProofManager
-from model_deployment.searcher import SearchConf, SuccessfulSearch, FailedSearch
 
 from data_management.sentence_db import SentenceDB
 from util.util import get_basic_logger
@@ -83,7 +86,7 @@ class TheoremLocationInfo:
 @dataclass
 class TestProofConf:
     theorem_location_info: TheoremLocationInfo
-    search_conf: SearchConf
+    search_conf: SearcherConf
     tactic_conf: TacticGenConf
     print_proofs: bool
     print_trees: bool
@@ -101,7 +104,7 @@ class TestProofConf:
     def from_yaml(cls, yaml_data: Any) -> TestProofConf:
         return cls(
             TheoremLocationInfo.from_yaml(yaml_data["thm_info"]),
-            SearchConf.from_yaml(yaml_data["search"]),
+            searcher_conf_from_yaml(yaml_data["search"]),
             tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
             yaml_data["print_proofs"],
             yaml_data["print_trees"],
@@ -122,7 +125,7 @@ class LocationInfo:
 @dataclass
 class RunProofConf:
     location_info: LocationInfo
-    search_conf: SearchConf
+    search_conf: SearcherConf
     tactic_gen: TacticGenClient
     print_proofs: bool
     print_trees: bool
@@ -172,7 +175,7 @@ def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
         conf.location_info.split,
         conf.location_info.data_loc,
     ) as proof_manager:
-        tree_manager = SearchTreeManager.from_conf(
+        tree_manager = searcher_from_conf(
             conf.search_conf, conf.tactic_gen, proof_manager
         )
         result = tree_manager.search(

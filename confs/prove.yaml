@@ -33,8 +33,20 @@ thm_info:
   # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
   # theorem_name: binomial_def4
 
-  test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Div.v
-  theorem_name: div_le
+  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Div.v
+  # theorem_name: div_le
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_denumerable.v
+  # theorem_name: is_denumerable_transitive
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_denumerable.v
+  # theorem_name: is_denumerable_transitive
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_ordered_field_properties.v
+  # theorem_name: Qinv_resp_nonzero_Qdiv
+
+  test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/rational.v
+  theorem_name: RratE
     
   # ## Contropositive of monotononicity
   # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/sqrt2.v 
@@ -55,25 +67,25 @@ thm_info:
 
 search:
   node_score_alias: token-normalized-score 
-  max_branch: 64
+  max_branch: 32
   max_expansions: 500
   depth_limit: 30
   timeout: 120
-  initial_proof: "\n
-  intros m n H.\n
-  unfold div, pdiv.\n
-  remember (pdiv_aux m n m) as p.\n
-  destruct p as (d, r).\n
-  remember (ominus m n) as m_sub_n.\n
-  destruct m_sub_n. "  
+  # initial_proof: "\n
+  # intros m n H.\n
+  # unfold div, pdiv.\n
+  # remember (pdiv_aux m n m) as p.\n
+  # destruct p as (d, r).\n
+  # remember (ominus m n) as m_sub_n.\n
+  # destruct m_sub_n. "  
 
-tactic_gen:
-  alias: client
-  urls: [http://localhost:8000]
-  formatters:
-    - alias: basic
-      n_step_sampler: 
-        alias: one
+# tactic_gen:
+#   alias: client
+#   urls: [http://localhost:8000]
+#   formatters:
+#     - alias: basic
+#       n_step_sampler: 
+#         alias: one
 
   # formatter:
   #   alias: proof
@@ -105,6 +117,10 @@ tactic_gen:
 # tactic_gen:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
+
+tactic_gen:
+  alias: fid
+  checkpoint_loc: models/t5-fid-small-whole-proof-ret/checkpoint-110500
 
 # tactic_gen:
 #   alias: fid

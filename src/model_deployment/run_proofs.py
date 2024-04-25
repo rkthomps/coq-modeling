@@ -18,7 +18,11 @@ from model_deployment.run_proof import (
     TheoremLocationInfo,
     RunProofConf,
 )
-from model_deployment.searcher import SearchConf, SuccessfulSearch, FailedSearch
+from model_deployment.searcher import (
+    SearcherConf,
+    searcher_conf_from_yaml,
+    searcher_from_conf,
+)
 from model_deployment.tactic_gen_client import TacticGenConf, tactic_gen_conf_from_yaml
 from util.constants import CLEAN_CONFIG
 from util.util import get_basic_logger
@@ -44,7 +48,7 @@ class TestProofsConf:
     data_loc: Path
     sentence_db_loc: Path
     data_split_loc: Path
-    search_conf: SearchConf
+    search_conf: SearcherConf
     tactic_conf: TacticGenConf
 
     def to_test_proof_list(self) -> list[TestProofConf]:
@@ -76,7 +80,7 @@ class TestProofsConf:
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["data_split_loc"]),
-            SearchConf.from_yaml(yaml_data["search"]),
+            searcher_conf_from_yaml(yaml_data["search"]),
             tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
         )
 
@@ -126,10 +130,15 @@ class SearchSummary:
         }
 
     def pretty_print(self):
-        success_str = "SUCCESS" if self.success else "FAILURE"
-        nice_str = "{:20s}{:20s}{:10s} after {:3.2f} seconds.".format(
-            str(self.file), self.theorem, success_str, self.search_time
-        )
+        if self.search_time is None:
+            nice_str = "{:20s}{:20s} FAILURE BY ERROR.".format(
+                str(self.file), self.theorem
+            )
+        else:
+            success_str = "SUCCESS" if self.success else "FAILURE"
+            nice_str = "{:20s}{:20s}{:10s} after {:3.2f} seconds.".format(
+                str(self.file), self.theorem, success_str, self.search_time
+            )
         print(nice_str)
 
     def __lt__(self, other: SearchSummary) -> bool:

@@ -1,9 +1,15 @@
-n_procs: 16
+n_procs: 8
 train_sample_loc: samples/final/train.json
 val_sample_loc: samples/final/val.json
 test_sample_loc: samples/final/test.json
 sentence_db_loc: sentences.db
-output_dataset_loc: data/lookup
+output_dataset_loc: data/proof-last
+
+lm_formatters:
+  - alias: proof-last 
+    n_step_sampler:
+      alias: one
+
 
 # lm_formatters:
 #   - alias: whole-proof-ret 
@@ -13,15 +19,15 @@ output_dataset_loc: data/lookup
 #     n_step_sampler:
 #       alias: one
 
-lm_formatters:
-  - alias: premise
-    premise_conf:
-      alias: lookup 
-      context_format_alias: basic
-      premise_format_alias: basic
-      premise_filter:
-        coq_excludes: []    
-        non_coq_excludes: []
-        general_excludes: []
-    n_step_sampler:
-      alias: one
+# lm_formatters:
+#   - alias: premise
+#     premise_conf:
+#       alias: lookup 
+#       context_format_alias: basic
+#       premise_format_alias: basic
+#       premise_filter:
+#         coq_excludes: []    
+#         non_coq_excludes: []
+#         general_excludes: []
+#     n_step_sampler:
+#       alias: one

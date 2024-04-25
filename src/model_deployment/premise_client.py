@@ -460,16 +460,16 @@ class LookupClient:
     COQ_PENALTY = 0.5
 
     name_forms = [
-        re.compile(r"Definition\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Fixpoint\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"CoFixpoint\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Inductive\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"CoInductive\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Variant\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Class\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Module Type\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Module\s+(\S+)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Instance\s+(\S+)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Definition\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Fixpoint\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"CoFixpoint\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Inductive\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"CoInductive\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Variant\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Class\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Module Type\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Module\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"Instance\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
     ]
 
     id_form = re.compile(r"[^\[\]\{\}\(\):=,\s]+")

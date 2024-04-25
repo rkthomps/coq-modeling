@@ -214,7 +214,14 @@ class ProofManager:
         # TODO: NEED TO CATCH SIMPL IN *
         # partial_steps = separate_steps(partial_proof)
         if (
-            ("Theorem" in partial_proof)
+            (
+                "Theorem" in partial_proof
+            )  # sometimes the model will parrot the theorem statement
+            or ("Lemma" in partial_proof)
+            or ("Proposition" in partial_proof)
+            or ("Remark" in partial_proof)
+            or ("Corollary" in partial_proof)
+            or ("Property" in partial_proof)
             or ("Admitted." in partial_proof)
             or ("admit." in partial_proof)
             or ("Abort." in partial_proof)

@@ -94,6 +94,17 @@ class BasicFormatterConf:
 
 
 @dataclass
+class ProofLastFormatterConf:
+    ALIAS = "proof-last"
+    n_step_conf: NStepConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> ProofLastFormatterConf:
+        n_step_conf = n_step_conf_from_yaml(yaml_data["n_step_sampler"])
+        return cls(n_step_conf)
+
+
+@dataclass
 class ProofRetrievalFormatterConf:
     ALIAS = "proof"
     proof_bank_loc: Path
@@ -177,6 +188,7 @@ class GPTPremiseFormatterConf:
 GPTFormatterConf = GPTVanillaFormatterConf
 FormatterConf = (
     BasicFormatterConf
+    | ProofLastFormatterConf
     | ProofRetrievalFormatterConf
     | WholeProofRetrievalFormatterConf
     | PremiseFormatterConf
@@ -191,6 +203,8 @@ def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
     match attempted_alias:
         case BasicFormatterConf.ALIAS:
             return BasicFormatterConf.from_yaml(yaml_data)
+        case ProofLastFormatterConf.ALIAS:
+            return ProofLastFormatterConf.from_yaml(yaml_data)
         case ProofRetrievalFormatterConf.ALIAS:
             return ProofRetrievalFormatterConf.from_yaml(yaml_data)
         case WholeProofRetrievalFormatterConf.ALIAS:
@@ -211,6 +225,8 @@ def formatter_from_conf(conf: FormatterConf) -> LmFormatter:
     match conf:
         case BasicFormatterConf():
             return BasicFormatter.from_conf(conf)
+        case ProofLastFormatterConf():
+            return ProofLastFormatter.from_conf(conf)
         case ProofRetrievalFormatterConf():
             return ProofRetrievalFormatter.from_conf(conf)
         case WholeProofRetrievalFormatterConf():
@@ -245,6 +261,29 @@ class BasicFormatter:
 
     @classmethod
     def from_conf(cls, conf: BasicFormatterConf) -> BasicFormatter:
+        return cls(n_step_from_conf(conf.n_step_conf))
+
+
+class ProofLastFormatter:
+    def __init__(self, n_step_sampler: NStepSampler) -> None:
+        self.n_step_sampler = n_step_sampler
+
+    def example_from_step(
+        self,
+        step_idx: int,
+        proof: Proof,
+        **kwargs: Any,
+    ) -> LmExample:
+        step = proof.steps[step_idx]
+        partial_proof_string = proof.proof_prefix_to_string(step)
+        final_goal_string = fmt_goals(step.goals)
+        input = f"{final_goal_string}{THM_SEP}{partial_proof_string}"
+        n_step_sample = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
+        output = "".join([fs.step.text for fs in n_step_sample.steps])
+        return LmExample(input, output)
+
+    @classmethod
+    def from_conf(cls, conf: ProofLastFormatterConf) -> ProofLastFormatter:
         return cls(n_step_from_conf(conf.n_step_conf))
 
 
@@ -697,6 +736,7 @@ class GPTPremiseFormatter:
 GPTFormatter = GPTVanillaFormatter | GPTProofFormatter | GPTPremiseFormatter
 LmFormatter = (
     BasicFormatter
+    | ProofLastFormatter
     | PremiseFormatter
     | ProofRetrievalFormatter
     | WholeProofRetrievalFormatter

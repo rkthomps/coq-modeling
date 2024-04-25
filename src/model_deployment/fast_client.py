@@ -38,24 +38,28 @@ class ClientWrapper:
         spans = self.client.get_document(TextDocumentIdentifier(self.file_uri)).spans
         steps: list[Step] = []
         prev_line, prev_char = (0, 0)
-        try:
-            for i, span in enumerate(spans):
-                # if i == len(spans) - 1 and span.span is None:
-                #     continue
-                end_line, end_char = (
-                    spans[i].range.end.line,
-                    spans[i].range.end.character,
-                )
-                cur_lines = lines[prev_line : (end_line + 1)].copy()
-                cur_lines[-1] = cur_lines[-1][:end_char]
-                cur_lines[0] = cur_lines[0][prev_char:]
+        for i, span in enumerate(spans):
+            # if i == len(spans) - 1 and span.span is None:
+            #     continue
+            end_line, end_char = (
+                spans[i].range.end.line,
+                spans[i].range.end.character,
+            )
+            if len(lines) <= prev_line:
+                steps.append(Step("", "", span))
                 prev_line, prev_char = end_line, end_char
-                text = "\n".join(cur_lines)
-                steps.append(Step(text, "", span))
-            return steps[:-1]
-        except IndexError:
-            print(content)
-            exit()
+                continue
+
+            assert prev_line <= end_line
+            assert prev_line < len(lines)
+            cur_lines = lines[prev_line : (end_line + 1)].copy()
+            assert 0 < len(cur_lines)
+            cur_lines[-1] = cur_lines[-1][:end_char]
+            cur_lines[0] = cur_lines[0][prev_char:]
+            prev_line, prev_char = end_line, end_char
+            text = "\n".join(cur_lines)
+            steps.append(Step(text, "", span))
+        return steps[:-1]
 
     def close(self) -> None:
         self.client.shutdown()
