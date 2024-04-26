@@ -479,6 +479,7 @@ class GoalScorer:
         #     l_dist = edist.sed.standard_sed(goal.ty, l)
         #     if l_dist < min_dist:
         #         min_dist = l_dist
+        # return min_dist / len(goal.ty)
         return min_dist / len(goal.ty)
 
     def score_goals(self, goals: list[Goal]) -> float:

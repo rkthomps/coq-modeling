@@ -18,6 +18,8 @@ from model_deployment.run_proof import (
     TheoremLocationInfo,
     RunProofConf,
 )
+from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
+from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
 from model_deployment.searcher import (
     SearcherConf,
     searcher_conf_from_yaml,
@@ -86,6 +88,65 @@ class TestProofsConf:
 
 
 @dataclass
+class MCTSSummary:
+    file: Path
+    theorem: str
+    success: bool
+    search_time: float | None
+    model_time: float | None
+
+    def save(self, save_dir: Path) -> None:
+        save_loc = save_dir / str(self.file / self.theorem).replace(os.path.sep, "-")
+        with save_loc.open("wb") as fout:
+            fout.write(pickle.dumps(self))
+
+    def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
+        headers = [
+            "file",
+            "theorem",
+            "success",
+            "search_time",
+            "model_time",
+        ]
+        return headers, {
+            "file": str(self.file),
+            "theorem": self.theorem,
+            "success": self.success,
+            "search_time": self.search_time,
+            "model_time": self.model_time,
+        }
+
+    def pretty_print(self):
+        if self.search_time is None:
+            nice_str = "{:20s}{:20s} FAILURE BY ERROR.".format(
+                str(self.file), self.theorem
+            )
+        else:
+            success_str = "SUCCESS" if self.success else "FAILURE"
+            nice_str = "{:20s}{:20s}{:10s} after {:3.2f} seconds.".format(
+                str(self.file), self.theorem, success_str, self.search_time
+            )
+        print(nice_str)
+
+    def __lt__(self, other: MCTSSummary) -> bool:
+        if self.file == other.file:
+            return self.theorem < other.theorem
+        return self.file < other.file
+
+    @classmethod
+    def from_search_result(
+        cls, file: Path, theorem: str, result: MCTSSuccess | MCTSFailure | None
+    ) -> MCTSSummary:
+        match result:
+            case MCTSSuccess():
+                return cls(file, theorem, True, result.time, result.model_time)
+            case MCTSFailure():
+                return cls(file, theorem, False, result.time, result.model_time)
+            case None:
+                return cls(file, theorem, False, None, None)
+
+
+@dataclass
 class SearchSummary:
     file: Path
     theorem: str
@@ -148,7 +209,10 @@ class SearchSummary:
 
     @classmethod
     def from_search_result(
-        cls, file: Path, theorem: str, result: SuccessfulSearch | FailedSearch | None
+        cls,
+        file: Path,
+        theorem: str,
+        result: ClassicalSuccess | ClassicalFailure | None,
     ) -> SearchSummary:
         if result is None:
             return cls(file, theorem, False, None, None, None, None, None, None, None)
@@ -157,7 +221,7 @@ class SearchSummary:
         num_pruned = result.search_tree.root.num_pruned()
         _, max_depth = result.search_tree.root.get_deepest_node()
         match result:
-            case SuccessfulSearch():
+            case ClassicalSuccess():
                 path_to_qed = result.search_tree.root.get_path_to_qed()
                 assert 2 <= len(path_to_qed)
                 assert path_to_qed[-2].expanded is not None
@@ -175,7 +239,7 @@ class SearchSummary:
                     num_errors,
                     num_pruned,
                 )
-            case FailedSearch():
+            case ClassicalFailure():
                 expand_num = result.search_tree.root.get_last_node_expanded()
                 search_time = result.search_tree.root.get_last_node_time() / 1e9
                 return SearchSummary(
@@ -192,16 +256,29 @@ class SearchSummary:
                 )
 
 
+Summary = MCTSSummary | SearchSummary
+
+
+def summary_from_result(
+    file: Path,
+    theorem: str,
+    result: ClassicalSuccess | ClassicalFailure | MCTSSuccess | MCTSFailure,
+) -> Summary:
+    match result:
+        case ClassicalSuccess() | ClassicalFailure():
+            return SearchSummary.from_search_result(file, theorem, result)
+        case MCTSSuccess() | MCTSFailure():
+            return MCTSSummary.from_search_result(file, theorem, result)
+
+
 def run_test(test_proof: TestProofConf, save_dir: Path):
     run_conf = test_proof.to_run_conf()
     result = run_proof(run_conf)
-    summary = SearchSummary.from_search_result(
-        test_proof.theorem_location_info.test_file.relative_to(
-            test_proof.theorem_location_info.data_loc
-        ),
-        test_proof.theorem_location_info.theorem_name,
-        result,
+    file = test_proof.theorem_location_info.test_file.relative_to(
+        test_proof.theorem_location_info.data_loc
     )
+    theorem = test_proof.theorem_location_info.theorem_name
+    summary = summary_from_result(file, theorem, result)
     summary.pretty_print()
     summary.save(save_dir)
 

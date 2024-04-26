@@ -79,26 +79,36 @@ class FidT5LocalWrapper:
         input_batch = self.local_dset.collate([example])
         with torch.no_grad():
             # TODO THIS BREAKS with n=1
-            outputs = self.model.generate(
-                input_batch["input_ids"].cuda(),
-                input_batch["attention_mask"].cuda(),
-                64,
-                # do_sample=True,
-                # temperature=0.6,
-                # encoder_repetition_penalty=0.5,
-                # sequence_bias=seq_bias,
-                return_dict_in_generate=True,
-                output_scores=True,
-                num_beams=n,
-                length_penalty=0,
-                num_return_sequences=n,
-            )
+            if n == 1:
+                outputs = self.model.generate(
+                    input_batch["input_ids"].cuda(),
+                    input_batch["attention_mask"].cuda(),
+                    64,
+                    return_dict_in_generate=True,
+                    output_scores=True,
+                )
+                scores = [1]
+            else:
+                outputs = self.model.generate(
+                    input_batch["input_ids"].cuda(),
+                    input_batch["attention_mask"].cuda(),
+                    64,
+                    # do_sample=True,
+                    # temperature=0.6,
+                    # encoder_repetition_penalty=0.5,
+                    # sequence_bias=seq_bias,
+                    return_dict_in_generate=True,
+                    output_scores=True,
+                    num_beams=n,
+                    length_penalty=0,
+                    num_return_sequences=n,
+                )
+                scores = outputs.sequences_scores.tolist()
 
         raw_tactics = self.tokenizer.batch_decode(
             outputs.sequences, skip_special_tokens=True
         )
         tactics = [f"\n{t}" for t in raw_tactics]
-        scores = outputs.sequences_scores.tolist()
         not_pad_or_eos = ~(
             (outputs.sequences == self.tokenizer.pad_token_id)
             + (outputs.sequences == self.tokenizer.eos_token_id)

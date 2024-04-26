@@ -15,17 +15,21 @@ import pickle
 
 from data_management.sentence_db import SentenceDB
 from data_management.splits import Split, DataSplit, FileInfo, split2str, str2split
-from model_deployment.run_proofs import SearchSummary
+from model_deployment.run_proofs import MCTSSummary, SearchSummary, summary_from_result
 from model_deployment.run_proof import (
     run_proof,
     TestProofConf,
     RunProofConf,
     LocationInfo,
 )
-from model_deployment.classical_searcher import (
-    ClassicalSearchConf,
+from model_deployment.mcts_searcher import MCTSConf
+from model_deployment.classical_searcher import ClassicalSearchConf
+from model_deployment.searcher import (
+    SearcherConf,
+    Searcher,
     SuccessfulSearch,
     FailedSearch,
+    searcher_conf_from_yaml,
 )
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
@@ -46,7 +50,7 @@ class EvalConf:
     data_loc: Path
     sentence_db_loc: Path
     data_split_loc: Path
-    search_conf: ClassicalSearchConf
+    search_conf: SearcherConf
     tactic_conf: TacticGenConf
     max_eval_proofs: Optional[int]
 
@@ -88,7 +92,7 @@ class EvalConf:
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["data_split_loc"]),
-            ClassicalSearchConf.from_yaml(yaml_data["search"]),
+            searcher_conf_from_yaml(yaml_data["search"]),
             tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
             max_eval_proofs,
         )
@@ -102,7 +106,7 @@ class EvalProofConf:
     data_loc: Path
     sentence_db_loc: Path
     data_split_loc: Path
-    search_conf: ClassicalSearchConf
+    search_conf: SearcherConf
     tactic_conf: TacticGenConf
 
     def to_run_conf(self) -> RunProofConf:
@@ -135,11 +139,7 @@ def eval_proof(eval_conf: EvalProofConf, save_dir: Path):
         + "-"
         + str(run_conf.location_info.dp_proof_idx)
     )
-    summary = SearchSummary.from_search_result(
-        file,
-        theorem_name,
-        result,
-    )
+    summary = summary_from_result(file, theorem_name, result)
     summary.pretty_print()
     summary.save(save_dir)
 
@@ -190,7 +190,15 @@ if __name__ == "__main__":
                     + "-"
                     + str(run_conf.location_info.dp_proof_idx)
                 )
-                summary = SearchSummary.from_search_result(file, theorem_name, None)
+                match conf.search_conf:
+                    case MCTSConf():
+                        summary = MCTSSummary.from_search_result(
+                            file, theorem_name, None
+                        )
+                    case ClassicalSearchConf():
+                        summary = SearchSummary.from_search_result(
+                            file, theorem_name, None
+                        )
                 summary.pretty_print()
                 summary.save(conf.save_loc)
 

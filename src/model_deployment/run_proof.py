@@ -8,6 +8,8 @@ from pathlib import Path
 
 from data_management.splits import FileInfo, Split, DataSplit
 from data_management.dataset_file import Term, DatasetFile
+from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
+from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
 from model_deployment.searcher import (
     Searcher,
     SuccessfulSearch,
@@ -191,8 +193,12 @@ if __name__ == "__main__":
         assert "TestProofConf" in str(conf.__class__)  # isinstance didn't work
         result = run_proof(conf.to_run_conf())
         match result:
-            case SuccessfulSearch():
+            case ClassicalSuccess():
                 print("".join(result.qed_node.combined_proof_steps))
                 print("depth", result.search_tree.root.get_deepest_node())
-            case FailedSearch():
+            case ClassicalFailure():
+                print("failed")
+            case MCTSSuccess():
+                print(result.successful_proof.proof_text_to_string())
+            case MCTSFailure():
                 print("failed")

@@ -20,6 +20,7 @@ from model_deployment.tactic_gen_client import TacticGenClient
 @dataclass
 class MCTSSuccess:
     time: float
+    model_time: float
     successful_proof: Proof
     mcts_root_node: MCTSNode
 
@@ -27,6 +28,7 @@ class MCTSSuccess:
 @dataclass
 class MCTSFailure:
     time: float
+    model_time: float
     mcts_root_node: MCTSNode
 
 
@@ -47,6 +49,9 @@ class MCTSNode:
         self.num_visits = 0
         self.total_score = 0.0
         self.children: list[MCTSNode] = []
+
+    def __repr__(self) -> str:
+        return f"MCTS Node; valid: {self.valid}; progress: {self.makes_progress}; avg: {self.total_score / self.num_visits if 0 < self.num_visits else 0}; visits: {self.num_visits}"
 
     def select(self) -> Optional[list[MCTSNode]]:
         if len(self.children) == 0:
@@ -85,6 +90,7 @@ class MCTSConf:
     max_branch: int
     depth_limit: int
     timeout: int
+    print_proofs: bool
     initial_proof: Optional[str]
 
     @classmethod
@@ -97,6 +103,7 @@ class MCTSConf:
             yaml_data["max_branch"],
             yaml_data["depth_limit"],
             yaml_data["timeout"],
+            yaml_data["print_proofs"],
             initial_proof,
         )
 
@@ -109,6 +116,7 @@ class MCTSSearcher:
         max_branch: int,
         depth_limit: int,
         timeout: int,
+        print_proofs: bool,
         initial_proof: Optional[str] = None,
     ):
         self.tactic_client = tactic_client
@@ -116,6 +124,7 @@ class MCTSSearcher:
         self.max_branch = max_branch
         self.depth_limit = depth_limit
         self.timeout = timeout
+        self.print_proofs = print_proofs
 
         self.stop_early = initial_proof is not None
         if initial_proof is None:
@@ -170,6 +179,7 @@ class MCTSSearcher:
             conf.max_branch,
             conf.depth_limit,
             conf.timeout,
+            conf.print_proofs,
             conf.initial_proof,
         )
 
@@ -190,17 +200,23 @@ class MCTSSearcher:
             ellapsed_time = cur_time - start_time
             if qed_node is not None:
                 assert qed_node.proof is not None
-                return MCTSSuccess(ellapsed_time, qed_node.proof, self.root)
+                return MCTSSuccess(
+                    ellapsed_time, self.total_model_time, qed_node.proof, self.root
+                )
             if self.timeout < ellapsed_time or keep_going is False:
-                return MCTSFailure(ellapsed_time, self.root)
+                return MCTSFailure(ellapsed_time, self.total_model_time, self.root)
 
     def search_step(self) -> tuple[Optional[MCTSNode], bool]:
         selected_path = self.root.select()
+        if self.print_proofs:
+            print("Path:", selected_path)
         if selected_path is None:
             return None, False
         assert 0 < len(selected_path)
         selected_node = selected_path[-1]
         node_children, qed_node = self.expand(selected_node)
+        if self.print_proofs:
+            print("Num Children:", len(node_children))
         if qed_node is not None:
             return qed_node, False
         selected_node.children = node_children
@@ -229,7 +245,10 @@ class MCTSSearcher:
         assert start_node.proof is not None
         assert start_node.goals is not None
         dset_file = DatasetFile(self.file_context, [start_node.proof])
-        proof_script = dset_file.proofs[-1].proof_text_to_string(include_theorem=False)
+        admitted_step = dset_file.proofs[-1].steps[-1]
+        proof_script = dset_file.proofs[-1].proof_prefix_to_string(
+            admitted_step, include_theorem=False
+        )
         examples = [
             self.proof_manager.get_example(f, dset_file, start_node.goal_record)
             for f in self.tactic_client.formatters
@@ -248,10 +267,21 @@ class MCTSSearcher:
         match proof_check_result.tactic_result:
             case TacticResult.INVALID:
                 score = self.goal_scorer.score_goals(start_node.goals)
+                if self.print_proofs:
+                    print(proof_script)
                 return score, None
             case TacticResult.VALID:
                 assert proof_check_result.current_goals is not None
-                if self.depth_limit < depth:
+                assert start_node.goals is not None
+                is_redundant = self.comparer.as_hard_as(
+                    proof_check_result.current_goals,
+                    start_node.goals,
+                    self.proof_manager.fast_client,
+                    self.proof_manager.file_prefix,
+                )
+                if self.depth_limit < depth or is_redundant:
+                    if self.print_proofs:
+                        print(proof_script)
                     score = self.goal_scorer.score_goals(
                         proof_check_result.current_goals
                     )
@@ -297,7 +327,7 @@ class MCTSSearcher:
     def expand(
         self, selected_node: MCTSNode
     ) -> tuple[list[MCTSNode], Optional[MCTSNode]]:
-        assert selected_node.num_visits == 0
+        assert len(selected_node.children) == 0
         assert selected_node.proof is not None
         dset_file = DatasetFile(self.file_context, [selected_node.proof])
         examples = [
@@ -305,18 +335,24 @@ class MCTSSearcher:
             for f in self.tactic_client.formatters
         ]
         start_time = time.time()
-        proof_script = dset_file.proofs[-1].proof_text_to_string(include_theorem=False)
+        admitted_step = dset_file.proofs[-1].steps[-1]
+        proof_script = dset_file.proofs[-1].proof_prefix_to_string(
+            admitted_step, include_theorem=False
+        )
         result = self.get_all_recs(examples, proof_script)
         end_time = time.time()
         self.total_model_time += end_time - start_time
 
+        if self.print_proofs:
+            print(proof_script)
         children: list[MCTSNode] = []
         for tactic, _, _ in zip(
             result.next_tactic_list, result.score_list, result.num_tokens_list
         ):
-            proof_script = proof_script + tactic
             proof_check_result = self.proof_manager.check_proof(
-                proof_script, selected_node.proof.theorem, self.need_goal_record
+                proof_script + tactic,
+                selected_node.proof.theorem,
+                self.need_goal_record,
             )
             match proof_check_result.tactic_result:
                 case TacticResult.COMPLETE:
@@ -372,6 +408,9 @@ class MCTSSearcher:
                             self.proof_manager.file_prefix,
                         ):
                             makes_progress = False
+                            break
+                    if makes_progress:
+                        self.seen_goals.append(proof_check_result.current_goals)
 
                     valid_node = MCTSNode(
                         valid,

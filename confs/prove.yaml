@@ -4,6 +4,9 @@ thm_info:
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: h_pos
 
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/fpmod.v
+  # theorem_name: mulmorDl
+
   # The width of the board is positive
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: w_pos
@@ -11,6 +14,9 @@ thm_info:
   # # Positions on the board are antisymmetric
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: pos_test_anti_sym
+
+  test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/hrel.v
+  theorem_name: comp_eql
 
   # # # If some literal l1 is in the list resulting from inserting another literal l2
   # # # into a clause, then the literals must be equal, or l1 must have been in the original clause
@@ -24,6 +30,9 @@ thm_info:
   ## n choose m with n < m is 0
   # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
   # theorem_name: binomial_def2
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Gcd.v
+  # theorem_name: is_gcd_O'
 
   # ## n choose n is 1 
   # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
@@ -45,8 +54,8 @@ thm_info:
   # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_ordered_field_properties.v
   # theorem_name: Qinv_resp_nonzero_Qdiv
 
-  test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/rational.v
-  theorem_name: RratE
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/rational.v
+  # theorem_name: RratE
     
   # ## Contropositive of monotononicity
   # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/sqrt2.v 
@@ -66,11 +75,19 @@ thm_info:
   data_split_loc: splits/final-split.json
 
 search:
-  node_score_alias: token-normalized-score 
+  alias: mcts
   max_branch: 32
-  max_expansions: 500
-  depth_limit: 30
+  depth_limit: 10
   timeout: 120
+  print_proofs: True
+
+# search:
+#   alias: classical
+#   node_score_alias: heuristic-score 
+#   max_branch: 32
+#   max_expansions: 500
+#   depth_limit: 30
+#   timeout: 240
   # initial_proof: "\n
   # intros m n H.\n
   # unfold div, pdiv.\n
@@ -79,13 +96,13 @@ search:
   # remember (ominus m n) as m_sub_n.\n
   # destruct m_sub_n. "  
 
-# tactic_gen:
-#   alias: client
-#   urls: [http://localhost:8000]
-#   formatters:
-#     - alias: basic
-#       n_step_sampler: 
-#         alias: one
+tactic_gen:
+  alias: client
+  socket_paths: [servers/8000]
+  formatters:
+    - alias: basic
+      n_step_sampler: 
+        alias: one
 
   # formatter:
   #   alias: proof
@@ -118,13 +135,14 @@ search:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
 
-tactic_gen:
-  alias: fid
-  checkpoint_loc: models/t5-fid-small-whole-proof-ret/checkpoint-110500
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-whole-proof-ret/checkpoint-110500
 
 # tactic_gen:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-base-basic-final/checkpoint-110500
+
 
 # tactic_gen:
 #   alias: fid

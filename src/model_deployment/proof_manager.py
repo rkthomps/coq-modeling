@@ -136,7 +136,11 @@ class ProofManager:
         return f"file://{(self.data_loc / self.file_info.workspace).resolve()}"
 
     def get_proof_shell(
-        self, cur_steps: list[str], cur_goals: GoalAnswer, theorem: dataset_file.Term
+        self,
+        cur_steps: list[str],
+        cur_goals: GoalAnswer,
+        theorem: dataset_file.Term,
+        complete: bool = False,
     ) -> Proof:
         focused_steps: list[FocusedStep] = []
         for i, step in enumerate(cur_steps):
@@ -145,14 +149,21 @@ class ProofManager:
             )
 
         goals = [dataset_file.Goal.from_json(repr(g)) for g in cur_goals.goals.goals]
-        focused_steps.append(
-            FocusedStep(
+        if complete:
+            new_step = FocusedStep(
+                theorem,
+                Step.from_text("\nQed.", TermType.TACTIC),
+                len(cur_steps),
+                goals,
+            )
+        else:
+            new_step = FocusedStep(
                 theorem,
                 Step.from_text("\nAdmitted.", TermType.TACTIC),
                 len(cur_steps),
                 goals,
             )
-        )
+        focused_steps.append(new_step)
         proof = Proof(theorem, focused_steps)
         return proof
 
@@ -280,20 +291,21 @@ class ProofManager:
 
         if self.__can_close_proof(current_goals):
             goal_record = None
-            proof = None
             must_be_valid = "".join([s.text for s in steps]) + "\nQed."
             steps = self.fast_client.write_and_get_steps(must_be_valid)
             if not self.check_valid(self.fast_client.client):
                 return ProofCheckResult.get_invalid(attempted_step_strs)
+            new_proof = self.get_proof_shell(
+                partial_steps, current_goals, theorem, complete=True
+            )
             return ProofCheckResult(
                 TacticResult.COMPLETE,
                 partial_steps,
                 get_all_goals(current_goals),
                 goal_record,
-                proof,
+                new_proof,
             )
 
-        new_proof = self.get_proof_shell(partial_steps, current_goals, theorem)
         try:
             goal_record = None
             if need_goal_record:
@@ -314,6 +326,7 @@ class ProofManager:
             )
             goal_record = None
 
+        new_proof = self.get_proof_shell(partial_steps, current_goals, theorem)
         return ProofCheckResult(
             TacticResult.VALID,
             partial_steps,
