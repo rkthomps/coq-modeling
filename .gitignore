@@ -17,6 +17,10 @@ eval_examples
 unimath-step-eval
 vector-dbs
 
+# Slurm
+slurm*.out
+
+
 # Sentence database
 sentences.db
 
@@ -30,10 +34,6 @@ failed-examples
 
 # Config files
 # - Creating premise and tactic datasets 
-src/data_management/premise-confs/**
-!src/data_management/premise-confs/premise_basic.yaml
-src/data_management/tactic-confs/**
-!src/data_management/tactic-confs/random-sample-basic.yaml
 conf.pkl
 
 # - Training premise dataset

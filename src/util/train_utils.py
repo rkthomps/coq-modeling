@@ -58,8 +58,8 @@ def make_output_dir(conf: dict[str, Any]) -> None:
     output_dir = get_required_arg("output_dir", conf)
     if os.path.exists(output_dir):
         time_since_created = time.time() - os.path.getctime(output_dir)
-        three_mins = 180
-        if three_mins < time_since_created:
+        thirty_mins = 1800
+        if thirty_mins < time_since_created:
             print(f"{output_dir} already exists.")
             exit(1)
     else:
