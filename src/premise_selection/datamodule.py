@@ -1,9 +1,10 @@
 from typing import Any, Optional
 
 import jsonlines
-from transformers import AutoTokenizer, GPT2Tokenizer 
+from transformers import AutoTokenizer, GPT2Tokenizer
 from torch.utils.data import Dataset, DataLoader
 import torch
+from pathlib import Path
 
 from typeguard import typechecked
 
@@ -31,7 +32,7 @@ def tokenize_strings(
 class PremiseSelectionDataset(Dataset):
     def __init__(
         self,
-        premise_file_path: str,
+        premise_file_path: Path,
         tokenizer: GPT2Tokenizer,
         max_seq_len: int,
         max_num_examples: Optional[int] = None,
@@ -45,7 +46,7 @@ class PremiseSelectionDataset(Dataset):
             for i, obj in enumerate(fin):
                 if max_num_examples and i >= max_num_examples:
                     break
-                if (i % 10000 == 0):
+                if i % 10000 == 0:
                     print(f"\rLoading example: {i}", end="")
                 self.examples.append(PremiseTrainingExample.from_json(obj))
 
@@ -72,9 +73,9 @@ class PremiseSelectionDataset(Dataset):
                     cur_prem = cur_prem_example.neg_premises[neg_prem_index]
                 label[i, j] = float(cur_prem in example.all_pos_premises)
 
-        all_batch_premises: list[
-            str
-        ] = []  # order of adding to this list VERY IMPORTANT
+        all_batch_premises: list[str] = (
+            []
+        )  # order of adding to this list VERY IMPORTANT
         all_batch_premises.extend([e.pos_premise for e in examples])
         for i in range(num_negatives):
             ith_negative_premises = [e.neg_premises[i] for e in examples]

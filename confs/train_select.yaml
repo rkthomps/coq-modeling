@@ -1,0 +1,28 @@
+# File Paths
+
+data_path: "data/premise-lemma"
+model_name: "facebook/opt-125m"
+output_dir: "models/premise-lemma" 
+
+# Training Args
+max_seq_len: 128 
+per_device_train_batch_size: 16
+learning_rate: 1.0e-4
+num_train_epochs: 2
+gradient_accumulation_steps: 2
+loss_fn: cross-entropy
+
+# Evaluation Args
+eval_steps: 50 
+eval_accumulation_steps: 1
+per_device_eval_batch_size: 64 
+save_steps: 100 
+num_eval_examples: 2000 # Evaluation would take ~2 hours each time w/o limiting this
+
+# Logging Args
+logging_steps: 10
+save_total_limit: 2
+
+# Train from checkpoint
+#checkpoint_name: "/home/kthompson/coq-modeling/models/rerank-15-pos-opt/checkpoint-500" 
+

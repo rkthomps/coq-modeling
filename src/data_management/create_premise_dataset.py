@@ -33,21 +33,24 @@ from util.constants import PREMISE_DATA_CONF_NAME
 
 _logger = get_basic_logger(__name__)
 
+
 @dataclass
 class SelectDataConfig:
-    data_split_loc: Path 
-    data_loc: Path 
-    sentence_db_loc: Path 
-    output_dataset_loc: Path 
+    n_procs: int
+    data_split_loc: Path
+    data_loc: Path
+    sentence_db_loc: Path
+    output_dataset_loc: Path
     num_negatives_per_positive: int
     num_in_file_negatives_per_positive: int
     context_format_type_alias: str
     premise_format_type_alias: str
-    premise_filter_conf: PremiseFilterConf 
+    premise_filter_conf: PremiseFilterConf
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> SelectDataConfig: 
+    def from_yaml(cls, yaml_data: Any) -> SelectDataConfig:
         return cls(
+            yaml_data["n_procs"],
             Path(yaml_data["data_split_loc"]),
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
@@ -58,7 +61,6 @@ class SelectDataConfig:
             yaml_data["premise_format_type_alias"],
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
         )
-
 
 
 def get_examples_from_file(
@@ -137,24 +139,16 @@ if __name__ == "__main__":
         "yaml_config",
         help=("Configuration file for creating the premise " "selection dataset."),
     )
-    parser.add_argument(
-        "--num_procs",
-        "-n",
-        type=int,
-        help="Number of processes to use to create the dataset.",
-    )
 
     args = parser.parse_args(sys.argv[1:])
-    num_procs = 2
-    if args.num_procs:
-        num_procs = args.num_procs
-        if num_procs < 2:
-            raise ValueError("Data processing needs at least 2 processes.")
 
     with open(args.yaml_config, "r") as fin:
         conf = load(fin, Loader=Loader)
 
     premise_config = SelectDataConfig.from_yaml(conf)
+
+    if premise_config.n_procs < 2:
+        raise ValueError("Data processing needs at least 2 processes.")
 
     if os.path.exists(premise_config.output_dataset_loc):
         raise FileExistsError(f"{premise_config.output_dataset_loc}")
@@ -162,7 +156,7 @@ if __name__ == "__main__":
 
     with mp.Manager() as manager:
         q: Queue[Optional[PremiseTrainingExample]] = manager.Queue()
-        with mp.Pool(num_procs) as pool:
+        with mp.Pool(premise_config.n_procs) as pool:
             for split in [Split.TEST, Split.VAL, Split.TRAIN]:
                 split_args = get_dataset_args(premise_config, split, q)
                 raw_path = split_file_path(

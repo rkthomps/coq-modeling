@@ -57,6 +57,7 @@ TopLevelConf = (
     | TestWholeProofConf
     | TestWholeProofsConf
     | EvalConf
+    | SelectDataConfig
     | RerankDatasetConf
     | GoalDatasetConf
     | PremiseEvalConf
@@ -290,6 +291,8 @@ def start_servers(conf: TopLevelConf, use_devices: list[int]) -> TopLevelConf:
                 conf.search_conf,
                 tactic_client_conf,
             )
+        case SelectDataConfig():
+            return conf
         case RerankDatasetConf():
             rerank_formatter_conf = start_servers_rerank_formatter_conf(
                 conf.rerank_formatter_conf, use_devices
@@ -362,6 +365,9 @@ COMMANDS = {
     ),
     "run-dev-whole": Command(
         TestWholeProofsConf, Path("src/model_deployment/run_whole_proofs.py")
+    ),
+    "select-data": Command(
+        SelectDataConfig, Path("src/data_management/create_premise_dataset.py")
     ),
     "rerank-data": Command(
         RerankDatasetConf, Path("src/data_management/create_rerank_dataset.py")
