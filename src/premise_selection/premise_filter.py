@@ -11,6 +11,7 @@ from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Senten
 from coqpyt.coq.structs import TermType
 
 from util.util import get_basic_logger
+
 _logger = get_basic_logger(__name__)
 
 
@@ -42,13 +43,12 @@ class OOFCache:
     filtered_set: set[Sentence]
 
 
-@typechecked
 class PremiseFilter:
     def __init__(
         self,
-        coq_excludes: list[TermType] = [],
-        non_coq_excludes: list[TermType] = [],
-        general_excludes: list[TermType] = [],
+        coq_excludes: tuple[TermType] = [],
+        non_coq_excludes: tuple[TermType] = [],
+        general_excludes: tuple[TermType] = [],
     ) -> None:
         self.coq_excludes = coq_excludes
         self.non_coq_excludes = non_coq_excludes
@@ -151,7 +151,6 @@ class PremiseFilter:
             step, proof, dset_obj, cache_result.filtered_set, set(in_file_premises)
         )
         return FilteredResult(filtered_pos_candidates, filtered_avail_candidates)
-
 
     @classmethod
     def from_conf(cls, conf: PremiseFilterConf) -> PremiseFilter:

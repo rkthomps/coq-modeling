@@ -1,5 +1,38 @@
 
 thm_info:
+
+  # Whole proof analysis
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/general_Q.v
+  # theorem_name: Qsgn_29
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/general_Q.v
+  # theorem_name: Qpositive_c_0
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/general_Q.v
+  # theorem_name: Qpositive_c_0
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/general_Q.v
+  # theorem_name: Qneq_stepl
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Zaux.v
+  # theorem_name: pred_absolu 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Zaux.v
+  # theorem_name: Zsgn_22 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/homographic_correctness.v
+  # theorem_name: spec_Qhomographic_Qpositive_to_Q_Zopp_2 
+
+  test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_denumerable.v
+  theorem_name: Z_to_nat_to_Z_i
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/dvdring.v 
+  # theorem_name: lcmr_mulr
+
+  # Failure after 0 seconds?
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/fpmod.v
+  # theorem_name: eqmorMr
+
   #The height of the board is positive
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: h_pos
@@ -7,27 +40,33 @@ thm_info:
   # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/fpmod.v
   # theorem_name: mulmorDl
 
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/dvdring.v
+  # theorem_name: gcdr0 
+
   # The width of the board is positive
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: w_pos
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/core/equiv.v
+  # theorem_name: equiv_of_fn
 
   # # Positions on the board are antisymmetric
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: pos_test_anti_sym
 
-  test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/hrel.v
-  theorem_name: comp_eql
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/hrel.v
+  # theorem_name: comp_eql
 
   # # # If some literal l1 is in the list resulting from inserting another literal l2
   # # # into a clause, then the literals must be equal, or l1 must have been in the original clause
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: lit_insert_in
 
-  # ## Anything choose 0 is 1
+  ## Anything choose 0 is 1
   # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
   # theorem_name: binomial_def1
     
-  ## n choose m with n < m is 0
+  # n choose m with n < m is 0
   # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
   # theorem_name: binomial_def2
 
@@ -70,24 +109,39 @@ thm_info:
   # theorem_name: Qabs_Qminus_Zero_eq
 
 
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/core/equiv.v
+  # theorem_name: equiv_of_fn
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/core/open_confluence.v
+  # theorem_name: remove_edgesK 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/core/transfer.v
+  # theorem_name: oiso2_oarc 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/planar/hcycle.v
+  # theorem_name: last_memE 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/homographic_correctness.v
+  # theorem_name: spec_Qhomographic_Qpositive_to_Q_Zopp_2
+
   data_loc: raw-data/coq-dataset
   sentence_db_loc: sentences.db
   data_split_loc: splits/final-split.json
 
-search:
-  alias: mcts
-  max_branch: 32
-  depth_limit: 10
-  timeout: 120
-  print_proofs: True
-
 # search:
-#   alias: classical
-#   node_score_alias: heuristic-score 
+#   alias: mcts
 #   max_branch: 32
-#   max_expansions: 500
-#   depth_limit: 30
-#   timeout: 240
+#   depth_limit: 20
+#   timeout: 120
+#   print_proofs: True
+
+search:
+  alias: classical
+  node_score_alias: heuristic-score 
+  max_branch: 32
+  max_expansions: 500
+  depth_limit: 30
+  timeout: 120
   # initial_proof: "\n
   # intros m n H.\n
   # unfold div, pdiv.\n
@@ -96,19 +150,27 @@ search:
   # remember (ominus m n) as m_sub_n.\n
   # destruct m_sub_n. "  
 
-tactic_gen:
-  alias: client
-  socket_paths: [servers/8000]
-  formatters:
-    - alias: basic
-      n_step_sampler: 
-        alias: one
+# tactic_gen:
+#   alias: client
+#   socket_paths: [servers/0]
+#   # formatters:
+#   #   - alias: basic
+#   #     n_step_sampler: 
+#   #       alias: one
 
-  # formatter:
-  #   alias: proof
-  #   proof_bank_loc: proof-goals
-  #   n_step_sampler:
-  #     alias: one
+#   formatters:
+#   - alias: whole-proof-ret 
+#     proof_bank_loc: proof-goals
+#     data_loc: raw-data/coq-dataset
+#     sentence_db_loc: sentences.db
+#     n_step_sampler:
+#       alias: one
+
+# formatter:
+#   alias: proof
+#   proof_bank_loc: proof-goals
+#   n_step_sampler:
+#     alias: one
 
 #   formatter:
 #     alias: premise
@@ -147,6 +209,10 @@ tactic_gen:
 # tactic_gen:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-small-basic-final/checkpoint-110500
+
+tactic_gen:
+  alias: codellama
+  checkpoint_loc: models/codellama-7b-whole-proof-ret/checkpoint-4500
 
 print_proofs: True
 print_trees: True 

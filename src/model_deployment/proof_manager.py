@@ -3,6 +3,7 @@ from typing import Any, Optional
 from types import TracebackType
 
 import os
+import shutil
 from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass
@@ -91,6 +92,7 @@ class ProofInfo:
 
 class ProofManager:
     TIMEOUT = 60
+    SEARCH_DIR = Path("./.cm-search")
 
     def __init__(
         self,
@@ -109,18 +111,34 @@ class ProofManager:
         self.data_loc = data_loc
         self.__start_clients()
 
+    def __make_empty(self, p: Path):
+        with open(p, "w") as fout:
+            pass
+
     def __start_clients(self) -> None:
+        if not self.SEARCH_DIR.exists():
+            os.makedirs(self.SEARCH_DIR)
         self.fast_aux_file_path = get_fresh_path(
-            Path("."), str(self.file_loc.name)
+            self.SEARCH_DIR, str(self.file_loc.name)
         ).resolve()
-        fast_aux_client = FastLspClient(self.workspace_uri, timeout=60)
+        self.__make_empty(self.fast_aux_file_path)
+        self.fast_aux_client = FastLspClient(self.workspace_uri, timeout=60)
         fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
-        self.fast_client = ClientWrapper(fast_aux_client, fast_aux_file_uri)
+        self.fast_goal_file_path = get_fresh_path(
+            self.SEARCH_DIR, "goal_" + str(self.file_loc.name)
+        ).resolve()
+        self.__make_empty(self.fast_goal_file_path)
+        fast_goal_file_uri = f"file://{self.fast_goal_file_path}"
+        self.fast_client = ClientWrapper(self.fast_aux_client, fast_aux_file_uri)
+        self.goal_client = ClientWrapper(self.fast_aux_client, fast_goal_file_uri)
 
     def __restart_clients(self) -> None:
         if os.path.exists(self.fast_aux_file_path):
             os.remove(self.fast_aux_file_path)
-        self.fast_client.close()
+        if os.path.exists(self.fast_goal_file_path):
+            os.remove(self.fast_goal_file_path)
+        self.fast_aux_client.shutdown()
+        self.fast_aux_client.exit()
         self.__start_clients()
 
     @property
@@ -205,16 +223,34 @@ class ProofManager:
         end_pos = steps[new_step_idx].ast.range.end
         goal_dict: dict[int, Optional[GoalAnswer]] = {}
         record, version = get_goal_record(
-            self.fast_client.client,
-            self.fast_client.file_uri,
-            self.fast_client.file_version,
+            self.goal_client.client,
+            self.goal_client.file_uri,
+            self.goal_client.file_version,
             end_pos,
             steps,
             new_step_idx,
             goal_dict,
         )
-        self.fast_client.set_version(version)
+        self.goal_client.set_version(version)
         return record
+
+    def gather_steps(self, steps: list[CStep]) -> tuple[list[CStep], list[CStep]]:
+        agg_str = ""
+        cur_idx = 0
+        for s in steps:
+            agg_str += s.text
+            if not self.file_prefix.startswith(agg_str):
+                break
+            cur_idx += 1
+        prefix_steps = steps[:cur_idx]
+        new_steps = steps[cur_idx:]
+        parsed_prefix = "".join([s.text for s in prefix_steps])
+        if parsed_prefix != self.file_prefix:
+            _logger.error(
+                f"INCOMPATIBLE STEPS; NEW LEN: {len(prefix_steps)}; OLD_LEN: {len(self.proof_info.prefix_steps)}"
+            )
+        assert parsed_prefix == self.file_prefix
+        return prefix_steps, new_steps
 
     def check_proof(
         self,
@@ -222,12 +258,8 @@ class ProofManager:
         theorem: dataset_file.Term,
         need_goal_record: bool = True,
     ) -> ProofCheckResult:
-        # TODO: NEED TO CATCH SIMPL IN *
-        # partial_steps = separate_steps(partial_proof)
         if (
-            (
-                "Theorem" in partial_proof
-            )  # sometimes the model will parrot the theorem statement
+            ("Theorem" in partial_proof)
             or ("Lemma" in partial_proof)
             or ("Proposition" in partial_proof)
             or ("Remark" in partial_proof)
@@ -239,7 +271,6 @@ class ProofManager:
         ):
             return ProofCheckResult.get_invalid([])
         contents = f"{self.file_prefix}{partial_proof}"
-        # print(contents)
         try:
             steps = self.fast_client.write_and_get_steps(contents)
         except ResponseError as e:
@@ -251,15 +282,14 @@ class ProofManager:
             self.__restart_clients()
             return ProofCheckResult.get_invalid([])
 
-        attempted_step_strs = [s.text for s in steps[self.proof_info.proof_point :]]
         if not self.check_valid(self.fast_client.client):
-            return ProofCheckResult.get_invalid(attempted_step_strs)
-        partial_steps = [s.text for s in steps[(self.proof_info.proof_point + 1) :]]
-        # end_pos = steps[-1].ast.range.end
-        num_lines = len(contents.split("\n"))
+            return ProofCheckResult.get_invalid([s.text for s in steps])
+
         if 0 < len(partial_proof) and "Qed." in steps[-1].text:
-            # We detect qed ourselves.
-            steps = steps[:-1]
+            steps = steps[:-1]  # We detect qed ourselves.
+
+        prefix_steps, new_steps = self.gather_steps(steps)
+        new_step_strs = [s.text for s in new_steps]
 
         farther_end = steps[-1].ast.range.end
         try:
@@ -269,38 +299,30 @@ class ProofManager:
         except ResponseError as e:
             _logger.warning(f"Got repsonse error on proof: {partial_proof[-10:]}")
             self.__restart_clients()
-            return ProofCheckResult.get_invalid(attempted_step_strs)
+            return ProofCheckResult.get_invalid(new_step_strs)
         except TimeoutError as t:
             _logger.warning(f"Got timeout error on proof: {partial_proof[-10:]}")
             self.__restart_clients()
-            return ProofCheckResult.get_invalid(attempted_step_strs)
+            return ProofCheckResult.get_invalid(new_step_strs)
         self.fast_client.client.lsp_endpoint.timeout = 5
 
         if current_goals is None:
-            return ProofCheckResult.get_invalid(attempted_step_strs)
+            return ProofCheckResult.get_invalid(new_step_strs)
         if current_goals.goals is None:
-            return ProofCheckResult.get_invalid(attempted_step_strs)
-
-        # try:
-        #     assert "".join(partial_steps) == partial_proof
-        # except AssertionError:
-        #     act = "".join(partial_steps)
-        #     exp = partial_proof
-        #     _logger.warning(f"Partial proof mismatch: expected '{exp}' got '{act}'")
-        #     # ipdb.set_trace()
+            return ProofCheckResult.get_invalid(new_step_strs)
 
         if self.__can_close_proof(current_goals):
             goal_record = None
             must_be_valid = "".join([s.text for s in steps]) + "\nQed."
             steps = self.fast_client.write_and_get_steps(must_be_valid)
             if not self.check_valid(self.fast_client.client):
-                return ProofCheckResult.get_invalid(attempted_step_strs)
+                return ProofCheckResult.get_invalid(new_step_strs)
             new_proof = self.get_proof_shell(
-                partial_steps, current_goals, theorem, complete=True
+                new_step_strs, current_goals, theorem, complete=True
             )
             return ProofCheckResult(
                 TacticResult.COMPLETE,
-                partial_steps,
+                new_step_strs,
                 get_all_goals(current_goals),
                 goal_record,
                 new_proof,
@@ -326,10 +348,10 @@ class ProofManager:
             )
             goal_record = None
 
-        new_proof = self.get_proof_shell(partial_steps, current_goals, theorem)
+        new_proof = self.get_proof_shell(new_step_strs, current_goals, theorem)
         return ProofCheckResult(
             TacticResult.VALID,
-            partial_steps,
+            new_step_strs,
             get_all_goals(current_goals),
             goal_record,
             new_proof,
@@ -373,4 +395,7 @@ class ProofManager:
         # self.aux_client.close()
         if os.path.exists(self.fast_aux_file_path):
             os.remove(self.fast_aux_file_path)
-        self.fast_client.close()
+        if self.fast_goal_file_path.exists():
+            os.remove(self.fast_goal_file_path)
+        self.fast_aux_client.shutdown()
+        self.fast_aux_client.exit()

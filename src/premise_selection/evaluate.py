@@ -3,6 +3,7 @@ from typing import Type, Iterable, Any, Optional
 
 
 import sys, os
+import time
 import pickle
 import json
 from pathlib import Path
@@ -17,8 +18,10 @@ from data_management.splits import DataSplit, Split, str2split
 from model_deployment.premise_client import (
     PremiseConf,
     PremiseClient,
+    SelectPremiseClient,
     premise_client_from_conf,
     premise_conf_from_yaml,
+    get_dependency_examples,
 )
 from util.util import get_basic_logger
 from util.constants import CLEAN_CONFIG
@@ -132,7 +135,26 @@ def run_evaluation(eval_conf: PremiseEvalConf) -> EvalData:
     premise_client = premise_client_from_conf(eval_conf.premise_conf)
     for file_info in tqdm(data_split.get_file_list(split)):
         dset_file = file_info.get_dp(eval_conf.data_loc, sentence_db)
-        for proof in dset_file.proofs:
+        for i, proof in enumerate(dset_file.proofs):
+            # if isinstance(premise_client, SelectPremiseClient):
+            #     print("Setting transformation matrix...", end="")
+            #     s = time.time()
+            #     premise_examples, step_examples, proof_examples = (
+            #         get_dependency_examples(
+            #             i,
+            #             dset_file,
+            #             eval_conf.data_loc,
+            #             sentence_db,
+            #             premise_client.premise_filter,
+            #         )
+            #     )
+            #     print("num examples:", len(premise_examples))
+            #     e = time.time()
+            #     premise_client.clear_transformation_matrix()
+            #     premise_client.set_transformation_matrix(
+            #         premise_examples, step_examples, proof_examples
+            #     )
+            #     print(e - s)
             for step in proof.steps:
                 num_steps += 1
                 filter_result = (
@@ -159,7 +181,7 @@ def run_evaluation(eval_conf: PremiseEvalConf) -> EvalData:
                     EvalResult(num_avail_premises, hits_on, num_positive_premises)
                 )
         tmp_data = EvalData(num_steps, eval_results)
-        _logger.info(
+        print(
             f"Recalls: @1: {tmp_data.recall_at(1)}; @10: {tmp_data.recall_at(10)}; @100: {tmp_data.recall_at(100)}"
         )
     return EvalData(num_steps, eval_results)

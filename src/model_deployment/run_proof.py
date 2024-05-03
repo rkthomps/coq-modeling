@@ -8,6 +8,7 @@ from pathlib import Path
 
 from data_management.splits import FileInfo, Split, DataSplit
 from data_management.dataset_file import Term, DatasetFile
+from model_deployment.fast_client import FastLspClient, ClientWrapper
 from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
 from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
 from model_deployment.searcher import (
@@ -28,7 +29,7 @@ from model_deployment.tactic_gen_client import (
 from model_deployment.proof_manager import ProofInfo, ProofManager
 
 from data_management.sentence_db import SentenceDB
-from util.util import get_basic_logger
+from util.util import get_basic_logger, get_fresh_path
 from util.constants import CLEAN_CONFIG
 
 from coqpyt.coq.base_file import CoqFile
@@ -154,12 +155,20 @@ def get_proof_info(
 ) -> ProofInfo:
     file_loc = (data_loc / file_info.file).resolve()
     workspace_loc = (data_loc / file_info.workspace).resolve()
-    with CoqFile(str(file_loc), workspace=str(workspace_loc)) as coq_file:
-        for i, step in enumerate(coq_file.steps):
-            if normalize(step.text) in normalize(term.term.text) or normalize(
-                term.term.text
-            ) in normalize(step.text):
-                return ProofInfo(term, coq_file.steps[: (i + 1)], i)
+    workspace_uri = f"file://{workspace_loc.resolve()}"
+    client = FastLspClient(workspace_uri, timeout=60)
+    fresh_file_loc = get_fresh_path(file_loc, file_loc.name)
+    client_wrapper = ClientWrapper(client, f"file://{fresh_file_loc}")
+    with file_loc.open("r") as fin:
+        file_contents = fin.read()
+    steps = client_wrapper.write_and_get_steps(file_contents)
+    client.shutdown()
+    client.exit()
+    for i, step in enumerate(steps):
+        if normalize(step.text) in normalize(term.term.text) or normalize(
+            term.term.text
+        ) in normalize(step.text):
+            return ProofInfo(term, steps[: (i + 1)], i)
     raise ValueError(f"Could not find step defining theorem {term.term.text}")
 
 

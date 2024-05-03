@@ -33,6 +33,7 @@ from model_deployment.premise_client import (
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
     FidTacticGenConf,
+    CodellamaTacticGenConf,
     LocalTacticGenClientConf,
 )
 from model_deployment.run_proof import TestProofConf
@@ -212,8 +213,16 @@ def start_servers_lm_dataset_conf(
     )
 
 
+def get_tactic_server_alias(conf: FidTacticGenConf | CodellamaTacticGenConf) -> str:
+    match conf:
+        case FidTacticGenConf():
+            return "fid-local"
+        case CodellamaTacticGenConf():
+            return "local"
+
+
 def start_tactic_gen_servers(
-    conf: FidTacticGenConf, use_devices: list[int]
+    conf: FidTacticGenConf | CodellamaTacticGenConf, use_devices: list[int]
 ) -> list[Path]:
     global next_port
     server_paths: list[Path] = []
@@ -222,7 +231,7 @@ def start_tactic_gen_servers(
         command = [
             "python3",
             TACTIC_GEN_SERVER_SCRIPT,
-            "fid-local",
+            get_tactic_server_alias(conf),
             f"{conf.checkpoint_loc}",
             f"{next_port}",
         ]
@@ -239,7 +248,7 @@ def start_servers_tactic_gen(
     conf: TacticGenConf, use_devices: list[int]
 ) -> TacticGenConf:
     match conf:
-        case FidTacticGenConf():
+        case FidTacticGenConf() | CodellamaTacticGenConf():
             assert conf.checkpoint_loc.exists()
             if conf.formatter_confs is None:
                 assert 0 < len(conf.checkpoint_loc.parents)

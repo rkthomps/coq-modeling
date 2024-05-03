@@ -462,7 +462,7 @@ class GoalScorer:
                 clean_tokens.append(clean_t)
         return clean_tokens
 
-    def score_goal(self, goal: Goal) -> float:
+    def score_goal(self, goal: Goal, normalized: bool = True) -> float:
         min_dist = len(goal.ty)
         # goal_toks = self.tokenizer(goal.ty)
         for h in goal.hyps:
@@ -480,11 +480,15 @@ class GoalScorer:
         #     if l_dist < min_dist:
         #         min_dist = l_dist
         # return min_dist / len(goal.ty)
-        return min_dist / len(goal.ty)
+        # return min_dist / len(goal.ty)
+        if normalized:
+            return min_dist / len(goal.ty)
+        else:
+            return min_dist
 
-    def score_goals(self, goals: list[Goal]) -> float:
+    def score_goals(self, goals: list[Goal], normalized: bool = True) -> float:
         """String distance from the goal to a hyp or to an available lemma."""
-        return -1 * sum([self.score_goal(g) for g in goals])
+        return -1 * sum([self.score_goal(g, normalized) for g in goals])
 
 
 class AlphaGoalComparer:

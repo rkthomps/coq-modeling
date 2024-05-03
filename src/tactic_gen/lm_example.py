@@ -9,7 +9,14 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from data_management.splits import FileInfo
-from data_management.dataset_file import DatasetFile, FocusedStep, Proof, Sentence, Goal
+from data_management.dataset_file import (
+    DatasetFile,
+    DPCache,
+    FocusedStep,
+    Proof,
+    Sentence,
+    Goal,
+)
 from tactic_gen.n_step_sampler import (
     NStepSampler,
     NStepConf,
@@ -314,10 +321,7 @@ class ProofRetriever:
     def __init__(self, proof_bank_loc: Path, max_examples: int):
         self.proof_bank_loc = proof_bank_loc
         self.max_examples = max_examples
-
-        self.__cached_dps: dict[str, DatasetFile] = {}
-        self.__cached_keys: list[str] = []
-        self.__cache_size = 128
+        self.dp_cache = DPCache()
 
     @functools.lru_cache()
     def __get_file_goals(self, key: str) -> Optional[FileGoals]:
@@ -326,23 +330,6 @@ class ProofRetriever:
             return None
         goals = FileGoals.load(goal_loc)
         return goals
-
-    def __get_dp(
-        self, dp_name: str, data_loc: Path, sentence_db: SentenceDB
-    ) -> DatasetFile:
-        assert len(self.__cached_keys) == len(self.__cached_dps)
-        if dp_name in self.__cached_dps:
-            cur_idx = self.__cached_keys.index(dp_name)
-            self.__cached_keys.pop(cur_idx)
-            self.__cached_keys.insert(0, dp_name)
-            return self.__cached_dps[dp_name]
-        dp_loc = data_loc / DATA_POINTS_NAME / dp_name
-        dp_obj = DatasetFile.load(dp_loc, sentence_db)
-        self.__cached_dps[dp_name] = dp_obj
-        self.__cached_keys.insert(0, dp_name)
-        if self.__cache_size < len(self.__cached_keys):
-            self.__cached_keys.pop()
-        return dp_obj
 
     def get_record_and_cutoff_index(
         self, step_idx: int, proof: Proof, file_goals: FileGoals
@@ -400,7 +387,7 @@ class ProofRetriever:
     def get_whole_proof(
         self, candidate: ProofCandidateReversed, data_loc: Path, sentence_db: SentenceDB
     ) -> tuple[str, str]:
-        candidate_dp = self.__get_dp(candidate.origin, data_loc, sentence_db)
+        candidate_dp = self.dp_cache.get_dp(candidate.origin, data_loc, sentence_db)
         record_proof_str = "".join(candidate.candidate.proof)
         pretty_candidate_goal = " ".join(candidate.candidate.pretty_goal.split())
         for proof in candidate_dp.proofs:

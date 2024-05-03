@@ -10,7 +10,7 @@ import math
 import requests
 from dataclasses import dataclass
 
-from data_management.dataset_file import Goal
+from data_management.dataset_file import Goal, DatasetFile, DPCache
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import FocusedStep, Proof, Sentence
 from premise_selection.premise_formatter import (
@@ -186,6 +186,32 @@ def premise_client_from_conf(conf: PremiseConf) -> PremiseClient:
             return LookupClient.from_conf(conf)
 
 
+ID_FORM = re.compile(r"[^\[\]\{\}\(\):=,\s]+")
+
+
+def get_ids_from_goal(goal: Goal) -> tuple[list[str], list[str]]:
+    goal_search_str = goal.goal
+    hyp_search_str = ""
+    h_ids: set[str] = set()
+    for h in goal.hyps:
+        h_ty = h.split(":")
+        if len(h_ty) == 1:
+            hyp_search_str += " " + h_ty[0]
+        else:
+            h_ids |= set(h_ty[0].split(", "))
+            hyp_search_str += " " + "".join(h_ty[1:])
+    hyp_found_ids = re.findall(ID_FORM, hyp_search_str)
+    filtered_hyp_ids = [f for f in hyp_found_ids if f not in h_ids]
+    goal_found_ids = re.findall(ID_FORM, goal_search_str)
+    filtered_goal_ids = [f for f in goal_found_ids if f not in h_ids]
+    return filtered_hyp_ids, filtered_goal_ids
+
+
+def get_ids_from_sentence(s: Sentence) -> list[str]:
+    sentence_ids = re.findall(ID_FORM, s.text)
+    return sentence_ids
+
+
 class RerankClient:
     def __init__(
         self, socket_paths: list[Path], select_client: PremiseClient, rerank_num: int
@@ -266,6 +292,32 @@ class SelectPremiseClient:
             self.session.mount(f"http://servers-{i}/", ServerAdapter(path))
             self.urls.append(url)
 
+    def clear_transformation_matrix(self):
+        for url in self.urls:
+            request_data = {
+                "method": "clear_transform_mat",
+                "params": [],
+                "jsonrpc": "2.0",
+                "id": 0,
+            }
+            self.session.post(url, json=request_data)
+
+    def set_transformation_matrix(
+        self, premises: list[Sentence], steps: list[FocusedStep], proofs: list[Proof]
+    ):
+        assert len(premises) == len(steps)
+        assert len(steps) == len(proofs)
+        cstrs = [self.context_format.format(s, p) for s, p in zip(steps, proofs)]
+        premises_json = [s.to_json(self.sentence_db, False) for s in premises]
+        for url in self.urls:
+            request_data = {
+                "method": "set_transform_mat",
+                "params": [premises_json, cstrs],
+                "jsonrpc": "2.0",
+                "id": 0,
+            }
+            self.session.post(url, json=request_data).json()
+
     def get_premise_scores_from_strings(
         self, context_str: str, premises: list[Sentence]
     ) -> list[float]:
@@ -292,12 +344,13 @@ class SelectPremiseClient:
         }
         request_url = random.choice(self.urls)
         response = self.session.post(request_url, json=request_data).json()
+        result = response["result"]
 
         orig_idxs = orig_idxs + orig_idxs_other
         new_order = sorted(range(len(orig_idxs)), key=lambda idx: orig_idxs[idx])
         scores: list[float] = []
         for new_idx in new_order:
-            scores.append(response[new_idx])
+            scores.append(result[new_idx])
         return scores
 
     def get_ranked_premise_generator(
@@ -342,13 +395,12 @@ def tokenize(s: str) -> list[str]:
     return clean_tokens
 
 
-def compute_idfs(corpus: list[str]) -> dict[str, float]:
+def compute_idfs(corpus: list[list[str]]) -> dict[str, float]:
     if 0 == len(corpus):
         return {}
     assert 0 < len(corpus)
     doc_freqs: dict[str, int] = {}
-    for premise in corpus:
-        doc = tokenize(premise)
+    for doc in corpus:
         for word in set(doc):
             if word not in doc_freqs:
                 doc_freqs[word] = 0
@@ -360,9 +412,18 @@ def compute_idfs(corpus: list[str]) -> dict[str, float]:
     return idfs
 
 
+def doc_to_hashable(doc: list[str]) -> str:
+    return "<DOCSEP>".join(doc)
+
+
+def doc_from_hashable(s: str) -> list[str]:
+    return s.split("<DOCSEP>")
+
+
 @functools.lru_cache(10000)
-def compute_doc_tf(premise: str) -> dict[str, float]:
-    doc = tokenize(premise)
+def compute_doc_tf(doc_str: str) -> dict[str, float]:
+    doc = doc_from_hashable(doc_str)
+    # doc = tokenize(premise)
     if 0 == len(doc):
         return {}
     assert 0 < len(doc)
@@ -403,14 +464,18 @@ class TFIdfClient:
     premise_format: type[PremiseFormat]
     premise_filter: PremiseFilter
 
-    def get_premise_scores_from_strings(
-        self, context_str: str, premises: list[Sentence]
+    def get_premise_scores(
+        self, context: Goal, premises: list[Sentence]
     ) -> list[float]:
-        premise_strs = [self.premise_format.format(p) for p in premises]
-        query = tokenize(context_str)
-        idfs = compute_idfs(premise_strs)
-        query_tfs = compute_query_tf(query)
-        doc_tfs = [compute_doc_tf(p) for p in premise_strs]
+        # premise_strs = [self.premise_format.format(p) for p in premises]
+        premise_docs = [get_ids_from_sentence(p) for p in premises]
+        query_hyp_ids, query_goal_ids = get_ids_from_goal(context)
+        query_ids = query_hyp_ids + query_goal_ids
+        # query_ids = query_goal_ids
+        # query = tokenize(context_str)
+        idfs = compute_idfs(premise_docs)
+        query_tfs = compute_query_tf(query_ids)
+        doc_tfs = [compute_doc_tf(doc_to_hashable(p)) for p in premise_docs]
         similarities: list[float] = []
         for doc_tf_dict in doc_tfs:
             dot_prod = 0
@@ -431,10 +496,12 @@ class TFIdfClient:
         proof: Proof,
         premises: list[Sentence],
     ) -> Iterable[Sentence]:
-        formatted_context = self.context_format.format(step, proof)
-        premise_scores = self.get_premise_scores_from_strings(
-            formatted_context, premises
-        )
+        if len(step.goals) == 0:
+            empty_premises: list[Sentence] = []
+            return empty_premises
+        focused_goal = step.goals[0]
+        # formatted_context = self.context_format.format(step, proof)
+        premise_scores = self.get_premise_scores(focused_goal, premises)
         num_premises = len(premise_scores)
         arg_sorted_premise_scores = sorted(
             range(num_premises), key=lambda idx: -1 * premise_scores[idx]
@@ -472,25 +539,6 @@ class LookupClient:
         re.compile(r"Instance\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
     ]
 
-    id_form = re.compile(r"[^\[\]\{\}\(\):=,\s]+")
-
-    def get_ids_from_goal(self, goal: Goal) -> tuple[list[str], list[str]]:
-        goal_search_str = goal.goal
-        hyp_search_str = ""
-        h_ids: set[str] = set()
-        for h in goal.hyps:
-            h_ty = h.split(":")
-            if len(h_ty) == 1:
-                hyp_search_str += " " + h_ty[0]
-            else:
-                h_ids.add(h_ty[0])
-                hyp_search_str += " " + "".join(h_ty[1:])
-        hyp_found_ids = re.findall(self.id_form, hyp_search_str)
-        filtered_hyp_ids = [f for f in hyp_found_ids if f not in h_ids]
-        goal_found_ids = re.findall(self.id_form, goal_search_str)
-        filtered_goal_ids = [f for f in goal_found_ids if f not in h_ids]
-        return filtered_hyp_ids, filtered_goal_ids
-
     def get_name_from_premise(self, premise: Sentence) -> Optional[str]:
         for name_form in self.name_forms:
             search_match = name_form.search(premise.text)
@@ -512,7 +560,7 @@ class LookupClient:
         premise_names = [self.get_name_from_premise(p) for p in premises]
         # print(premise_names)
         premise_scores: list[float] = []
-        hyp_id_list, goal_id_list = self.get_ids_from_goal(focused_goal)
+        hyp_id_list, goal_id_list = get_ids_from_goal(focused_goal)
         hyp_ids = set(hyp_id_list)
         goal_ids = set(goal_id_list)
         for sentence, name in zip(premises, premise_names):
@@ -642,3 +690,54 @@ class BM25OkapiClient:
 PremiseClient = (
     SelectPremiseClient | RerankClient | TFIdfClient | BM25OkapiClient | LookupClient
 )
+
+
+dp_cache = DPCache()
+
+
+def get_dependency_examples(
+    proof_idx: int,
+    dset_file: DatasetFile,
+    data_loc: Path,
+    sentence_db: SentenceDB,
+    premise_filter: PremiseFilter,
+) -> tuple[list[Sentence], list[FocusedStep], list[Proof]]:
+    """To test online learning during premise selection."""
+    dep_proofs: list[tuple[Proof, DatasetFile, set[Sentence], set[Sentence]]] = []
+    for i, proof in enumerate(dset_file.proofs):
+        if proof_idx <= i:
+            break
+        dep_proofs.append(
+            (
+                proof,
+                dset_file,
+                set(dset_file.out_of_file_avail_premises),
+                set(dset_file.in_file_avail_premises),
+            )
+        )
+
+    for dep_name in dset_file.dependencies:
+        dep = dp_cache.get_dp(dep_name, data_loc, sentence_db)
+        for proof in dep.proofs:
+            dep_proofs.append(
+                (
+                    proof,
+                    dep,
+                    set(dep.out_of_file_avail_premises),
+                    set(dep.in_file_avail_premises),
+                )
+            )
+
+    learning_premises: list[Sentence] = []
+    learning_steps: list[FocusedStep] = []
+    learning_proofs: list[Proof] = []
+    for proof, dset_file, inf, oof in dep_proofs:
+        for step in proof.steps:
+            pos_prems = premise_filter.get_pos_filtered_premises(
+                step, proof, dset_file, inf, oof
+            )
+            for p in pos_prems:
+                learning_premises.append(p)
+                learning_steps.append(step)
+                learning_proofs.append(proof)
+    return learning_premises, learning_steps, learning_proofs

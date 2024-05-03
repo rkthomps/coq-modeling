@@ -23,6 +23,19 @@ wrapper: Optional[SelectWrapper] = None
 
 
 @dispatcher.add_method
+def set_transform_mat(premises_json: list[Sentence], contexts_json: list[str]) -> None:
+    assert wrapper is not None
+    ps = [Sentence.from_json(p, wrapper.sentence_db) for p in premises_json]
+    wrapper.set_transformation_matrix(ps, contexts_json)
+
+
+@dispatcher.add_method
+def clear_transform_mat() -> None:
+    assert wrapper is not None
+    wrapper.clear_transformation_matrix()
+
+
+@dispatcher.add_method
 def get_scores(
     context: str, idx_premises: list[int], other_premises_json: list[Any]
 ) -> list[float]:

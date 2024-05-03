@@ -226,7 +226,7 @@ class SearchSummary:
                 assert 2 <= len(path_to_qed)
                 assert path_to_qed[-2].expanded is not None
                 expand_num = path_to_qed[-2].expanded
-                search_time = result.qed_node.creation_time / 1e9
+                search_time = result.total_search_time / 1e9
                 return SearchSummary(
                     file,
                     theorem,
@@ -241,7 +241,7 @@ class SearchSummary:
                 )
             case ClassicalFailure():
                 expand_num = result.search_tree.root.get_last_node_expanded()
-                search_time = result.search_tree.root.get_last_node_time() / 1e9
+                search_time = result.total_search_time / 1e9
                 return SearchSummary(
                     file,
                     theorem,
@@ -309,7 +309,7 @@ if __name__ == "__main__":
             process_results.append(res)
 
         for r in process_results:
-            r.get(1.1 * conf.search_conf.timeout)
+            r.get(2 * conf.search_conf.timeout)
             # except Exception as e:
             #     _logger.warning(f"Got exception: {e}")
 

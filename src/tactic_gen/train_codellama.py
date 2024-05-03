@@ -6,6 +6,7 @@ import time
 import argparse
 import functools
 import subprocess
+from pathlib import Path
 
 from yaml import load, Loader
 import jsonlines
@@ -88,16 +89,32 @@ def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
 def get_datasets(
     conf: dict[str, Any],
     tokenizer: CodeLlamaTokenizer,
-    max_input_len: int,
-    max_seq_len: int,
 ) -> tuple[LmDataset, LmDataset]:
-    data_path = get_required_arg("data_path", conf)
+    max_num_passages = get_required_arg("max_num_passages", conf)
+    max_tokens_per_passage = get_required_arg("max_tokens_per_passage", conf)
+    max_input_len = get_required_arg("max_input_len", conf)
+    max_seq_len = get_required_arg("max_seq_len", conf)
+
+    data_path = Path(get_required_arg("data_path", conf))
     num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
-    train_path = split_file_path(data_path, Split.TRAIN)
-    train_dataset = LmDataset(train_path, tokenizer, max_input_len, max_seq_len)
-    val_path = split_file_path(data_path, Split.VAL)
+    train_path = data_path / "train.db"
+    val_path = data_path / "val.db"
+    train_dataset = LmDataset(
+        train_path,
+        tokenizer,
+        max_num_passages,
+        max_tokens_per_passage,
+        max_input_len,
+        max_seq_len,
+    )
     val_dataset = LmDataset(
-        val_path, tokenizer, max_input_len, max_seq_len, num_eval_examples
+        val_path,
+        tokenizer,
+        max_num_passages,
+        max_tokens_per_passage,
+        max_input_len,
+        max_seq_len,
+        num_eval_examples,
     )
     return train_dataset, val_dataset
 
@@ -140,9 +157,7 @@ def get_trainer(
     model = get_peft_model(raw_model, lora_config)
 
     print("\n\nConstructing Dataset...")
-    train_dataset, val_dataset = get_datasets(
-        conf, tokenizer, max_input_len, max_seq_len
-    )
+    train_dataset, val_dataset = get_datasets(conf, tokenizer)
 
     print("\n\nBuilding Trainer...")
     return Trainer(

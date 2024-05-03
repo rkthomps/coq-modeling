@@ -34,20 +34,28 @@ _logger = get_basic_logger(__name__)
 
 class ClassicalSuccess:
     def __init__(
-        self, search_tree: SearchTree, qed_node: SearchNode, total_model_time: float
+        self,
+        search_tree: SearchTree,
+        qed_node: SearchNode,
+        total_model_time: float,
+        total_search_time: float,
     ) -> None:
         self.search_tree = search_tree
         self.qed_node = qed_node
         self.total_model_time = total_model_time
+        self.total_search_time = total_search_time
 
     def get_proof(self) -> str:
         return self.qed_node.steps_to_str(self.qed_node.combined_proof_steps)
 
 
 class ClassicalFailure:
-    def __init__(self, search_tree: SearchTree, total_model_time: float) -> None:
+    def __init__(
+        self, search_tree: SearchTree, total_model_time: float, total_search_time: float
+    ) -> None:
         self.search_tree = search_tree
         self.total_model_time = total_model_time
+        self.total_search_time = total_search_time
 
 
 class ErroredSearch:
@@ -203,6 +211,7 @@ class ClassicalSearcher:
         for i in range(self.max_num_leaf_expansions):
             cur = time.time_ns()
             if ((cur - start) / 1e9) > self.timeout:
+                _logger.debug(f"failure by timeout of {self.timeout}")
                 break
             if len(self.frontier) == 0:
                 break
@@ -211,10 +220,15 @@ class ClassicalSearcher:
             if print_trees:
                 self.search_tree.pretty_print(verbose=True)
             if possible_complete_node:
+                cur = time.time_ns()
                 return ClassicalSuccess(
-                    self.search_tree, possible_complete_node, self.total_model_time
+                    self.search_tree,
+                    possible_complete_node,
+                    self.total_model_time,
+                    cur - start,
                 )
-        return ClassicalFailure(self.search_tree, self.total_model_time)
+        cur = time.time_ns()
+        return ClassicalFailure(self.search_tree, self.total_model_time, cur - start)
 
     def __get_goal_scorer(self, dset_file: DatasetFile) -> GoalScorer:
         avail_lemmmas: list[str] = []
@@ -289,7 +303,7 @@ class ClassicalSearcher:
 
     def as_hard_as(self, gs1: list[Goal], gs2: list[Goal]) -> bool:
         return self.comparer.as_hard_as(
-            gs1, gs2, self.proof_manager.fast_client, self.proof_manager.file_prefix
+            gs1, gs2, self.proof_manager.goal_client, self.proof_manager.file_prefix
         )
 
     def __get_valid_child_node(
@@ -312,8 +326,8 @@ class ClassicalSearcher:
         )
         creation_time = time.time_ns() - search_start_time
         makes_progress = (
-            redundant_to
-            is None
+            redundant_to is None
+            or self.is_only_focusing(attempted_tactic)
             # or self.__is_bullet(attempted_tactic)
             # or self.__is_first_proof_tactic(
             #     parent_node.total_proof_str(), attempted_tactic
@@ -353,6 +367,10 @@ class ClassicalSearcher:
             all_next_num_tokens.extend(result.num_tokens_list)
         return filter_recs(all_next_tactics, all_next_scores, all_next_num_tokens, [])
 
+    def is_only_focusing(self, tactic: str) -> bool:
+        stripped_tactic = tactic.strip()
+        return all([c in "*-+" for c in stripped_tactic])
+
     def search_step(
         self,
         step_num: int,
@@ -386,10 +404,18 @@ class ClassicalSearcher:
         result = self.get_all_recs(examples, current_proof)
         end_time = time.time()
         self.total_model_time += end_time - start_time
-        children: list[SearchNode] = []
         next_frontier_pool: list[SearchNode] = []
         next_frontier_goals: list[list[Goal]] = []
         # print(result.next_tactic_list)
+        num_invalid = 0
+        if (
+            len(result.next_tactic_list) == 0
+            or len(result.score_list) == 0
+            or len(result.num_tokens_list) == 0
+        ):
+            _logger.error(
+                f"ZERO LEN IN TAC; SCORE; NUM TOK: {len(result.next_tactic_list)}; {len(result.score_list)}; {len(result.num_tokens_list)}"
+            )
         for tactic, score, num_tokens in zip(
             result.next_tactic_list, result.score_list, result.num_tokens_list
         ):
@@ -413,8 +439,7 @@ class ClassicalSearcher:
                         node_score,
                         search_start_time,
                     )
-                    children.append(complete_node)
-                    leaf_subtree.children = children
+                    leaf_subtree.children.append(complete_node)
                     return complete_node
 
                 case TacticResult.INVALID:
@@ -429,7 +454,8 @@ class ClassicalSearcher:
                         node_score,
                         search_start_time,
                     )
-                    children.append(invalid_node)
+                    num_invalid += 1
+                    leaf_subtree.children.append(invalid_node)
 
                 case TacticResult.VALID:
                     assert proof_check_result.current_goals is not None
@@ -451,7 +477,7 @@ class ClassicalSearcher:
                             node_score,
                             search_start_time,
                         )
-                        children.append(complete_node)
+                        leaf_subtree.children.append(complete_node)
                         return complete_node
 
                     valid_node = self.__get_valid_child_node(
@@ -462,7 +488,7 @@ class ClassicalSearcher:
                         search_start_time,
                     )
 
-                    children.append(valid_node)
+                    leaf_subtree.children.append(valid_node)
                     # We will check again if the candide makes progress to make
                     # sure it isn't superceded by later candidates.
                     if (
@@ -487,6 +513,4 @@ class ClassicalSearcher:
                     node.makes_progress = False
             self.frontier = next_frontier
 
-        # print([n.score.compute() for n, _ in self.frontier])
-        leaf_subtree.children = children
         return None

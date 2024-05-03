@@ -1,3 +1,6 @@
+REPOS_NAME = "repos"
+DATA_POINTS_NAME = "data_points"
+
 TRAINING_CONF_NAME = "training_conf.yaml"
 REQS_NAME = "requirements.txt"
 GIT_NAME = "git.txt"

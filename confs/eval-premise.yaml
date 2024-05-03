@@ -1,10 +1,65 @@
-premise:
-  alias: rerank
-  checkpoint_loc: models/rerank/checkpoint-10100
-  rerank_num: 64
-
 data_loc: raw-data/coq-dataset
 sentence_db_loc: sentences.db
 data_split_loc: splits/final-split.json
 split_name: val
-save_loc: rerank 
+save_loc: prem-lemma-online
+
+# premise:
+#   alias: select 
+#   checkpoint_loc: models/premise-lemma/checkpoint-800
+#   vector_db_loc: vector-dbs/prem-lemma
+
+premise:
+  alias: tfidf
+  context_format_alias: basic
+  premise_format_alias: basic
+  premise_filter:
+    coq_excludes:
+    - THEOREM
+    - LEMMA
+    - DEFINITION
+    - NOTATION
+    - INDUCTIVE
+    - COINDUCTIVE
+    - RECORD
+    - CLASS
+    - INSTANCE
+    - FIXPOINT
+    - COFIXPOINT
+    - SCHEME
+    - VARIANT
+    - FACT
+    - REMARK
+    - COROLLARY
+    - PROPOSITION
+    - PROPERTY
+    - OBLIGATION
+    - TACTIC
+    - RELATION
+    - SETOID
+    - FUNCTION
+    - DERIVE
+    - OTHER
+
+    non_coq_excludes:
+    - DEFINITION
+    - NOTATION
+    - INDUCTIVE
+    - COINDUCTIVE
+    - RECORD
+    - CLASS
+    - INSTANCE
+    - FIXPOINT
+    - COFIXPOINT
+    - SCHEME
+    - VARIANT
+    - OBLIGATION
+    - TACTIC
+    - RELATION
+    - SETOID
+    - FUNCTION
+    - DERIVE
+    - OTHER
+
+    general_excludes: []
+

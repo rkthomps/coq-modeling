@@ -1,24 +1,25 @@
-n_procs: 16
+n_procs: 8
 split: val
 
-save_loc: ./eval-results/base-500-mcts
+save_loc: ./eval-results/test
 data_loc: raw-data/coq-dataset
 sentence_db_loc: sentences.db
 data_split_loc: splits/final-split.json
 
-# search:
-#   node_score_alias: heuristic-score
-#   max_branch: 32
-#   max_expansions: 500
-#   depth_limit: 30
-#   timeout: 120
-
 search:
-  alias: mcts
+  alias: classical
+  node_score_alias: heuristic-score
   max_branch: 32
-  depth_limit: 10
+  max_expansions: 500
+  depth_limit: 30
   timeout: 120
-  print_proofs: False
+
+# search:
+#   alias: mcts
+#   max_branch: 32
+#   depth_limit: 10
+#   timeout: 120
+#   print_proofs: False
 
 max_eval_proofs: 500
 
@@ -83,9 +84,17 @@ max_eval_proofs: 500
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
 
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-lookup/checkpoint-103500
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-base-basic-final/checkpoint-110500
+
 tactic_gen:
-  alias: fid
-  checkpoint_loc: models/t5-fid-base-basic-final/checkpoint-110500
+  alias: codellama
+  checkpoint_loc: models/codellama-7b-whole-proof-ret/checkpoint-5500
 
 # tactic_gen:
 #   alias: fid

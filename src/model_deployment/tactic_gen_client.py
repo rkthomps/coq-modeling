@@ -27,6 +27,9 @@ from tactic_gen.lm_example import (
 from model_deployment.model_result import ModelResult
 
 from util.socket_client import ServerAdapter
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 @dataclass
@@ -37,6 +40,25 @@ class FidTacticGenConf:
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> FidTacticGenConf:
+        formatter_confs = None
+        if "formatter" in yaml_data:
+            formatter_confs = [
+                formatter_conf_from_yaml(f) for f in yaml_data["formatters"]
+            ]
+        return cls(
+            Path(yaml_data["checkpoint_loc"]),
+            formatter_confs,
+        )
+
+
+@dataclass
+class CodellamaTacticGenConf:
+    ALIAS = "codellama"
+    checkpoint_loc: Path
+    formatter_confs: Optional[list[FormatterConf]]
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> CodellamaTacticGenConf:
         formatter_confs = None
         if "formatter" in yaml_data:
             formatter_confs = [
@@ -118,15 +140,19 @@ class LocalTacticGenClient:
             self.urls.append(url)
 
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
+        request_id = hash(example)
         request_data = {
             "method": "get_recs",
             "params": [example.to_json(), n, current_proof],
             "jsonrpc": "2.0",
-            "id": 0,
+            "id": request_id,
         }
 
         chosen_url = random.choice(self.urls)
         response = self.session.post(chosen_url, json=request_data).json()
+        if request_id != request_id:
+            _logger.error("ID MISMATCH IN REQUESTS")
+        assert response["id"] == request_id
         return ModelResult.from_json(response["result"])
 
     @classmethod
@@ -149,7 +175,12 @@ def tactic_gen_client_from_conf(conf: TacticGenConf) -> TacticGenClient:
             raise ValueError(f"Invalid tactic client config: {str(conf.__class__)}")
 
 
-TacticGenConf = LocalTacticGenClientConf | FidTacticGenConf | OpenAiCientConf
+TacticGenConf = (
+    LocalTacticGenClientConf
+    | FidTacticGenConf
+    | CodellamaTacticGenConf
+    | OpenAiCientConf
+)
 
 
 def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:
@@ -157,6 +188,8 @@ def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:
     match attempted_alias:
         case LocalTacticGenClientConf.ALIAS:
             return LocalTacticGenClientConf.from_yaml(yaml_data)
+        case CodellamaTacticGenConf.ALIAS:
+            return CodellamaTacticGenConf.from_yaml(yaml_data)
         case FidTacticGenConf.ALIAS:
             return FidTacticGenConf.from_yaml(yaml_data)
         case OpenAiCientConf.ALIAS:

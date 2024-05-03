@@ -227,7 +227,9 @@ class MCTSSearcher:
                 break
         if rollout_node is None:
             assert selected_node.goals is not None
-            rollout_score = self.goal_scorer.score_goals(selected_node.goals)
+            rollout_score = self.goal_scorer.score_goals(
+                selected_node.goals, normalized=False
+            )
             backprop_path = selected_path
         else:
             rollout_score, qed_node = self.rollout(rollout_node, 0)
@@ -266,7 +268,7 @@ class MCTSSearcher:
         )
         match proof_check_result.tactic_result:
             case TacticResult.INVALID:
-                score = self.goal_scorer.score_goals(start_node.goals)
+                score = self.goal_scorer.score_goals(start_node.goals, normalized=False)
                 if self.print_proofs:
                     print(proof_script)
                 return score, None
@@ -283,7 +285,7 @@ class MCTSSearcher:
                     if self.print_proofs:
                         print(proof_script)
                     score = self.goal_scorer.score_goals(
-                        proof_check_result.current_goals
+                        proof_check_result.current_goals, normalized=False
                     )
                     return score, None
                 valid = True

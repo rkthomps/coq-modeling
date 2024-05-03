@@ -4,6 +4,7 @@ from typing import Iterable, Any, Optional, TypeVar
 import sys, os
 from tqdm import tqdm
 import torch
+from pathlib import Path
 from transformers import GPT2Tokenizer
 from yaml import load, Loader
 
@@ -120,10 +121,52 @@ class SelectWrapper:
         self.sentence_db = sentence_db
         self.vector_db = vector_db
         self.batch_size = 128
+        self.__transform_mat: Optional[torch.Tensor] = None
 
     def get_input(self, s: str) -> Any:
         inputs = tokenize_strings(self.tokenizer, [s], self.max_seq_len)
         return inputs
+
+    def clear_transformation_matrix(self):
+        self.__transform_mat = None
+
+    def set_transformation_matrix(
+        self,
+        premises: list[Sentence],
+        contexts: list[str],
+    ):
+        assert len(premises) == len(contexts)
+        if len(premises) == 0:
+            return
+        premise_embs: Optional[torch.Tensor] = None
+        if self.vector_db is not None:
+            premise_idxs: list[int] = []
+            for p in premises:
+                if p.db_idx is None:
+                    break
+                premise_idxs.append(p.db_idx)
+            if len(premise_idxs) == len(premises):
+                premise_embs = self.vector_db.get_embs(premise_idxs)
+        if premise_embs is None:
+            premise_embs = self.get_premise_embs(
+                [self.premise_format.format(p) for p in premises]
+            )
+
+        goal_batches = batch_examples(contexts, self.batch_size)
+        goal_emb_list: list[torch.Tensor] = []
+        for batch in goal_batches:
+            with torch.no_grad():
+                batch_inputs = tokenize_strings(self.tokenizer, batch, self.max_seq_len)
+                batch_emb = self.retriever.encode_context(
+                    batch_inputs.input_ids, batch_inputs.attention_mask
+                )
+            goal_emb_list.append(batch_emb)
+        goal_embs = torch.cat(goal_emb_list)
+
+        assert premise_embs.shape == goal_embs.shape
+        self.__transform_mat = torch.linalg.solve(
+            premise_embs.T @ premise_embs, premise_embs.T @ goal_embs
+        )
 
     def encode_all(
         self, indices: list[int], non_indices: list[Sentence]
@@ -145,9 +188,9 @@ class SelectWrapper:
                 return self.encode_all(indices, non_indices)
             to_encode = non_indices
             to_encode_strs = [self.premise_format.format(s) for s in to_encode]
-            non_index_embs = self.get_premise_embs(to_encode_strs)
-            if len(non_index_embs) == 0:
+            if 0 == len(non_indices):
                 return index_embs
+            non_index_embs = self.get_premise_embs(to_encode_strs)
             return torch.cat((index_embs, non_index_embs), 0)
         return self.encode_all(indices, non_indices)
 
@@ -171,6 +214,8 @@ class SelectWrapper:
         self, context_str: str, idx_premises: list[int], other_premises: list[Sentence]
     ) -> list[float]:
         premise_matrix = self.encode_premises(idx_premises, other_premises)
+        if self.__transform_mat is not None:
+            premise_matrix = premise_matrix @ self.__transform_mat
         context_inputs = self.get_input(context_str)
         with torch.no_grad():
             context_encoding = self.retriever.encode_context(
@@ -184,7 +229,7 @@ class SelectWrapper:
     def from_checkpoint(
         cls,
         checkpoint_loc: str,
-        vector_db_loc: Optional[str] = None,
+        vector_db_loc: Optional[Path] = None,
     ) -> SelectWrapper:
         model_loc = os.path.dirname(checkpoint_loc)
         data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
@@ -195,9 +240,9 @@ class SelectWrapper:
             model_conf = load(fin, Loader=Loader)
         max_seq_len = get_required_arg("max_seq_len", model_conf)
         tokenizer = GPT2Tokenizer.from_pretrained(model_conf["model_name"])
-        sentence_db_loc = premise_conf["sentence_db_loc"]
+        sentence_db_loc = Path(premise_conf["sentence_db_loc"])
         sentence_db = SentenceDB.load(sentence_db_loc)
-        premise_format_alias = premise_conf["premise_format_alias"]
+        premise_format_alias = premise_conf["premise_format_type_alias"]
         # context_format_alias = premise_conf["context_format_alias"]
         premise_format = PREMISE_ALIASES[premise_format_alias]
         # context_format = CONTEXT_ALIASES[context_format_alias]
@@ -220,7 +265,7 @@ class SelectWrapper:
     def from_conf(cls, conf: Any) -> SelectWrapper:
         checkpoint_loc = conf["checkpoint_loc"]
         if "vector_db_loc" in conf:
-            vector_db_loc = conf["vector_db_loc"]
+            vector_db_loc = Path(conf["vector_db_loc"])
         else:
             vector_db_loc = None
         return cls.from_checkpoint(checkpoint_loc, vector_db_loc)

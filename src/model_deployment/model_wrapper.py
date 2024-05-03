@@ -150,7 +150,7 @@ class CodeLLamaLocalWrapper:
         model: LlamaForCausalLM,
         tokenizer: CodeLlamaTokenizer,
         stop_strings: list[str],
-        collate_fn: Callable[[str], str],
+        collate_fn: Callable[[LmExample], str],
         batch_size: int = 2,
     ) -> None:
         self.model = model
@@ -161,7 +161,7 @@ class CodeLLamaLocalWrapper:
 
     # TODO test built in huggingface beam decoding
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
-        collated_input = self.collate_fn(example.input)
+        collated_input = self.collate_fn(example)
         input_ids = self.tokenizer(collated_input, return_tensors="pt")["input_ids"].to(
             "cuda"
         )
@@ -206,21 +206,23 @@ class CodeLLamaLocalWrapper:
         )
         tokenizer = get_tokenizer(model_conf)
         tokenizer.add_eos_token = False
+        max_num_passages = model_conf["max_num_passages"]
+        max_tokens_per_passage = model_conf["max_tokens_per_passage"]
         max_input_len = model_conf["max_input_len"]
         max_seq_len = model_conf["max_seq_len"]
 
-        def collate_fn(input_s: str) -> str:
-            output_s = ""
+        def collate_fn(input_example: LmExample) -> str:
             collated_in, _ = collate_example(
                 tokenizer,
+                max_num_passages,
+                max_tokens_per_passage,
                 max_input_len,
                 max_seq_len,
-                input_s,
-                output_s,
+                input_example,
             )
             return collated_in
 
-        return cls(model, tokenizer, collate_fn)
+        return cls(model, tokenizer, [], collate_fn)
 
     @classmethod
     def from_conf(cls, json_data: Any) -> ModelWrapper:

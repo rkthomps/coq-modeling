@@ -17,6 +17,8 @@ from data_management.sentence_db import SentenceDB, DBSentence
 
 from coqpyt.coq.structs import TermType
 
+from util.constants import DATA_POINTS_NAME
+
 # from util.util import get_basic_logger
 
 # _logger = get_basic_logger(__name__)
@@ -482,7 +484,6 @@ class FileContext:
 
 
 class DatasetFile:
-
     def __init__(self, file_context: FileContext, proofs: list[Proof]) -> None:
         # TODO: Turn into list of proofs.
         self.file_context = file_context
@@ -639,6 +640,30 @@ class DatasetFile:
         file_context = FileContext.from_directory(dir_path, sentence_db)
         proofs = cls.get_proofs(dir_path, sentence_db)
         return cls(file_context, proofs)
+
+
+class DPCache:
+    def __init__(self, cache_size: int = 128):
+        self.__cached_dps: dict[str, DatasetFile] = {}
+        self.__cached_keys: list[str] = []
+        self.__cache_size = cache_size
+
+    def get_dp(
+        self, dp_name: str, data_loc: Path, sentence_db: SentenceDB
+    ) -> DatasetFile:
+        assert len(self.__cached_keys) == len(self.__cached_dps)
+        if dp_name in self.__cached_dps:
+            cur_idx = self.__cached_keys.index(dp_name)
+            self.__cached_keys.pop(cur_idx)
+            self.__cached_keys.insert(0, dp_name)
+            return self.__cached_dps[dp_name]
+        dp_loc = data_loc / DATA_POINTS_NAME / dp_name
+        dp_obj = DatasetFile.load(dp_loc, sentence_db)
+        self.__cached_dps[dp_name] = dp_obj
+        self.__cached_keys.insert(0, dp_name)
+        if self.__cache_size < len(self.__cached_keys):
+            self.__cached_keys.pop()
+        return dp_obj
 
 
 def process_dp(orig_dp_loc: str, new_dp_loc: str, sentence_db_loc: Path) -> None:

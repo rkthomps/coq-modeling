@@ -27,6 +27,7 @@ sentences.db
 # Temporary
 test_size.py
 err.txt
+.cm-search
 
 # Examples
 examples

@@ -38,12 +38,10 @@ from data_management.sentence_db import SentenceDB
 
 from coqpyt.coq.structs import TermType
 from util.util import get_basic_logger
+from util.constants import DATA_POINTS_NAME, REPOS_NAME
 
 _logger = get_basic_logger(__name__)
 
-
-REPOS_NAME = "repos"
-DATA_POINTS_NAME = "data_points"
 
 RANDOM_SEED = 0
 INVALID_DATE = datetime.datetime(1900, 1, 1, tzinfo=pytz.timezone("US/Pacific"))
@@ -136,7 +134,7 @@ class ThmMap:
         self.sentence_db = sentence_db
 
     def lookup(self, data_loc: Path, dp_name: str) -> tuple[FileInfo, set[str]]:
-        dp_loc = data_loc / DATA_POINTS_NAME / dp_name  
+        dp_loc = data_loc / DATA_POINTS_NAME / dp_name
         if dp_loc in self.thm_map:
             return self.thm_map[dp_loc]
         dp_obj = DatasetFile.load(dp_loc, self.sentence_db, metadata_only=True)
@@ -156,6 +154,7 @@ class ThmMap:
 
         self.thm_map[dp_loc] = file_info, thms
         return file_info, thms
+
 
 class Project:
     def __init__(self, repo_name: str, files: list[FileInfo]) -> None:
@@ -303,7 +302,9 @@ class EvalProjects:
         self._verify_format(self.testing_projects)
         self._verify_format(self.testing_projects)
 
-    def get_projects(self, data_loc: Path, project_names: list[str], thm_map: ThmMap) -> list[Project]:
+    def get_projects(
+        self, data_loc: Path, project_names: list[str], thm_map: ThmMap
+    ) -> list[Project]:
         projects: list[Project] = []
         for project_name in project_names:
             _logger.info(f"Gathering project: {project_name}")
@@ -426,7 +427,9 @@ class DataSplit:
         return os.path.relpath(path, prefix)
 
     @classmethod
-    def find_files(cls, data_loc: Path, repo_name: str, thm_map: ThmMap) -> list[FileInfo]:
+    def find_files(
+        cls, data_loc: Path, repo_name: str, thm_map: ThmMap
+    ) -> list[FileInfo]:
         dp_loc = os.path.join(data_loc, DATA_POINTS_NAME)
         repo_qualified_name = os.path.join(REPOS_NAME, repo_name)
         files: list[FileInfo] = []
@@ -480,7 +483,11 @@ class DataSplit:
 
     @classmethod
     def __assign_projects(
-        cls, data_loc: Path, project_list: list[Project], thm_map: ThmMap, train_cutoff: float = 0.8
+        cls,
+        data_loc: Path,
+        project_list: list[Project],
+        thm_map: ThmMap,
+        train_cutoff: float = 0.8,
     ) -> DataSplit:
         """
         Train gets first 80% of projects, and any projects with interecting
@@ -519,9 +526,13 @@ class DataSplit:
         return cls([], [], [])
 
     @classmethod
-    def create(cls, data_loc: Path, sentence_db: SentenceDB, time_sorted: bool) -> DataSplit:
+    def create(
+        cls, data_loc: Path, sentence_db: SentenceDB, time_sorted: bool
+    ) -> DataSplit:
         thm_map = ThmMap(sentence_db)
-        ordered_project_list = cls.__get_ordered_project_list(data_loc, time_sorted, thm_map)
+        ordered_project_list = cls.__get_ordered_project_list(
+            data_loc, time_sorted, thm_map
+        )
         data_split = cls.__assign_projects(data_loc, ordered_project_list, thm_map)
         data_points_loc = os.path.join(data_loc, DATA_POINTS_NAME)
         num_raw_files = len(os.listdir(data_points_loc))
@@ -535,7 +546,9 @@ class DataSplit:
         return data_split
 
     @classmethod
-    def create_from_list(cls, data_loc: Path, sentence_db: SentenceDB, eval_projects: EvalProjects) -> DataSplit:
+    def create_from_list(
+        cls, data_loc: Path, sentence_db: SentenceDB, eval_projects: EvalProjects
+    ) -> DataSplit:
         thm_map = ThmMap(sentence_db)
         test_thms: set[str] = set()
         test_projects = eval_projects.get_testing_projects(data_loc, thm_map)
