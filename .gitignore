@@ -6,6 +6,7 @@ models
 models-small
 preprocessing
 premise-eval
+results
 evals
 reports
 distances
