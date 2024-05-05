@@ -28,6 +28,7 @@ from model_deployment.premise_client import (
     PremiseConf,
     premise_conf_from_yaml,
     premise_client_from_conf,
+    merge_premise_confs,
 )
 from model_deployment.mine_goals import FileGoals, GoalRecord
 from model_deployment.transform_ast import AdjTree
@@ -149,6 +150,12 @@ class PremiseFormatterConf:
     premise_conf: PremiseConf
     n_step_conf: NStepConf
 
+    def merge(self, other: PremiseFormatterConf) -> PremiseFormatterConf:
+        assert self.n_step_conf == other.n_step_conf
+        new_premise_conf = merge_premise_confs(self.premise_conf, other.premise_conf)
+        return PremiseFormatterConf(new_premise_conf, self.n_step_conf)
+        
+
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseFormatterConf:
         return cls(
@@ -203,6 +210,15 @@ FormatterConf = (
     | GPTProofFormatterConf
     | GPTPremiseFormatterConf
 )
+
+def merge_formatters(f1: FormatterConf, f2: FormatterConf) -> FormatterConf:
+    match f1:
+        case PremiseFormatterConf():
+            pass
+        case _:
+            assert f1 == f2
+            return f1
+
 
 
 def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:

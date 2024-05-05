@@ -16,14 +16,13 @@ from model_deployment.run_proof import (
     run_proof,
     TestProofConf,
     TheoremLocationInfo,
-    RunProofConf,
 )
-from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
-from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
+
+from model_deployment.prove import RunProofConf, LocationInfo, SearchSummary, run_proof, summary_from_result
+
 from model_deployment.searcher import (
     SearcherConf,
     searcher_conf_from_yaml,
-    searcher_from_conf,
 )
 from model_deployment.tactic_gen_client import TacticGenConf, tactic_gen_conf_from_yaml
 from util.constants import CLEAN_CONFIG
@@ -86,189 +85,6 @@ class TestProofsConf:
             tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
         )
 
-
-@dataclass
-class MCTSSummary:
-    file: Path
-    theorem: str
-    success: bool
-    search_time: float | None
-    model_time: float | None
-
-    def save(self, save_dir: Path) -> None:
-        save_loc = save_dir / str(self.file / self.theorem).replace(os.path.sep, "-")
-        with save_loc.open("wb") as fout:
-            fout.write(pickle.dumps(self))
-
-    def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
-        headers = [
-            "file",
-            "theorem",
-            "success",
-            "search_time",
-            "model_time",
-        ]
-        return headers, {
-            "file": str(self.file),
-            "theorem": self.theorem,
-            "success": self.success,
-            "search_time": self.search_time,
-            "model_time": self.model_time,
-        }
-
-    def pretty_print(self):
-        if self.search_time is None:
-            nice_str = "{:20s}{:20s} FAILURE BY ERROR.".format(
-                str(self.file), self.theorem
-            )
-        else:
-            success_str = "SUCCESS" if self.success else "FAILURE"
-            nice_str = "{:20s}{:20s}{:10s} after {:3.2f} seconds.".format(
-                str(self.file), self.theorem, success_str, self.search_time
-            )
-        print(nice_str)
-
-    def __lt__(self, other: MCTSSummary) -> bool:
-        if self.file == other.file:
-            return self.theorem < other.theorem
-        return self.file < other.file
-
-    @classmethod
-    def from_search_result(
-        cls, file: Path, theorem: str, result: MCTSSuccess | MCTSFailure | None
-    ) -> MCTSSummary:
-        match result:
-            case MCTSSuccess():
-                return cls(file, theorem, True, result.time, result.model_time)
-            case MCTSFailure():
-                return cls(file, theorem, False, result.time, result.model_time)
-            case None:
-                return cls(file, theorem, False, None, None)
-
-
-@dataclass
-class SearchSummary:
-    file: Path
-    theorem: str
-    success: bool
-    search_steps: int | None
-    max_depth: int | None
-    num_proofs_attempted: int | None
-    search_time: float | None
-    model_time: float | None
-    num_tactic_errors: int | None
-    num_nodes_pruned: int | None
-
-    def save(self, save_dir: Path) -> None:
-        save_loc = save_dir / str(self.file / self.theorem).replace(os.path.sep, "-")
-        with save_loc.open("wb") as fout:
-            fout.write(pickle.dumps(self))
-
-    def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
-        headers = [
-            "file",
-            "theorem",
-            "success",
-            "search_time",
-            "model_time",
-            "search_steps",
-            "max_depth",
-            "num_proofs_attempted",
-            "num_tactic_errors",
-            "num_nodes_pruned",
-        ]
-        return headers, {
-            "file": str(self.file),
-            "theorem": self.theorem,
-            "success": self.success,
-            "search_steps": self.search_steps,
-            "max_depth": self.max_depth,
-            "num_proofs_attempted": self.num_proofs_attempted,
-            "search_time": self.search_time,
-            "model_time": self.model_time,
-            "num_tactic_errors": self.num_tactic_errors,
-            "num_nodes_pruned": self.num_nodes_pruned,
-        }
-
-    def pretty_print(self):
-        if self.search_time is None:
-            nice_str = "{:20s}{:20s} FAILURE BY ERROR.".format(
-                str(self.file), self.theorem
-            )
-        else:
-            success_str = "SUCCESS" if self.success else "FAILURE"
-            nice_str = "{:20s}{:20s}{:10s} after {:3.2f} seconds.".format(
-                str(self.file), self.theorem, success_str, self.search_time
-            )
-        print(nice_str)
-
-    def __lt__(self, other: SearchSummary) -> bool:
-        if self.file == other.file:
-            return self.theorem < other.theorem
-        return self.file < other.file
-
-    @classmethod
-    def from_search_result(
-        cls,
-        file: Path,
-        theorem: str,
-        result: ClassicalSuccess | ClassicalFailure | None,
-    ) -> SearchSummary:
-        if result is None:
-            return cls(file, theorem, False, None, None, None, None, None, None, None)
-        search_size = result.search_tree.root.size()
-        num_errors = result.search_tree.root.num_errors()
-        num_pruned = result.search_tree.root.num_pruned()
-        _, max_depth = result.search_tree.root.get_deepest_node()
-        match result:
-            case ClassicalSuccess():
-                path_to_qed = result.search_tree.root.get_path_to_qed()
-                assert 2 <= len(path_to_qed)
-                assert path_to_qed[-2].expanded is not None
-                expand_num = path_to_qed[-2].expanded
-                search_time = result.total_search_time / 1e9
-                return SearchSummary(
-                    file,
-                    theorem,
-                    True,
-                    expand_num,
-                    max_depth,
-                    search_size,
-                    search_time,
-                    result.total_model_time,
-                    num_errors,
-                    num_pruned,
-                )
-            case ClassicalFailure():
-                expand_num = result.search_tree.root.get_last_node_expanded()
-                search_time = result.total_search_time / 1e9
-                return SearchSummary(
-                    file,
-                    theorem,
-                    False,
-                    expand_num,
-                    max_depth,
-                    search_size,
-                    search_time,
-                    result.total_model_time,
-                    num_errors,
-                    num_pruned,
-                )
-
-
-Summary = MCTSSummary | SearchSummary
-
-
-def summary_from_result(
-    file: Path,
-    theorem: str,
-    result: ClassicalSuccess | ClassicalFailure | MCTSSuccess | MCTSFailure,
-) -> Summary:
-    match result:
-        case ClassicalSuccess() | ClassicalFailure():
-            return SearchSummary.from_search_result(file, theorem, result)
-        case MCTSSuccess() | MCTSFailure():
-            return MCTSSummary.from_search_result(file, theorem, result)
 
 
 def run_test(test_proof: TestProofConf, save_dir: Path):

@@ -8,31 +8,24 @@ from pathlib import Path
 
 from data_management.splits import FileInfo, Split, DataSplit
 from data_management.dataset_file import Term, DatasetFile
-from model_deployment.fast_client import FastLspClient, ClientWrapper
 from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
 from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
+from model_deployment.prove import run_proof, RunProofConf, LocationInfo
 from model_deployment.searcher import (
-    Searcher,
-    SuccessfulSearch,
-    FailedSearch,
     SearcherConf,
     searcher_conf_from_yaml,
-    searcher_from_conf,
 )
 
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
-    TacticGenClient,
     tactic_gen_conf_from_yaml,
     tactic_gen_client_from_conf,
 )
-from model_deployment.proof_manager import ProofInfo, ProofManager
 
 from data_management.sentence_db import SentenceDB
-from util.util import get_basic_logger, get_fresh_path
+from util.util import get_basic_logger
 from util.constants import CLEAN_CONFIG
 
-from coqpyt.coq.base_file import CoqFile
 
 _logger = get_basic_logger(__name__)
 
@@ -114,25 +107,6 @@ class TestProofConf:
         )
 
 
-@dataclass
-class LocationInfo:
-    data_loc: Path
-    file_info: FileInfo
-    split: Split
-    dataset_file: DatasetFile
-    dp_proof_idx: int
-    sentence_db: SentenceDB
-    data_split: DataSplit
-
-
-@dataclass
-class RunProofConf:
-    location_info: LocationInfo
-    search_conf: SearcherConf
-    tactic_gen: TacticGenClient
-    print_proofs: bool
-    print_trees: bool
-
 
 PROOF_KEYWORDS = ["Lemma", "Theorem", "Proposition", "Remark", "Example", "Property"]
 
@@ -143,56 +117,6 @@ def get_term(dp_file: DatasetFile, theorem_str: str) -> Term:
             return proof.theorem
     raise ValueError(f"{theorem_str} not found in {dp_file.file_context.file}")
 
-
-def normalize(s: str) -> str:
-    return " ".join(s.split())
-
-
-def get_proof_info(
-    data_loc: Path,
-    file_info: FileInfo,
-    term: Term,
-) -> ProofInfo:
-    file_loc = (data_loc / file_info.file).resolve()
-    workspace_loc = (data_loc / file_info.workspace).resolve()
-    workspace_uri = f"file://{workspace_loc.resolve()}"
-    client = FastLspClient(workspace_uri, timeout=60)
-    fresh_file_loc = get_fresh_path(file_loc, file_loc.name)
-    client_wrapper = ClientWrapper(client, f"file://{fresh_file_loc}")
-    with file_loc.open("r") as fin:
-        file_contents = fin.read()
-    steps = client_wrapper.write_and_get_steps(file_contents)
-    client.shutdown()
-    client.exit()
-    for i, step in enumerate(steps):
-        if normalize(step.text) in normalize(term.term.text) or normalize(
-            term.term.text
-        ) in normalize(step.text):
-            return ProofInfo(term, steps[: (i + 1)], i)
-    raise ValueError(f"Could not find step defining theorem {term.term.text}")
-
-
-def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
-    proof_info = get_proof_info(
-        conf.location_info.data_loc,
-        conf.location_info.file_info,
-        conf.location_info.dataset_file.proofs[conf.location_info.dp_proof_idx].theorem,
-    )
-    with ProofManager(
-        conf.location_info.dataset_file.file_context,
-        proof_info,
-        conf.location_info.file_info,
-        conf.location_info.sentence_db,
-        conf.location_info.split,
-        conf.location_info.data_loc,
-    ) as proof_manager:
-        tree_manager = searcher_from_conf(
-            conf.search_conf, conf.tactic_gen, proof_manager
-        )
-        result = tree_manager.search(
-            print_proofs=conf.print_proofs, print_trees=conf.print_trees
-        )
-        return result
 
 
 if __name__ == "__main__":

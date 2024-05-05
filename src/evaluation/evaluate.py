@@ -15,13 +15,7 @@ import pickle
 
 from data_management.sentence_db import SentenceDB
 from data_management.splits import Split, DataSplit, FileInfo, split2str, str2split
-from model_deployment.run_proofs import MCTSSummary, SearchSummary, summary_from_result
-from model_deployment.run_proof import (
-    run_proof,
-    TestProofConf,
-    RunProofConf,
-    LocationInfo,
-)
+from model_deployment.prove import MCTSSummary, SearchSummary, summary_from_result, run_proof, RunProofConf, LocationInfo
 from model_deployment.mcts_searcher import MCTSConf
 from model_deployment.classical_searcher import ClassicalSearchConf
 from model_deployment.searcher import (
@@ -35,6 +29,7 @@ from model_deployment.tactic_gen_client import (
     TacticGenConf,
     tactic_gen_conf_from_yaml,
     tactic_gen_client_from_conf,
+    merge_tactic_confs,
 )
 from util.constants import CLEAN_CONFIG
 from util.util import get_basic_logger
@@ -79,6 +74,28 @@ class EvalConf:
                     self.search_conf,
                     self.tactic_conf,
                 )
+    
+    def merge(self, other: EvalConf) -> EvalConf:
+        assert self.n_procs == other.n_procs
+        assert self.split == other.split
+        assert self.save_loc == other.save_loc
+        assert self.data_loc == other.data_loc
+        assert self.sentence_db_loc == other.sentence_db_loc
+        assert self.data_split_loc == other.data_split_loc
+        assert self.search_conf == other.search_conf
+        assert self.max_eval_proofs == other.max_eval_proofs
+        new_tactic_conf = merge_tactic_confs(self.tactic_conf, other.tactic_conf)
+        return EvalConf(
+            self.n_procs,
+            self.split,
+            self.save_loc,
+            self.data_loc,
+            self.sentence_db_loc,
+            self.data_split_loc,
+            self.search_conf,
+            new_tactic_conf,
+            self.max_eval_proofs)
+
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> EvalConf:

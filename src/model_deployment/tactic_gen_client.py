@@ -23,6 +23,7 @@ from tactic_gen.lm_example import (
     FormatterConf,
     formatter_conf_from_yaml,
     formatter_from_conf,
+    merge_formatters,
 )
 from model_deployment.model_result import ModelResult
 
@@ -75,6 +76,13 @@ class LocalTacticGenClientConf:
     ALIAS = "client"
     socket_paths: list[Path]
     formatter_confs: list[FormatterConf]
+
+    def merge(self, other: LocalTacticGenClientConf) -> LocalTacticGenClientConf:
+        new_socket_paths = self.socket_paths + other.socket_paths
+        assert len(self.formatter_confs) == len(other.formatter_confs)
+        new_formatter_confs = [merge_formatters(f1, f2) for f1, f2 in zip(self.formatter_confs, other.formatter_confs)]
+        return LocalTacticGenClientConf(new_socket_paths, new_formatter_confs) 
+
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LocalTacticGenClientConf:
@@ -181,6 +189,15 @@ TacticGenConf = (
     | CodellamaTacticGenConf
     | OpenAiCientConf
 )
+
+def merge_tactic_confs(conf1: TacticGenConf, conf2: TacticGenConf) -> TacticGenConf:
+    match conf1:    
+        case LocalTacticGenClientConf():
+            assert isinstance(conf2, LocalTacticGenClientConf)
+            return conf1.merge(conf2)
+        case _:
+            assert conf1 == conf2
+            return conf1
 
 
 def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:

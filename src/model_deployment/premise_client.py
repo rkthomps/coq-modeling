@@ -109,6 +109,21 @@ class SelectClientConf:
     premise_filter_conf: PremiseFilterConf
     sentence_db_loc: Path
 
+    def merge(self, other: SelectClientConf) -> SelectClientConf:
+        new_socket_paths = self.socket_paths + other.socket_paths
+        assert self.context_format_alias == other.context_format_alias
+        assert self.premise_format_alias == other.premise_format_alias
+        assert self.premise_filter_conf == other.premise_filter_conf
+        assert self.sentence_db_loc == other.sentence_db_loc
+        return SelectClientConf(
+            new_socket_paths,
+            self.context_format_alias,
+            self.premise_format_alias,
+            self.premise_filter_conf,
+            self.sentence_db_loc,
+        )
+
+
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectClientConf:
         return cls(
@@ -126,6 +141,12 @@ class RerankClientConf:
     socket_paths: list[Path]
     select_client: PremiseConf
     rerank_num: int
+
+    def merge(self, other: RerankClientConf) -> RerankClientConf:
+        new_socket_paths = self.socket_paths + other.socket_paths
+        new_select_client = merge_premise_confs(self.select_client, other.select_client)
+        assert self.rerank_num == other.rerank_num
+        return RerankClientConf(new_socket_paths, new_select_client, self.rerank_num)
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RerankClientConf:
@@ -145,6 +166,18 @@ PremiseConf = (
     | BM250OkapiConf
     | LookupClientConf
 )
+
+def merge_premise_confs(conf1: PremiseConf, conf2: PremiseConf) -> PremiseConf:
+    match conf1:
+        case SelectClientConf():
+            assert isinstance(conf2, SelectClientConf)
+            return conf1.merge(conf2)
+        case RerankClientConf():
+            assert isinstance(conf2, RerankClientConf)
+            return conf1.merge(conf2)
+        case _:
+            assert conf1 == conf2
+            return conf1
 
 
 def premise_conf_from_yaml(yaml_data: Any) -> PremiseConf:
@@ -690,7 +723,6 @@ class BM25OkapiClient:
 PremiseClient = (
     SelectPremiseClient | RerankClient | TFIdfClient | BM25OkapiClient | LookupClient
 )
-
 
 dp_cache = DPCache()
 
