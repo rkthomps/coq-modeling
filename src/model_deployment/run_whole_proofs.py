@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from tactic_gen.lm_example import LmExample
 from model_deployment.proof_manager import ProofManager
 from model_deployment.whole_proof_searcher import WholeProofSearcher, WholeProofResult
-from model_deployment.run_proof import LocationInfo, TheoremLocationInfo, get_proof_info
+from model_deployment.run_proof import LocationInfo, TheoremLocationInfo
 from model_deployment.run_whole_proof import TestWholeProofConf, RunWholeProofConf
 from model_deployment.run_proofs import ProofConf
 from model_deployment.tactic_gen_client import (

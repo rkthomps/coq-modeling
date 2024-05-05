@@ -81,6 +81,7 @@ class NStepTPESampler:
         tpe = TacticPairEncoding.load(conf.tpe_loc)
         return cls(tpe)
 
+
 @dataclass
 class NStepUniformConf:
     ALIAS = "uniform"
@@ -101,11 +102,13 @@ class NStepTPEConf:
         return cls(yaml_data["tpe_loc"])
 
 
+@dataclass
 class OneStepConf:
     ALIAS = "one"
 
 
-NStepConf = NStepTPEConf | NStepUniformConf | OneStepConf 
+NStepConf = NStepTPEConf | NStepUniformConf | OneStepConf
+
 
 def n_step_conf_from_yaml(yaml_data: Any) -> NStepConf:
     attempted_alias = yaml_data["alias"]
@@ -121,11 +124,13 @@ def n_step_conf_from_yaml(yaml_data: Any) -> NStepConf:
 
 
 NStepSampler = OneStepSampler | NStepUniformSampler | NStepTPESampler
+
+
 def n_step_from_conf(conf: NStepConf) -> NStepSampler:
     match conf:
         case NStepTPEConf():
-            return NStepTPESampler.from_conf(conf) 
+            return NStepTPESampler.from_conf(conf)
         case NStepUniformConf():
             return NStepUniformSampler.from_conf(conf)
-        case OneStepConf(): 
+        case OneStepConf():
             return OneStepSampler()

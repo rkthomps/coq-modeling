@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import sys
+import traceback
 import csv
 import ipdb
 import random
@@ -15,7 +16,14 @@ import pickle
 
 from data_management.sentence_db import SentenceDB
 from data_management.splits import Split, DataSplit, FileInfo, split2str, str2split
-from model_deployment.prove import MCTSSummary, SearchSummary, summary_from_result, run_proof, RunProofConf, LocationInfo
+from model_deployment.prove import (
+    MCTSSummary,
+    SearchSummary,
+    summary_from_result,
+    run_proof,
+    RunProofConf,
+    LocationInfo,
+)
 from model_deployment.mcts_searcher import MCTSConf
 from model_deployment.classical_searcher import ClassicalSearchConf
 from model_deployment.searcher import (
@@ -74,7 +82,7 @@ class EvalConf:
                     self.search_conf,
                     self.tactic_conf,
                 )
-    
+
     def merge(self, other: EvalConf) -> EvalConf:
         assert self.n_procs == other.n_procs
         assert self.split == other.split
@@ -94,8 +102,8 @@ class EvalConf:
             self.data_split_loc,
             self.search_conf,
             new_tactic_conf,
-            self.max_eval_proofs)
-
+            self.max_eval_proofs,
+        )
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> EvalConf:
@@ -195,9 +203,10 @@ if __name__ == "__main__":
 
         for r, eval_proof_conf in zip(process_results, eval_proofs):
             try:
-                r.get(1.1 * conf.search_conf.timeout)
+                r.get(2 * conf.search_conf.timeout)
             except Exception as e:
-                _logger.warning(f"Got exception: {e}")
+                print(traceback.format_exc())
+                # _logger.warning(f"Got exception: {e}")
                 run_conf = eval_proof_conf.to_run_conf()
                 file = eval_proof_conf.data_loc / eval_proof_conf.file_info.file
                 theorem_name = (

@@ -6,7 +6,8 @@ import pickle
 from dataclasses import dataclass
 from model_deployment.proof_manager import ProofManager
 from model_deployment.whole_proof_searcher import WholeProofSearcher, WholeProofResult
-from model_deployment.run_proof import LocationInfo, TheoremLocationInfo, get_proof_info
+from model_deployment.prove import LocationInfo, get_proof_info
+from model_deployment.run_proof import LocationInfo, TheoremLocationInfo
 from model_deployment.tactic_gen_client import (
     TacticGenClient,
     TacticGenConf,

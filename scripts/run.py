@@ -91,13 +91,17 @@ def __make_select_command(
     return command, start_server_num + 1
 
 
-def start_select_server(select_conf: SelectConf, start_server_num: int) -> tuple[Path, int, list[str]]:
+def start_select_server(
+    select_conf: SelectConf, start_server_num: int
+) -> tuple[Path, int, list[str]]:
     command, ret_port = __make_select_command(select_conf, start_server_num)
     server_loc = Path(SERVER_LOC) / str(start_server_num)
-    return server_loc, ret_port, command 
+    return server_loc, ret_port, command
 
 
-def start_rerank_server(rerank_conf: RerankConf, start_server_num: int) -> tuple[Path, int, list[str]]:
+def start_rerank_server(
+    rerank_conf: RerankConf, start_server_num: int
+) -> tuple[Path, int, list[str]]:
     command = [
         "python3",
         f"{RERANK_SERVER_SCRIPT}",
@@ -105,7 +109,7 @@ def start_rerank_server(rerank_conf: RerankConf, start_server_num: int) -> tuple
         f"{start_server_num}",
     ]
     server_loc = Path(SERVER_LOC) / str(start_server_num)
-    return server_loc, start_server_num + 1, command 
+    return server_loc, start_server_num + 1, command
 
 
 def start_servers_premise_conf(
@@ -114,7 +118,9 @@ def start_servers_premise_conf(
 ) -> tuple[PremiseConf, int, list[list[str]]]:
     match conf:
         case SelectConf():
-            socket_path, next_server_num, command = start_select_server(conf, start_server_num)
+            socket_path, next_server_num, command = start_select_server(
+                conf, start_server_num
+            )
             assert 0 < len(conf.checkpoint_loc.parents)
             model_loc = conf.checkpoint_loc.parents[0]
             data_conf_loc = model_loc / PREMISE_DATA_CONF_NAME
@@ -140,14 +146,22 @@ def start_servers_premise_conf(
                 with data_conf_loc.open("r") as fin:
                     yaml_data = yaml.load(fin, Loader=yaml.Loader)
                 data_conf = RerankDatasetConf.from_yaml(yaml_data)
-                rerank_formatter, next_server_num, commands = start_servers_rerank_formatter_conf(
-                    data_conf.rerank_formatter_conf, start_server_num 
+                rerank_formatter, next_server_num, commands = (
+                    start_servers_rerank_formatter_conf(
+                        data_conf.rerank_formatter_conf, start_server_num
+                    )
                 )
                 select_conf = rerank_formatter.select_conf
             else:
-                select_conf, next_server_num, commands = start_servers_premise_conf(conf.select_conf, start_server_num)
-            rerank_paths, next_server_num, rerank_command = start_rerank_server(conf, next_server_num)
-            new_rerank_conf = RerankClientConf([rerank_paths], select_conf, conf.rerank_num)
+                select_conf, next_server_num, commands = start_servers_premise_conf(
+                    conf.select_conf, start_server_num
+                )
+            rerank_paths, next_server_num, rerank_command = start_rerank_server(
+                conf, next_server_num
+            )
+            new_rerank_conf = RerankClientConf(
+                [rerank_paths], select_conf, conf.rerank_num
+            )
             return new_rerank_conf, next_server_num, commands + [rerank_command]
         case _:
             return conf, start_server_num, []
@@ -159,11 +173,15 @@ def start_servers_formatter_conf(
 ) -> tuple[FormatterConf, int, list[list[str]]]:
     match conf:
         case PremiseFormatterConf():
-            premise_conf, next_server_num, commands = start_servers_premise_conf(conf.premise_conf, start_server_num)
+            premise_conf, next_server_num, commands = start_servers_premise_conf(
+                conf.premise_conf, start_server_num
+            )
             new_premise_formatter = PremiseFormatterConf(premise_conf, conf.n_step_conf)
             return new_premise_formatter, next_server_num, commands
         case GPTPremiseFormatterConf():
-            premise_conf, next_server_num, commands = start_servers_premise_conf(conf.premise_conf, start_server_num)
+            premise_conf, next_server_num, commands = start_servers_premise_conf(
+                conf.premise_conf, start_server_num
+            )
             new_premise_formatter = GPTPremiseFormatterConf(premise_conf)
             return new_premise_formatter, next_server_num, commands
         case _:
@@ -174,11 +192,14 @@ def start_servers_rerank_formatter_conf(
     conf: RerankFormatterConf,
     start_server_num: int,
 ) -> tuple[RerankFormatterConf, int, list[list[str]]]:
-    clean_premise_conf, next_server_num, start_commands = start_servers_premise_conf(conf.select_conf, start_server_num)
+    clean_premise_conf, next_server_num, start_commands = start_servers_premise_conf(
+        conf.select_conf, start_server_num
+    )
     new_rerank_formatter_conf = RerankFormatterConf(
         clean_premise_conf, conf.consider_num, conf.negatives_per_positive
     )
     return new_rerank_formatter_conf, next_server_num, start_commands
+
 
 def start_servers_lm_dataset_conf(
     conf: LmDatasetConf,
@@ -188,7 +209,9 @@ def start_servers_lm_dataset_conf(
     formatter_commands: list[list[str]] = []
     next_server_num = start_server_num
     for f in conf.lm_formatter_confs:
-        formatter_conf, next_server_num, commands = start_servers_formatter_conf(f, next_server_num)
+        formatter_conf, next_server_num, commands = start_servers_formatter_conf(
+            f, next_server_num
+        )
         lm_confs.append(formatter_conf)
         formatter_commands.extend(commands)
     new_dataset_conf = LmDatasetConf(
@@ -222,7 +245,7 @@ def start_tactic_gen_servers(
         f"{start_server_num}",
     ]
     server_loc = Path(SERVER_LOC) / str(start_server_num)
-    return server_loc, start_server_num + 1, command 
+    return server_loc, start_server_num + 1, command
 
 
 def start_servers_tactic_gen(
@@ -243,16 +266,23 @@ def start_servers_tactic_gen(
                 formatter_confs = data_conf.lm_formatter_confs
             else:
                 formatter_confs = conf.formatter_confs
+
             all_commands: list[list[str]] = []
-            formatter_confs: list[FormatterConf] = []
+            clean_formatter_confs: list[FormatterConf] = []
             next_server_num = start_server_num
             for f in formatter_confs:
-                formatter_client_conf, next_server_num, commands = start_servers_formatter_conf(f, next_server_num)
+                formatter_client_conf, next_server_num, commands = (
+                    start_servers_formatter_conf(f, next_server_num)
+                )
                 all_commands.extend(commands)
-                formatter_confs.append(formatter_client_conf)
-            tactic_path, next_server_num, tac_command = start_tactic_gen_servers(conf, next_server_num)
-            new_tactic_client = LocalTacticGenClientConf([tactic_path], formatter_confs)
-            return new_tactic_client, next_server_num, all_commands + [tac_command] 
+                clean_formatter_confs.append(formatter_client_conf)
+            tactic_path, next_server_num, tac_command = start_tactic_gen_servers(
+                conf, next_server_num
+            )
+            new_tactic_client = LocalTacticGenClientConf(
+                [tactic_path], clean_formatter_confs
+            )
+            return new_tactic_client, next_server_num, all_commands + [tac_command]
         case _:
             return conf, start_server_num, []
 
@@ -270,7 +300,9 @@ def start_servers(
         case LmDatasetConf():
             return start_servers_lm_dataset_conf(conf, start_server_num)
         case TestProofConf():
-            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(conf.tactic_conf, start_server_num)
+            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(
+                conf.tactic_conf, start_server_num
+            )
             new_proof_conf = TestProofConf(
                 conf.theorem_location_info,
                 conf.search_conf,
@@ -278,9 +310,11 @@ def start_servers(
                 conf.print_proofs,
                 conf.print_trees,
             )
-            return new_proof_conf, next_server_num, commands 
+            return new_proof_conf, next_server_num, commands
         case TestProofsConf():
-            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(conf.tactic_conf, start_server_num)
+            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(
+                conf.tactic_conf, start_server_num
+            )
             new_proofs_conf = TestProofsConf(
                 conf.proofs,
                 conf.n_procs,
@@ -295,8 +329,10 @@ def start_servers(
         case SelectDataConfig():
             return conf, start_server_num, []
         case RerankDatasetConf():
-            rerank_formatter_conf, next_server_num, commands = start_servers_rerank_formatter_conf(
-                conf.rerank_formatter_conf, start_server_num 
+            rerank_formatter_conf, next_server_num, commands = (
+                start_servers_rerank_formatter_conf(
+                    conf.rerank_formatter_conf, start_server_num
+                )
             )
             reraank_data_conf = RerankDatasetConf(
                 conf.n_procs,
@@ -309,9 +345,11 @@ def start_servers(
             )
             return reraank_data_conf, next_server_num, commands
         case GoalDatasetConf():
-            return conf, start_server_num, [] 
+            return conf, start_server_num, []
         case PremiseEvalConf():
-            premise_conf, next_server_num, commands = start_servers_premise_conf(conf.premise_conf, start_server_num)
+            premise_conf, next_server_num, commands = start_servers_premise_conf(
+                conf.premise_conf, start_server_num
+            )
             new_premise_eval_conf = PremiseEvalConf(
                 premise_conf,
                 conf.data_loc,
@@ -322,11 +360,17 @@ def start_servers(
             )
             return new_premise_eval_conf, next_server_num, commands
         case TestWholeProofConf():
-            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(conf.tactic_conf, start_server_num)
-            new_test_whole_proof_conf = TestWholeProofConf(conf.theorem_location_info, tactic_client_conf, conf.n_attempts)
-            return new_test_whole_proof_conf, next_server_num, commands 
+            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(
+                conf.tactic_conf, start_server_num
+            )
+            new_test_whole_proof_conf = TestWholeProofConf(
+                conf.theorem_location_info, tactic_client_conf, conf.n_attempts
+            )
+            return new_test_whole_proof_conf, next_server_num, commands
         case TestWholeProofsConf():
-            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(conf.tactic_conf, start_server_num)
+            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(
+                conf.tactic_conf, start_server_num
+            )
             new_test_whole_proof_conf = TestWholeProofsConf(
                 conf.proofs,
                 conf.n_procs,
@@ -337,9 +381,11 @@ def start_servers(
                 conf.tactic_conf,
                 conf.n_attempts,
             )
-            return new_test_whole_proof_conf, next_server_num, commands 
+            return new_test_whole_proof_conf, next_server_num, commands
         case EvalConf():
-            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(conf.tactic_conf, start_server_num)
+            tactic_client_conf, next_server_num, commands = start_servers_tactic_gen(
+                conf.tactic_conf, start_server_num
+            )
             eval_conf = EvalConf(
                 conf.n_procs,
                 conf.split,
@@ -383,6 +429,7 @@ COMMANDS = {
     "eval-premise": Command(PremiseEvalConf, Path("src/premise_selection/evaluate.py")),
 }
 
+
 def merge_two(conf1: TopLevelConf, conf2: TopLevelConf) -> TopLevelConf:
     match conf1:
         case EvalConf():
@@ -409,13 +456,17 @@ class ServerFailedError(Exception):
     pass
 
 
-def wait_for_servers(start_server_num: int, next_server_num: int, open_processes: list[subprocess.Popen[bytes]]):
+def wait_for_servers(
+    start_server_num: int,
+    next_server_num: int,
+    open_processes: list[subprocess.Popen[bytes]],
+):
     session = requests.Session()
     urls: list[str] = []
     for num in range(start_server_num, next_server_num):
         url = f"http://servers-{num}/"
         path = Path(SERVER_LOC) / str(num)
-        session.mount(f"http://servers-{i}/", ServerAdapter(path))
+        session.mount(f"http://servers-{num}/", ServerAdapter(path))
         urls.append(url)
 
     assert len(open_processes) == len(urls)
@@ -466,7 +517,9 @@ if __name__ == "__main__":
         clean_top_level_confs: list[TopLevelConf] = []
         started_processes: list[subprocess.Popen[bytes]] = []
         for d in args.devices:
-            clean_top_level_conf, next_server_num, commands = start_servers(top_level_conf, next_server_num)
+            clean_top_level_conf, next_server_num, commands = start_servers(
+                top_level_conf, next_server_num
+            )
             clean_top_level_confs.append(clean_top_level_conf)
             env = os.environ | {"CUDA_VISIBLE_DEVICES": f"{d}"}
             for c in commands:
@@ -477,6 +530,8 @@ if __name__ == "__main__":
         with clean_conf_path.open("wb") as fout:
             pickle.dump(clean_top_level_conf, fout)
 
+        print("Merged conf:")
+        print(clean_top_level_conf)
         print("Waiting for servers to start...")
         wait_for_servers(0, next_server_num, started_processes)
         subprocess.run(["python3", command.py_path, args.config])
