@@ -67,13 +67,17 @@ class ServerFailedError(Exception):
     pass
 
 
-def wait_for_servers(start_server_num: int, next_server_num: int, open_processes: list[subprocess.Popen[bytes]]):
+def wait_for_servers(
+    start_server_num: int,
+    next_server_num: int,
+    open_processes: list[subprocess.Popen[bytes]],
+):
     session = requests.Session()
     urls: list[str] = []
     for num in range(start_server_num, next_server_num):
         url = f"http://servers-{num}/"
         path = Path(SERVER_LOC) / str(num)
-        session.mount(f"http://servers-{i}/", ServerAdapter(path))
+        session.mount(f"http://servers-{num}/", ServerAdapter(path))
         urls.append(url)
 
     assert len(open_processes) == len(urls)
@@ -135,6 +139,8 @@ if __name__ == "__main__":
         with clean_conf_path.open("wb") as fout:
             pickle.dump(clean_top_level_conf, fout)
 
+        print("Merged conf:")
+        print(clean_top_level_conf)
         print("Waiting for servers to start...")
         wait_for_servers(0, next_server_num, started_processes)
         subprocess.run(["python3", command.py_path, args.config])
