@@ -48,6 +48,7 @@ class ProofMap:
         return {"map": objs}
 
     def save(self, path: Path):
+        os.makedirs(path.parent, exist_ok=True)
         with path.open("w") as fout:
             fout.write(json.dumps(self.to_json(), indent=2))
 
@@ -187,22 +188,23 @@ def run(
     proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
     proof_sbatch = (
         "#!/bin/bash\n"
-        f"#SBATCH -c {n_cpu}"
+        f"#SBATCH -c {n_cpu}\n"
         f"#SBATCH -t {timeout}\n"
-        f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}"
-        f"timout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
+        f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}\n"
+        f"timeout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
     )
 
     with PROOF_SBATCH_LOC.open("w") as fout:
         fout.write(proof_sbatch)
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("conf_loc", help="Location of eval configuration")
     parser.add_argument("timeout", help="Timeout for evaluation")
-    parser.add_argument("n_gpu_tasks_per_node", type=int, help="Number of gpus per node")
+    parser.add_argument(
+        "n_gpu_tasks_per_node", type=int, help="Number of gpus per node"
+    )
     parser.add_argument("n_gpu_nodes", type=int, help="Number of nodes.")
     parser.add_argument("n_cpus", type=int, help="Number of cpus to use")
     args = parser.parse_args(sys.argv[1:])
@@ -223,4 +225,4 @@ if __name__ == "__main__":
         conf = yaml.load(fin, Loader=yaml.Loader)
 
     eval_conf = EvalConf.from_yaml(conf)
-    run(eval_conf, timeout, n_gpu_tasks_per_node, n_gpu_nodes, n_cpus) 
+    run(eval_conf, timeout, n_gpu_tasks_per_node, n_gpu_nodes, n_cpus)
