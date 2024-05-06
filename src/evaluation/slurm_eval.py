@@ -33,7 +33,7 @@ PROOF_MAP_LOC = Path("./proof_maps")
 
 @dataclass
 class ProofMap:
-    proofs: list[tuple[FileInfo, int]] = []
+    proofs: list[tuple[FileInfo, int]]
 
     def __len__(self) -> int:
         return len(self.proofs)
@@ -202,20 +202,25 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("conf_loc", help="Location of eval configuration")
     parser.add_argument("timeout", help="Timeout for evaluation")
-    parser.add_argument("n_tasks_per_node", help="Number of gpus per node")
-    parser.add_argument("n_nodes", help="Number of nodes.")
-    parser.add_argument("n_cpus", help="Number of cpus to use")
+    parser.add_argument("n_gpu_tasks_per_node", type=int, help="Number of gpus per node")
+    parser.add_argument("n_gpu_nodes", type=int, help="Number of nodes.")
+    parser.add_argument("n_cpus", type=int, help="Number of cpus to use")
     args = parser.parse_args(sys.argv[1:])
 
     conf_loc = Path(args.conf_loc)
-    n_devices = args.n_devices
-    n_nodes = args.n_nodes
+    timeout = args.timeout
+    n_gpu_tasks_per_node = args.n_gpu_tasks_per_node
+    n_gpu_nodes = args.n_gpu_nodes
+    n_cpus = args.n_cpus
+
     assert conf_loc.exists()
-    assert isinstance(n_devices, int)
-    assert isinstance(n_nodes, int)
+    assert isinstance(timeout, str)
+    assert isinstance(n_gpu_tasks_per_node, int)
+    assert isinstance(n_gpu_nodes, int)
+    assert isinstance(n_cpus, int)
 
     with conf_loc.open("r") as fin:
         conf = yaml.load(fin, Loader=yaml.Loader)
 
     eval_conf = EvalConf.from_yaml(conf)
-    run(eval_conf, args.timeout, args.n_tasks_per_node, args.n_nodes, args.n_cpus)
+    run(eval_conf, timeout, n_gpu_tasks_per_node, n_gpu_nodes, n_cpus) 
