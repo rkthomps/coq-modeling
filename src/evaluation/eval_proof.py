@@ -11,6 +11,7 @@ from model_deployment.mcts_searcher import MCTSConf
 from model_deployment.classical_searcher import ClassicalSearchConf
 from model_deployment.prove import LocationInfo, RunProofConf, run_proof, summary_from_result, SearchSummary, MCTSSummary, Summary
 from model_deployment.tactic_gen_client import tactic_gen_client_from_conf 
+from util.constants import CLEAN_CONFIG
 
 def get_orig_summary(file: Path, theorem: str, eval_conf: EvalConf) -> Summary:
     match eval_conf.search_conf:
@@ -23,17 +24,15 @@ def get_orig_summary(file: Path, theorem: str, eval_conf: EvalConf) -> Summary:
 if __name__ == "__main__":
     """This section of the file is just here for evaluation."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("pickled_eval_conf_loc")
     parser.add_argument("proof_map_loc")
     parser.add_argument("proof_map_idx", type=int)
 
     args = parser.parse_args(sys.argv[1:])
-    pickled_eval_conf_loc = Path(args.pickled_eval_conf_loc)
     proof_map_loc = Path(args.proof_map_loc)
     proof_map_idx = args.proof_map_idx
     assert isinstance(proof_map_idx, int)
 
-    with pickled_eval_conf_loc.open("rb") as fin:
+    with Path(CLEAN_CONFIG).open("rb") as fin:
         eval_conf: EvalConf = pickle.load(fin)
 
     proof_map = ProofMap.load(proof_map_loc)
@@ -43,7 +42,7 @@ if __name__ == "__main__":
     data_split = DataSplit.load(eval_conf.data_split_loc)
 
     location_info = LocationInfo(
-        eval_conf.data_loc, proof_file_info, eval_conf.split, proof_dp, proof_idx, sentence_db, eval
+        eval_conf.data_loc, proof_file_info, eval_conf.split, proof_dp, proof_idx, sentence_db, data_split
     )
     tactic_client = tactic_gen_client_from_conf(eval_conf.tactic_conf)
     run_conf = RunProofConf(location_info, eval_conf.search_conf, tactic_client, False, False)

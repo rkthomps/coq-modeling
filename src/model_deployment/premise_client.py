@@ -28,11 +28,11 @@ from coqpyt.coq.structs import TermType
 class SelectConf:
     ALIAS = "select"
     checkpoint_loc: Path
-    vector_db_loc: Optional[str]
+    vector_db_loc: Optional[Path]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectConf:
-        return cls(Path(yaml_data["checkpoint_loc"]), yaml_data["vector_db_loc"])
+        return cls(Path(yaml_data["checkpoint_loc"]), Path(yaml_data["vector_db_loc"]))
 
 
 @dataclass
