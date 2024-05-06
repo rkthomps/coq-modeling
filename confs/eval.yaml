@@ -76,9 +76,9 @@ max_eval_proofs: 500
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-small-proof-ret-final/checkpoint-107500
 
-tactic_gen:
-  alias: fid
-  checkpoint_loc: models/t5-fid-small-whole-proof-ret/checkpoint-110500
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-whole-proof-ret/checkpoint-110500
 
 # tactic_gen:
 #   alias: fid
@@ -92,9 +92,9 @@ tactic_gen:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-base-basic-final/checkpoint-110500
 
-# tactic_gen:
-#   alias: codellama
-#   checkpoint_loc: models/codellama-7b-whole-proof-ret/checkpoint-8500
+tactic_gen:
+  alias: codellama
+  checkpoint_loc: models/codellama-7b-whole-proof-ret/checkpoint-8500
 
 # tactic_gen:
 #   alias: fid
