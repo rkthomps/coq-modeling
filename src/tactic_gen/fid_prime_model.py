@@ -7,6 +7,7 @@
 import types
 import torch
 import transformers
+from transformers import T5Config
 from transformers.modeling_outputs import BaseModelOutput
 import torch.nn.functional as F
 from torch import nn
@@ -15,9 +16,10 @@ import numpy as np
 
 
 class FiDT5(transformers.T5ForConditionalGeneration):
-    def __init__(self, config):
+    def __init__(self, config: T5Config):
         super().__init__(config)
-        self.wrap_encoder()
+        self.config = config
+        self.wrap_encoder(config)
 
     def forward_(self, **kwargs):
         if "input_ids" in kwargs:
@@ -36,13 +38,36 @@ class FiDT5(transformers.T5ForConditionalGeneration):
     # dimensions used in the decoder.
     # EncoderWrapper resizes the inputs as (B * N) x L.
     def forward(self, input_ids=None, attention_mask=None, labels=None, **kwargs):
+        print("kwargs:")
+        print(kwargs)
+        # print(
+        #     "<<<<<ENCODER SHAPE>>>>>>",
+        #     kwargs["encoder_outputs"].last_hidden_state.shape,
+        # )
         if input_ids != None:
             # inputs might have already be resized in the generate method
+            print("orig shape", input_ids.shape)
             if input_ids.dim() == 3:
-                self.encoder.n_passages = input_ids.size(1)
-            input_ids = input_ids.view(input_ids.size(0), -1)
+                bsz, n_passages, seq_len = input_ids.shape
+                input_ids = input_ids.view(bsz * n_passages, seq_len)
+                print("reshaping", input_ids.shape)
+                # self.encoder.n_passages = input_ids.size(1)
+                # assert self.encoder.n_passages == self.config.n_passages
+                # input_ids = input_ids.view(bsz * n_passages, seq_len)
+                # B x L x N might run into problem if passes through twice
+                # print("input shape", input_ids.shape)
+                # input_ids = torch.transpose(input_ids, 1, 2)
+            # input_ids = input_ids.view(input_ids.size(0), -1)
         if attention_mask != None:
-            attention_mask = attention_mask.view(attention_mask.size(0), -1)
+            attention_mask = None
+            ## TODO: In reality this should be a b x n x l value that first
+            ## performs attention masking in the encoder, and then
+            ## gets "squished" by the enc-dec projection into a b x l mask.
+            ## however, for now we are just going to allow it to be a global
+            ## mask and see what happens
+            # if attention_mask.dim() == 3:
+            #     bsz, n_passages, seq_len = attention_mask.shape
+            #     attention_mask = attention_mask.view(bsz * n_passages, seq_len)
         return super().forward(
             input_ids=input_ids, attention_mask=attention_mask, labels=labels, **kwargs
         )
@@ -50,18 +75,26 @@ class FiDT5(transformers.T5ForConditionalGeneration):
     # We need to resize the inputs here, as the generate method expect 2D tensors
     def generate(self, input_ids, attention_mask, max_length, **kwargs):
         self.encoder.n_passages = input_ids.size(1)
+        bsz, n_passages, seq_len = input_ids.shape
+        input_ids = input_ids.view(bsz * n_passages, seq_len)
+        # attention_mask = attention_mask.view(bsz * n_passages, seq_len)
+        # attention_mask = None  ## TODO MAKE WORK WITH ATTENTION MASK
+        # attention_mask = torch.ones((bsz, seq_len), device=self.device)
+        attention_mask = None
         return super().generate(
-            input_ids=input_ids.view(input_ids.size(0), -1),
-            attention_mask=attention_mask.view(attention_mask.size(0), -1),
+            input_ids=input_ids,
+            attention_mask=attention_mask,
             max_length=max_length,
             **kwargs,
         )
 
-    def wrap_encoder(self, use_checkpoint=False):
+    def wrap_encoder(self, config: T5Config, use_checkpoint=False):
         """
         Wrap T5 encoder to obtain a Fusion-in-Decoder model.
         """
-        self.encoder = EncoderWrapper(self.encoder, use_checkpoint=use_checkpoint)
+        self.encoder = EncoderWrapper(
+            self.encoder, config, use_checkpoint=use_checkpoint
+        )
 
     def unwrap_encoder(self):
         """
@@ -77,7 +110,7 @@ class FiDT5(transformers.T5ForConditionalGeneration):
     def load_t5(self, state_dict):
         self.unwrap_encoder()
         self.load_state_dict(state_dict)
-        self.wrap_encoder()
+        self.wrap_encoder(self.config)
 
     def set_checkpoint(self, use_checkpoint):
         """
@@ -135,12 +168,17 @@ class EncoderWrapper(torch.nn.Module):
     Encoder Wrapper for T5 Wrapper to obtain a Fusion-in-Decoder model.
     """
 
-    def __init__(self, encoder, use_checkpoint=False):
+    def __init__(self, encoder, config: T5Config, use_checkpoint=False):
         super().__init__()
 
         self.encoder = encoder
         self.embed_tokens = self.encoder.embed_tokens  # for loading
         self.main_input_name = self.encoder.main_input_name
+        self.encoder_proj = torch.nn.Linear(
+            config.n_passages * config.d_model, config.d_model
+        )
+        self.config = config
+        self.relu = torch.nn.ReLU()
         apply_checkpoint_wrapper(self.encoder, use_checkpoint)
 
     def forward(
@@ -150,16 +188,36 @@ class EncoderWrapper(torch.nn.Module):
         **kwargs,
     ):
         # total_length = n_passages * passage_length
-        bsz, total_length = input_ids.shape
-        passage_length = total_length // self.n_passages
+        print(input_ids.size())
+        bsz_x_passages, passage_length = input_ids.size()
+        # passage_length = total_length // self.n_passages
+        bsz = bsz_x_passages // self.config.n_passages
+
         # Encode each passage in the batch
-        input_ids = input_ids.view(bsz * self.n_passages, passage_length)
-        attention_mask = attention_mask.view(bsz * self.n_passages, passage_length)
+        # input_ids = input_ids.view(bsz * self.config.n_passages, passage_length)
+        # attention_mask = attention_mask.view(bsz * n_passages, passage_length)
+        attention_mask = None  # TODO THIS IS TEMPERARY
         outputs = self.encoder(input_ids, attention_mask, **kwargs)
+
         new_last_hidden_state = outputs.last_hidden_state.view(
-            bsz, self.n_passages * passage_length, -1
+            bsz, self.config.n_passages, passage_length, -1
         )
-        outputs.last_hidden_state = new_last_hidden_state
+        new_last_hidden_state = torch.transpose(
+            new_last_hidden_state, 1, 2
+        )  # B x L x N x D
+        print("shape before view", new_last_hidden_state.shape)
+        new_last_hidden_state = new_last_hidden_state.reshape(bsz, passage_length, -1)
+        # I dont think its actually okay to reshape like this, might need to swap dimensions first
+        # big_last_hidden_state = torch.concat(new_last_hidden_state, dim=1)
+        print("proj shape", self.encoder_proj.weight.shape)
+        print("state shape", new_last_hidden_state.shape)
+        print("mask", attention_mask)
+
+        compressed_last_hidden_state = self.relu(
+            self.encoder_proj(new_last_hidden_state)
+        )
+        outputs.last_hidden_state = compressed_last_hidden_state
+        print(outputs)
         return outputs
         # outputs = (
         #     outputs[0].view(bsz, self.n_passages * passage_length, -1),
