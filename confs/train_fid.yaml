@@ -1,21 +1,21 @@
 # File Paths
-data_path: "data/basic-final"
+data_path: "data/whole-proof-ret"
 model_name: "google-t5/t5-small"
 #model_name: "google-t5/t5-base"
-output_dir: "models/t5-fid-small-1536" 
+output_dir: "models/t5-fid-small-test" 
 
 # Training Args
-max_encode_len: 1472
+max_encode_len: 960 
 max_decode_len: 64
-max_num_passages: 0
+max_num_passages: 3 # This should coincide with the number of inputs. This means if you want no passages, you need to use a base dataset with no passages.  
 per_device_train_batch_size: 4
 learning_rate: 1.0e-3
 num_train_epochs: 50
-max_steps: 130000
+max_steps: 20 
 
 # Evaluation Args
-eval_steps: 500 
-save_steps: 500
+eval_steps: 20 
+save_steps: 20 
 eval_accumulation_steps: 1
 per_device_eval_batch_size: 2
 num_eval_examples: 2000 # Evaluation would take ~2 hours each time w/o limiting this

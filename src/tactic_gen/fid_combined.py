@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Optional
+from typing import Any, Optional, Mapping
 
 import torch
 from transformers import (
@@ -15,7 +15,7 @@ from transformers.modeling_outputs import (
 
 
 class FidCombinedConfig(T5Config):
-    def __init__(self, n_passages: int, **kwargs: Any):
+    def __init__(self, n_passages: int=0, **kwargs: Any):
         super(FidCombinedConfig, self).__init__(**kwargs)
         self.n_passages = n_passages
 
@@ -51,23 +51,33 @@ class FidCombined(T5ForConditionalGeneration):
         input_ids:      B x N x L
         attention_mask: B x N x L
         """
-        print(kwargs.keys())
         # Run the encoder during training and on the first
         # iteration of inference.
         if encoder_outputs is None:
             batch_size, n_passages, seq_len = input_ids.size()
             assert n_passages == self.config.n_passages
-            bn_input_ids = input_ids.view(-1, input_ids.size(-1))  # (B * N) x L
-            bn_attention_mask = attention_mask.view(-1, attention_mask.size(-1))
-            raw_encoder_outputs: BaseModelOutputWithPastAndCrossAttentions = (
-                self.encoder(bn_input_ids, bn_attention_mask)
-            )
-            bn_encoder_last_state = (
-                raw_encoder_outputs.last_hidden_state
-            )  # (B * N) x L x D
-            expanded_encoder_last_state = bn_encoder_last_state.view(
-                batch_size, n_passages, seq_len, -1
-            )  # B x N x L x D
+            # bn_input_ids = input_ids.view(-1, input_ids.size(-1))  # (B * N) x L
+            # bn_attention_mask = attention_mask.view(-1, attention_mask.size(-1))
+            last_hidden_states_list: list[torch.Tensor] = []
+            for i in range(n_passages):
+                # first_param_grad = self.encoder.parameters().__next__().grad
+                # print(first_param_grad.shape if first_param_grad is not None else None)
+                passage_i_outputs: BaseModelOutputWithPastAndCrossAttentions = self.encoder(input_ids[:, i, :], attention_mask[:, i, :])
+                passage_i_last_state = passage_i_outputs.last_hidden_state # B x L x D 
+                last_hidden_states_list.append(passage_i_last_state[:, None, :, :])
+            
+            expanded_encoder_last_state = torch.concat(last_hidden_states_list, dim=1) # (B x N x L x D)
+
+
+            # raw_encoder_outputs: BaseModelOutputWithPastAndCrossAttentions = (
+            #     self.encoder(bn_input_ids, bn_attention_mask)
+            # )
+            # bn_encoder_last_state = (
+            #     raw_encoder_outputs.last_hidden_state
+            # )  # (B * N) x L x D
+            # expanded_encoder_last_state = bn_encoder_last_state.view(
+            #     batch_size, n_passages, seq_len, -1
+            # )  # B x N x L x D
 
             bl_encoder_last_state = expanded_encoder_last_state.transpose(
                 1, 2
@@ -84,7 +94,13 @@ class FidCombined(T5ForConditionalGeneration):
             masked_last_state = project_mask.reshape(
                 (batch_size, seq_len, n_passages * self.config.d_model)
             )  # B x L x (N * D)
-            proj_last_state = self.act(self.projector(masked_last_state))  # B x L x D
+            proj_last_states_list: list[torch.Tensor] = []
+            for i in range(seq_len):
+                proj_last_state_i = self.act(self.projector(masked_last_state[:, i, :]))
+                proj_last_states_list.append(proj_last_state_i[:, None, :])
+
+            #proj_last_state = self.act(self.projector(masked_last_state))  # B x L x D
+            proj_last_state = torch.concat(proj_last_states_list, dim=1)
             updated_attn_mask = attention_mask.any(dim=1)
             encoder_outputs = BaseModelOutputWithPastAndCrossAttentions(proj_last_state)
         else:
@@ -94,7 +110,6 @@ class FidCombined(T5ForConditionalGeneration):
         if decoder_input_ids is None:
             decoder_input_ids: torch.Tensor = self._shift_right(labels)
 
-        print(encoder_outputs)
         decoder_out: BaseModelOutputWithPastAndCrossAttentions = self.decoder(
             decoder_input_ids,
             encoder_hidden_states=encoder_outputs.last_hidden_state,
@@ -122,6 +137,9 @@ class FidCombined(T5ForConditionalGeneration):
             encoder_hidden_states=encoder_outputs.hidden_states,
             encoder_attentions=encoder_outputs.attentions,
         )
+
+    def load_t5(self, state_dict: Mapping[str, Any]):
+        self.load_state_dict(state_dict)
 
     def generate(
         self,

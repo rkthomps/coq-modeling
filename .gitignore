@@ -85,5 +85,8 @@ __pycache__
 proof-tree.json
 *goal_aux.v
 
+# Profiling
+snap.pkl
+
 # Temporary/Throw-away python scripts
 src/throw_away
