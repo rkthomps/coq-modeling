@@ -152,6 +152,7 @@ class EncoderWrapper(torch.nn.Module):
         # total_length = n_passages * passage_length
         bsz, total_length = input_ids.shape
         passage_length = total_length // self.n_passages
+        # Encode each passage in the batch
         input_ids = input_ids.view(bsz * self.n_passages, passage_length)
         attention_mask = attention_mask.view(bsz * self.n_passages, passage_length)
         outputs = self.encoder(input_ids, attention_mask, **kwargs)

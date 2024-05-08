@@ -2,21 +2,21 @@
 
 data_path: "data/premise-lemma"
 model_name: "facebook/opt-125m"
-output_dir: "models/premise-lemma" 
+output_dir: "models/premise-lemma-512" 
 
 # Training Args
-max_seq_len: 128 
-per_device_train_batch_size: 16
+max_seq_len: 512
+per_device_train_batch_size: 2
 learning_rate: 1.0e-4
 num_train_epochs: 2
 gradient_accumulation_steps: 2
 loss_fn: cross-entropy
 
 # Evaluation Args
-eval_steps: 50 
+eval_steps: 500
 eval_accumulation_steps: 1
-per_device_eval_batch_size: 64 
-save_steps: 100 
+per_device_eval_batch_size: 4
+save_steps: 500
 num_eval_examples: 2000 # Evaluation would take ~2 hours each time w/o limiting this
 
 # Logging Args

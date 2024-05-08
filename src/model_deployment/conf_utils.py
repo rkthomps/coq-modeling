@@ -69,6 +69,7 @@ class StartTacticModelCommand:
         return [
             "python3",
             f"{self.TACTIC_GEN_SERVER_SCRIPT}",
+            self.alias,
             f"{self.checkpoint_loc}",
             f"{self.port}",
         ]
@@ -77,8 +78,9 @@ class StartTacticModelCommand:
         return [
             "python3",
             f"{self.TACTIC_GEN_SERVER_SCRIPT}",
+            self.alias,
             f"{self.checkpoint_loc}",
-            f"\"expr ${env_var_name} * {commands_per_task} + {self.port}\"",
+            f'"expr ${env_var_name} * {commands_per_task} + {self.port}"',
         ]
 
 
@@ -112,7 +114,7 @@ class StartSelectModelCommand:
                 "python3",
                 f"{self.SELECT_SERVER_SCRIPT}",
                 f"{self.checkpoint_loc}",
-                f"\"expr ${env_var_name} * {commands_per_task} + {self.port}\"",
+                f'"expr ${env_var_name} * {commands_per_task} + {self.port}"',
             ]
         return [
             "python3",
@@ -120,9 +122,8 @@ class StartSelectModelCommand:
             "--vector_db_loc",
             f"{self.vector_db_loc}",
             f"{self.checkpoint_loc}",
-            f"\"expr ${env_var_name} * {commands_per_task} + {self.port}\"",
+            f'"expr ${env_var_name} * {commands_per_task} + {self.port}"',
         ]
-
 
 
 @dataclass
@@ -144,9 +145,8 @@ class StartRerankModelCommand:
             "python3",
             f"{self.RERANK_SERVER_SCRIPT}",
             f"{self.checkpoint_loc}",
-            f"\"expr ${env_var_name} * {commands_per_task} + {self.port}\"",
+            f'"expr ${env_var_name} * {commands_per_task} + {self.port}"',
         ]
-
 
 
 StartModelCommand = (
@@ -323,18 +323,20 @@ def tactic_gen_to_client_conf(
             else:
                 formatter_confs = conf.formatter_confs
             all_commands: list[StartModelCommand] = []
-            formatter_confs: list[FormatterConf] = []
+            all_formatter_confs: list[FormatterConf] = []
             next_server_num = start_server_num
             for f in formatter_confs:
                 formatter_client_conf, next_server_num, commands = (
                     formatter_conf_to_client_conf(f, next_server_num)
                 )
                 all_commands.extend(commands)
-                formatter_confs.append(formatter_client_conf)
+                all_formatter_confs.append(formatter_client_conf)
             tactic_path, next_server_num, tac_command = get_tactic_gen_command(
                 conf, next_server_num
             )
-            new_tactic_client = LocalTacticGenClientConf([tactic_path], formatter_confs)
+            new_tactic_client = LocalTacticGenClientConf(
+                [tactic_path], all_formatter_confs
+            )
             return new_tactic_client, next_server_num, all_commands + [tac_command]
         case _:
             return conf, start_server_num, []
