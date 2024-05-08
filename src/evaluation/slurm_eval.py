@@ -2,10 +2,13 @@ from __future__ import annotations
 from typing import Optional
 import pickle
 import sys, os
+import subprocess
+import requests
 import json
 from typing import Any
 from pathlib import Path
 from dataclasses import dataclass
+from datetime import datetime
 from tqdm import tqdm
 
 import argparse
@@ -21,7 +24,8 @@ from data_management.splits import Split, split2str, DataSplit, FileInfo
 from data_management.sentence_db import SentenceDB
 
 from model_deployment.tactic_gen_client import FidTacticGenConf, CodellamaTacticGenConf
-from util.constants import CLEAN_CONFIG
+from util.constants import CLEAN_CONFIG, SERVER_LOC
+from util.socket_client import ServerAdapter
 
 RUN_MODELS_LOC = Path("./jobs/run-models.sh")
 TACTIC_SERVER_LOC = Path("./src/model_deployment/tactic_gen_server.py")
@@ -119,6 +123,26 @@ def create_eval_proof_map(eval_conf: EvalConf) -> ProofMap:
 #             except requests.exceptions.RequestException:
 #                 continue
 
+def wait_for_servers(
+    next_server_num: int
+):
+    session = requests.Session()
+    urls: list[str] = []
+    for num in range(next_server_num):
+        url = f"http://servers-{num}/"
+        path = Path(SERVER_LOC) / str(num)
+        session.mount(f"http://servers-{num}/", ServerAdapter(path))
+        urls.append(url)
+
+    for server_url in urls:
+        while True:
+            try:
+                response = session.get(server_url)
+                break
+            except requests.exceptions.RequestException:
+                continue
+
+
 
 def run(
     eval_conf: EvalConf,
@@ -127,16 +151,6 @@ def run(
     n_gpu_nodes: int,
     n_cpu: int,
 ):
-    match eval_conf.tactic_conf:
-        case FidTacticGenConf():
-            alias = "fid-local"
-            checkpoint_loc = eval_conf.tactic_conf.checkpoint_loc
-        case CodellamaTacticGenConf():
-            alias = "local"
-            checkpoint_loc = eval_conf.tactic_conf.checkpoint_loc
-        case _:
-            raise ValueError("Unsupported tactic configuration.")
-
     server_commands: Optional[list[StartModelCommand]] = None
     clean_eval_confs: list[TopLevelConf] = []
     next_server_num = 0
@@ -175,26 +189,29 @@ def run(
     with GPU_SBATCH_LOC.open("w") as fout:
         fout.write(server_sbatch)
 
-    # TODO RUN GPU SBATCH
+    # Start gpus
+    subprocess.run(["sbatch", f"{GPU_SBATCH_LOC}"])
 
     proof_map = create_eval_proof_map(eval_conf)
-    with open(CLEAN_CONFIG, "wb") as fout:
+    eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S") 
+    with open(eval_conf_loc, "wb") as fout:
         pickle.dump(final_eval_conf, fout)
 
-    # TODO: Wait for servers
+    wait_for_servers(next_server_num)
 
-    # TODO: Child process array
     proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
     proof_sbatch = (
         "#!/bin/bash\n"
         f"#SBATCH -c {n_cpu}"
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}"
-        f"timout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
+        f"timout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
     )
 
     with PROOF_SBATCH_LOC.open("w") as fout:
         fout.write(proof_sbatch)
+    
+    subprocess.run(["sbatch", f"{PROOF_SBATCH_LOC}"])
 
 
 

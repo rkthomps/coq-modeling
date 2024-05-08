@@ -24,15 +24,19 @@ def get_orig_summary(file: Path, theorem: str, eval_conf: EvalConf) -> Summary:
 if __name__ == "__main__":
     """This section of the file is just here for evaluation."""
     parser = argparse.ArgumentParser()
+    parser.add_argument("eval_pkl_conf_loc")
     parser.add_argument("proof_map_loc")
     parser.add_argument("proof_map_idx", type=int)
 
     args = parser.parse_args(sys.argv[1:])
+    eval_pkl_conf_loc = Path(args.eval_conf_loc)
     proof_map_loc = Path(args.proof_map_loc)
     proof_map_idx = args.proof_map_idx
+    assert proof_map_loc.exists()
+    assert eval_pkl_conf_loc.exists()
     assert isinstance(proof_map_idx, int)
 
-    with Path(CLEAN_CONFIG).open("rb") as fin:
+    with eval_pkl_conf_loc.open("rb") as fin:
         eval_conf: EvalConf = pickle.load(fin)
 
     proof_map = ProofMap.load(proof_map_loc)
