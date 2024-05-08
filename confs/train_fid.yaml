@@ -1,13 +1,13 @@
 # File Paths
-data_path: "data/whole-proof-ret"
-#model_name: "google-t5/t5-small"
-model_name: "google-t5/t5-base"
-output_dir: "models/t5-fid-whole-proof-base" 
+data_path: "data/basic-final"
+model_name: "google-t5/t5-small"
+#model_name: "google-t5/t5-base"
+output_dir: "models/t5-fid-small-1536" 
 
 # Training Args
-max_encode_len: 448 
-max_decode_len: 64 
-max_num_passages: 8
+max_encode_len: 1472
+max_decode_len: 64
+max_num_passages: 0
 per_device_train_batch_size: 4
 learning_rate: 1.0e-3
 num_train_epochs: 50
