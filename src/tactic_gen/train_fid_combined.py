@@ -121,7 +121,10 @@ if __name__ == "__main__":
         make_output_dir(conf)
         copy_configs(args.yaml_config, conf)
         print("Training from scratch")
-        torch.cuda.memory._record_memory_history()
+        print(
+            "memory pre training",
+            torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated(),
+        )
+        print("allocated", torch.cuda.memory_allocated())
+        print("max", torch.cuda.max_memory_allocated())
         trainer.train()
-        torch.cuda.memory._dump_snapshot("snap.pkl")
-
