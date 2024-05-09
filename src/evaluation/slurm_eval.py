@@ -163,6 +163,11 @@ def run(
     assert server_commands is not None
 
     final_eval_conf = merge(clean_eval_confs)
+    assert isinstance(final_eval_conf, EvalConf)
+    if final_eval_conf.save_loc.exists():
+        raise FileExistsError(f"{final_eval_conf.save_loc}")
+    os.makedirs(final_eval_conf.save_loc)
+
     with RUN_MODELS_LOC.open("w") as fout:
         commands = [
             " ".join(c.to_list_slurm("SLURM_PROCID", len(server_commands)))
