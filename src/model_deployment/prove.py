@@ -1,14 +1,13 @@
-
 from __future__ import annotations
 
 from typing import Any
 import sys, os
 import argparse
 import pickle
-from pathlib import Path 
+from pathlib import Path
 from dataclasses import dataclass
 
-from data_management.splits import DataSplit, Split, FileInfo 
+from data_management.splits import DataSplit, Split, FileInfo
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Term
 
@@ -16,7 +15,12 @@ from model_deployment.fast_client import FastLspClient, ClientWrapper
 from model_deployment.proof_manager import ProofInfo, ProofManager
 from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
 from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
-from model_deployment.searcher import SearcherConf, SuccessfulSearch, FailedSearch, searcher_from_conf
+from model_deployment.searcher import (
+    SearcherConf,
+    SuccessfulSearch,
+    FailedSearch,
+    searcher_from_conf,
+)
 from model_deployment.tactic_gen_client import TacticGenClient
 
 from util.util import get_fresh_path
@@ -276,25 +280,6 @@ def summary_from_result(
         case MCTSSuccess() | MCTSFailure():
             return MCTSSummary.from_search_result(file, theorem, result)
 
-@dataclass
-class LocationInfo:
-    data_loc: Path
-    file_info: FileInfo
-    split: Split
-    dataset_file: DatasetFile
-    dp_proof_idx: int
-    sentence_db: SentenceDB
-    data_split: DataSplit
-
-
-@dataclass
-class RunProofConf:
-    location_info: LocationInfo
-    search_conf: SearcherConf
-    tactic_gen: TacticGenClient
-    print_proofs: bool
-    print_trees: bool
-
 
 if __name__ == "__main__":
     """This section of the file is just here for evaluation."""
@@ -312,8 +297,3 @@ if __name__ == "__main__":
     assert isinstance(proof_map_idx, int)
 
     eval_conf = EvalConf.from_yaml(eval_conf_loc)
-
-
-
-
-

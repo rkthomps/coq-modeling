@@ -123,9 +123,8 @@ def create_eval_proof_map(eval_conf: EvalConf) -> ProofMap:
 #             except requests.exceptions.RequestException:
 #                 continue
 
-def wait_for_servers(
-    next_server_num: int
-):
+
+def wait_for_servers(next_server_num: int):
     session = requests.Session()
     urls: list[str] = []
     for num in range(next_server_num):
@@ -143,19 +142,16 @@ def wait_for_servers(
                 continue
 
 
-
 def run(
     eval_conf: EvalConf,
     timeout: str,
-    n_tasks_per_node: int,
-    n_gpu_nodes: int,
+    n_gpu: int,
     n_cpu: int,
 ):
     server_commands: Optional[list[StartModelCommand]] = None
     clean_eval_confs: list[TopLevelConf] = []
     next_server_num = 0
-    n_tasks = n_tasks_per_node * n_gpu_nodes
-    for _ in range(n_tasks):
+    for _ in range(n_gpu):
         clean_eval_conf, next_server_num, commands = to_client_conf(
             eval_conf, next_server_num
         )
@@ -169,23 +165,22 @@ def run(
     final_eval_conf = merge(clean_eval_confs)
     with RUN_MODELS_LOC.open("w") as fout:
         commands = [
-            " ".join(c.to_list_slurm("SLURM_PROC_ID", len(server_commands)))
+            " ".join(c.to_list_slurm("SLURM_PROCID", len(server_commands)))
             for c in server_commands
         ]
-        run_model_file = "#!/bin/bash\n" + "source venv/bin/activate\n" + "\n".join(commands)
+        run_model_file = (
+            "#!/bin/bash\n" + "source venv/bin/activate\n" + "\n".join(commands)
+        )
         fout.write(run_model_file)
 
     server_sbatch = (
         "#!/bin/bash\n"
         f"#SBATCH -p gpu-preempt\n"
         f"#SBATCH -t {timeout}\n"
-        f"#SBATCH --ntasks={n_tasks_per_node * n_gpu_nodes}\n"
-        f"#SBATCH --nodes={n_gpu_nodes}\n"
-        f"#SBATCH --ntasks-per-node={n_tasks_per_node}\n"
-        #f"#SBATCH --cpus-per-task=1\n"
-        f"#SBATCH --gpus-per-task=1\n"
-				f"#SBATCH -o slurm-serve-%j.out\n"
-        f"srun -l {RUN_MODELS_LOC}\n"
+        f"#SBATCH --ntasks={n_gpu}\n"
+        f"#SBATCH --gres=gpu:{n_gpu_nodes}\n"
+        f"#SBATCH -o slurm-serve-%j.out\n"
+        f"srun -l --gres=gpu:1 {RUN_MODELS_LOC}\n"
     )
 
     with GPU_SBATCH_LOC.open("w") as fout:
@@ -196,7 +191,7 @@ def run(
     subprocess.run(["sbatch", f"{GPU_SBATCH_LOC}"])
 
     proof_map = create_eval_proof_map(eval_conf)
-    eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S") 
+    eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S")
     with open(eval_conf_loc, "wb") as fout:
         pickle.dump(final_eval_conf, fout)
 
@@ -209,24 +204,25 @@ def run(
         f"#SBATCH -c {n_cpu}\n"
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}\n"
-				f"SBATCH -o slurm-prove-%j.out\n"
+        f"SBATCH -o slurm-prove-%j.out\n"
         f"timout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
     )
 
     with PROOF_SBATCH_LOC.open("w") as fout:
         fout.write(proof_sbatch)
-    
-		# Start proof workers
+
+    # Start proof workers
     print("Starting proof workers...")
     subprocess.run(["sbatch", f"{PROOF_SBATCH_LOC}"])
-
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("conf_loc", help="Location of eval configuration")
     parser.add_argument("timeout", help="Timeout for evaluation")
-    parser.add_argument("n_gpu_tasks_per_node", type=int, help="Number of gpus per node")
+    parser.add_argument(
+        "n_gpu_tasks_per_node", type=int, help="Number of gpus per node"
+    )
     parser.add_argument("n_gpu_nodes", type=int, help="Number of nodes.")
     parser.add_argument("n_cpus", type=int, help="Number of cpus to use")
     args = parser.parse_args(sys.argv[1:])
@@ -247,4 +243,4 @@ if __name__ == "__main__":
         conf = yaml.load(fin, Loader=yaml.Loader)
 
     eval_conf = EvalConf.from_yaml(conf)
-    run(eval_conf, timeout, n_gpu_tasks_per_node, n_gpu_nodes, n_cpus) 
+    run(eval_conf, timeout, n_gpu_tasks_per_node, n_gpu_nodes, n_cpus)

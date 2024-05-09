@@ -80,7 +80,7 @@ class StartTacticModelCommand:
             f"{self.TACTIC_GEN_SERVER_SCRIPT}",
             self.alias,
             f"{self.checkpoint_loc}",
-            f'"expr ${env_var_name} * {commands_per_task} + {self.port}"',
+            f"$(expr ${env_var_name} \\* {commands_per_task} + {self.port})",
         ]
 
 
@@ -114,7 +114,7 @@ class StartSelectModelCommand:
                 "python3",
                 f"{self.SELECT_SERVER_SCRIPT}",
                 f"{self.checkpoint_loc}",
-                f'"expr ${env_var_name} * {commands_per_task} + {self.port}"',
+                f"$(expr ${env_var_name} \\* {commands_per_task} + {self.port})",
             ]
         return [
             "python3",
@@ -122,7 +122,7 @@ class StartSelectModelCommand:
             "--vector_db_loc",
             f"{self.vector_db_loc}",
             f"{self.checkpoint_loc}",
-            f'"expr ${env_var_name} * {commands_per_task} + {self.port}"',
+            f"$(expr ${env_var_name} \\* {commands_per_task} + {self.port})",
         ]
 
 
