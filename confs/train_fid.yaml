@@ -1,27 +1,27 @@
 # File Paths
-data_path: "data/whole-proof-ret"
+data_path: "data/basic-final"
 model_name: "google-t5/t5-small"
 #model_name: "google-t5/t5-base"
-output_dir: "models/t5-fid-small-test" 
+output_dir: "models/t5-fid-small-2048" 
 
 # Training Args
-max_encode_len: 960 
+max_encode_len: 1984
 max_decode_len: 64
-max_num_passages: 3 # This should coincide with the number of inputs. This means if you want no passages, you need to use a base dataset with no passages.  
+max_num_passages: 1 # This should coincide with the number of inputs. This means if you want no passages, you need to use a base dataset with no passages.  
 per_device_train_batch_size: 4
 learning_rate: 1.0e-3
 num_train_epochs: 50
 max_steps: 20 
 
 # Evaluation Args
-eval_steps: 20 
-save_steps: 20 
+eval_steps: 500
+save_steps: 500
 eval_accumulation_steps: 1
 per_device_eval_batch_size: 2
 num_eval_examples: 2000 # Evaluation would take ~2 hours each time w/o limiting this
 
 # Logging Args
-logging_steps: 10
+logging_steps: 100
 save_total_limit: 2
 
 # Train from checkpoint

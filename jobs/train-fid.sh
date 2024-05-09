@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:4            # number of gpus per node
 #SBATCH --constraint=vram23
 #SBATCH --cpus-per-task=4        # cpu-cores per task (>1 if multi-threaded tasks)
-#SBATCH --time=23:59:00          # total run time limit (HH:MM:SS)
+#SBATCH --time=01-23:59:00          # total run time limit (HH:MM:SS)
 #SBATCH -o slurm-train-fid-%j.out
 
 #SBATCH --mail-type=BEGIN,END,FAIL

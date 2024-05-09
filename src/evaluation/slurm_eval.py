@@ -172,17 +172,19 @@ def run(
             " ".join(c.to_list_slurm("SLURM_PROC_ID", len(server_commands)))
             for c in server_commands
         ]
-        run_model_file = "#!/bin/bash\n" + "\n".join(commands)
+        run_model_file = "#!/bin/bash\n" + "source venv/bin/activate\n" + "\n".join(commands)
         fout.write(run_model_file)
 
     server_sbatch = (
         "#!/bin/bash\n"
+        f"#SBATCH -p gpu-preempt\n"
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --ntasks={n_tasks_per_node * n_gpu_nodes}\n"
         f"#SBATCH --nodes={n_gpu_nodes}\n"
         f"#SBATCH --ntasks-per-node={n_tasks_per_node}\n"
-        f"#SBATCH --cpus-per-task=1\n"
+        #f"#SBATCH --cpus-per-task=1\n"
         f"#SBATCH --gpus-per-task=1\n"
+				f"#SBATCH -o slurm-serve-%j.out\n"
         f"srun -l {RUN_MODELS_LOC}\n"
     )
 
@@ -190,6 +192,7 @@ def run(
         fout.write(server_sbatch)
 
     # Start gpus
+    print("Starting gpu servers...")
     subprocess.run(["sbatch", f"{GPU_SBATCH_LOC}"])
 
     proof_map = create_eval_proof_map(eval_conf)
@@ -202,15 +205,19 @@ def run(
     proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
     proof_sbatch = (
         "#!/bin/bash\n"
-        f"#SBATCH -c {n_cpu}"
+        f"#SBATCH -p cpu-preempt\n"
+        f"#SBATCH -c {n_cpu}\n"
         f"#SBATCH -t {timeout}\n"
-        f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}"
+        f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}\n"
+				f"SBATCH -o slurm-prove-%j.out\n"
         f"timout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
     )
 
     with PROOF_SBATCH_LOC.open("w") as fout:
         fout.write(proof_sbatch)
     
+		# Start proof workers
+    print("Starting proof workers...")
     subprocess.run(["sbatch", f"{PROOF_SBATCH_LOC}"])
 
 
