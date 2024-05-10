@@ -123,7 +123,6 @@ class SelectClientConf:
             self.sentence_db_loc,
         )
 
-
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectClientConf:
         return cls(
@@ -166,6 +165,7 @@ PremiseConf = (
     | BM250OkapiConf
     | LookupClientConf
 )
+
 
 def merge_premise_confs(conf1: PremiseConf, conf2: PremiseConf) -> PremiseConf:
     match conf1:

@@ -3,21 +3,21 @@ train_sample_loc: samples/final/train.json
 val_sample_loc: samples/final/val.json
 test_sample_loc: samples/final/test.json
 sentence_db_loc: sentences.db
-output_dataset_loc: data/proof-last
-
-lm_formatters:
-  - alias: proof-last 
-    n_step_sampler:
-      alias: one
-
+output_dataset_loc: data/proof-premise
 
 # lm_formatters:
-#   - alias: whole-proof-ret 
-#     proof_bank_loc: proof-goals
-#     data_loc: raw-data/coq-dataset
-#     sentence_db_loc: sentences.db
+#   - alias: proof-last 
 #     n_step_sampler:
 #       alias: one
+
+
+lm_formatters:
+  - alias: whole-proof-ret-premise
+    proof_bank_loc: proof-goals
+    data_loc: raw-data/coq-dataset
+    sentence_db_loc: sentences.db
+    n_step_sampler:
+      alias: one
 
 # lm_formatters:
 #   - alias: premise

@@ -46,9 +46,9 @@ class OOFCache:
 class PremiseFilter:
     def __init__(
         self,
-        coq_excludes: tuple[TermType] = [],
-        non_coq_excludes: tuple[TermType] = [],
-        general_excludes: tuple[TermType] = [],
+        coq_excludes: list[TermType] = [],
+        non_coq_excludes: list[TermType] = [],
+        general_excludes: list[TermType] = [],
     ) -> None:
         self.coq_excludes = coq_excludes
         self.non_coq_excludes = non_coq_excludes
@@ -167,3 +167,55 @@ class PremiseFilter:
             general_excludes.append(TermType[exclude])
 
         return cls(coq_excludes, non_coq_excludes, general_excludes)
+
+
+NO_COQ_LEMMA_FILTER = PremiseFilter(
+    coq_excludes=[
+        TermType.THEOREM,
+        TermType.LEMMA,
+        TermType.DEFINITION,
+        TermType.NOTATION,
+        TermType.INDUCTIVE,
+        TermType.COINDUCTIVE,
+        TermType.RECORD,
+        TermType.CLASS,
+        TermType.INSTANCE,
+        TermType.FIXPOINT,
+        TermType.COFIXPOINT,
+        TermType.SCHEME,
+        TermType.VARIANT,
+        TermType.FACT,
+        TermType.REMARK,
+        TermType.COROLLARY,
+        TermType.PROPOSITION,
+        TermType.PROPERTY,
+        TermType.OBLIGATION,
+        TermType.TACTIC,
+        TermType.RELATION,
+        TermType.SETOID,
+        TermType.FUNCTION,
+        TermType.DERIVE,
+        TermType.OTHER,
+    ],
+    non_coq_excludes=[
+        TermType.DEFINITION,
+        TermType.NOTATION,
+        TermType.INDUCTIVE,
+        TermType.COINDUCTIVE,
+        TermType.RECORD,
+        TermType.CLASS,
+        TermType.INSTANCE,
+        TermType.FIXPOINT,
+        TermType.COFIXPOINT,
+        TermType.SCHEME,
+        TermType.VARIANT,
+        TermType.OBLIGATION,
+        TermType.TACTIC,
+        TermType.RELATION,
+        TermType.SETOID,
+        TermType.FUNCTION,
+        TermType.DERIVE,
+        TermType.OTHER,
+    ],
+    general_excludes=[],
+)

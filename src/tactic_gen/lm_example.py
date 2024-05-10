@@ -23,6 +23,7 @@ from tactic_gen.n_step_sampler import (
     n_step_conf_from_yaml,
     n_step_from_conf,
 )
+from premise_selection.premise_filter import PremiseFilter, NO_COQ_LEMMA_FILTER
 from model_deployment.premise_client import (
     PremiseClient,
     PremiseConf,
@@ -35,6 +36,8 @@ from model_deployment.transform_ast import AdjTree
 from data_management.sentence_db import SentenceDB
 from data_management.splits import DATA_POINTS_NAME
 from util.util import get_basic_logger
+
+from coqpyt.coq.structs import TermType
 
 _logger = get_basic_logger(__name__)
 
@@ -145,6 +148,24 @@ class WholeProofRetrievalFormatterConf:
 
 
 @dataclass
+class WholeProofPremiseRetrievalFormatterConf:
+    ALIAS = "whole-proof-ret-premise"
+    proof_bank_loc: Path
+    data_loc: Path
+    sentence_db_loc: Path
+    n_step_conf: NStepConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> WholeProofPremiseRetrievalFormatterConf:
+        return cls(
+            Path(yaml_data["proof_bank_loc"]),
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            n_step_conf_from_yaml(yaml_data["n_step_sampler"]),
+        )
+
+
+@dataclass
 class PremiseFormatterConf:
     ALIAS = "premise"
     premise_conf: PremiseConf
@@ -154,7 +175,6 @@ class PremiseFormatterConf:
         assert self.n_step_conf == other.n_step_conf
         new_premise_conf = merge_premise_confs(self.premise_conf, other.premise_conf)
         return PremiseFormatterConf(new_premise_conf, self.n_step_conf)
-        
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseFormatterConf:
@@ -205,20 +225,22 @@ FormatterConf = (
     | ProofLastFormatterConf
     | ProofRetrievalFormatterConf
     | WholeProofRetrievalFormatterConf
+    | WholeProofPremiseRetrievalFormatterConf
     | PremiseFormatterConf
     | GPTVanillaFormatterConf
     | GPTProofFormatterConf
     | GPTPremiseFormatterConf
 )
 
+
 def merge_formatters(f1: FormatterConf, f2: FormatterConf) -> FormatterConf:
     match f1:
         case PremiseFormatterConf():
-            pass
+            assert isinstance(f2, PremiseFormatterConf)
+            return f1.merge(f2)
         case _:
             assert f1 == f2
             return f1
-
 
 
 def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
@@ -232,6 +254,8 @@ def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
             return ProofRetrievalFormatterConf.from_yaml(yaml_data)
         case WholeProofRetrievalFormatterConf.ALIAS:
             return WholeProofRetrievalFormatterConf.from_yaml(yaml_data)
+        case WholeProofPremiseRetrievalFormatterConf.ALIAS:
+            return WholeProofPremiseRetrievalFormatterConf.from_yaml(yaml_data)
         case PremiseFormatterConf.ALIAS:
             return PremiseFormatterConf.from_yaml(yaml_data)
         case GPTVanillaFormatterConf.ALIAS:
@@ -254,6 +278,8 @@ def formatter_from_conf(conf: FormatterConf) -> LmFormatter:
             return ProofRetrievalFormatter.from_conf(conf)
         case WholeProofRetrievalFormatterConf():
             return WholeProofRetrievalFormatter.from_conf(conf)
+        case WholeProofPremiseRetrievalFormatterConf():
+            return WholeProofPremiseRetrievalFormatter.from_conf(conf)
         case PremiseFormatterConf():
             return PremiseFormatter.from_conf(conf)
         case GPTVanillaFormatterConf():
@@ -402,22 +428,22 @@ class ProofRetriever:
 
     def get_whole_proof(
         self, candidate: ProofCandidateReversed, data_loc: Path, sentence_db: SentenceDB
-    ) -> tuple[str, str]:
+    ) -> tuple[Proof, str]:
         candidate_dp = self.dp_cache.get_dp(candidate.origin, data_loc, sentence_db)
-        record_proof_str = "".join(candidate.candidate.proof)
+        record_proof_str = " ".join("".join(candidate.candidate.proof).split())
         pretty_candidate_goal = " ".join(candidate.candidate.pretty_goal.split())
         for proof in candidate_dp.proofs:
             for i, step in enumerate(proof.steps):
                 if 0 == len(step.goals):
                     continue
                 current_ground_truth = [s.step.text for s in proof.steps[i:]]
-                cur_ground_truth_str = "".join(current_ground_truth)
+                cur_ground_truth_str = " ".join("".join(current_ground_truth).split())
                 pretty_proof_goal = " ".join(step.goals[0].to_string().split())
                 if pretty_candidate_goal == pretty_proof_goal and (
                     cur_ground_truth_str.startswith(record_proof_str)
                     or record_proof_str.startswith(cur_ground_truth_str)
                 ):
-                    return proof.proof_text_to_string(), candidate.origin
+                    return proof, candidate.origin
         print(candidate.candidate.pretty_goal)
         raise ValueError(
             "Could not find corresponding candidate's corresponding proof."
@@ -507,17 +533,19 @@ class WholeProofRetrievalFormatter:
         similar_proof_result = self.proof_retriever.get_similar_proofs(
             step_idx, proof, dp_obj, file_info, key_record, cutoff_idx
         )
-        similar_whole_proofs: list[tuple[str, str]] = []
+        similar_whole_proofs: dict[tuple[str, str], Proof] = {}
         for r in similar_proof_result:
             try:
-                whole_proof_and_origin = self.proof_retriever.get_whole_proof(
+                proof_obj, origin = self.proof_retriever.get_whole_proof(
                     r, self.data_loc, self.sentence_db
                 )
-                if whole_proof_and_origin in similar_whole_proofs:
+                proof_str = proof_obj.proof_text_to_string()
+                key = (proof_str, origin)
+                if key in similar_whole_proofs:
                     continue
                 if self.MAX_N_EXAMPLES <= len(similar_whole_proofs):
                     break
-                similar_whole_proofs.append(whole_proof_and_origin)
+                similar_whole_proofs[key] = proof_obj
             except ValueError:
                 _logger.warning(f"Couldn't find corresponding proof with {r.origin}")
 
@@ -529,6 +557,89 @@ class WholeProofRetrievalFormatter:
     def from_conf(
         cls, conf: WholeProofRetrievalFormatterConf
     ) -> WholeProofRetrievalFormatter:
+        sentence_db = SentenceDB.load(conf.sentence_db_loc)
+        return cls(
+            ProofRetriever(conf.proof_bank_loc, cls.MAX_N_EXAMPLES),
+            conf.data_loc,
+            sentence_db,
+            n_step_from_conf(conf.n_step_conf),
+        )
+
+
+def premises_from_proof(proof: Proof, premise_filter: PremiseFilter) -> list[Sentence]:
+    gathered_premises: list[Sentence] = []
+    for step in proof.steps:
+        for premise in step.step.context:
+            if not premise_filter.filter_premise(premise):
+                continue
+            if premise in gathered_premises:
+                continue
+            gathered_premises.append(premise)
+    return gathered_premises
+
+
+class WholeProofPremiseRetrievalFormatter:
+    MAX_N_EXAMPLES = 20
+    PREMISE_FILTER = NO_COQ_LEMMA_FILTER
+
+    def __init__(
+        self,
+        proof_retriever: ProofRetriever,
+        data_loc: Path,
+        sentence_db: SentenceDB,
+        n_step_sampler: NStepSampler,
+    ):
+        self.proof_retriever = proof_retriever
+        self.data_loc = data_loc
+        self.sentence_db = sentence_db
+        self.n_step_sampler = n_step_sampler
+        self.basic_formatter = BasicFormatter(self.n_step_sampler)
+
+    def example_from_step(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        key_record: Optional[GoalRecord] = None,
+        cutoff_idx: Optional[int] = None,
+        **kwargs: Any,
+    ) -> LmExample:
+        similar_proof_result = self.proof_retriever.get_similar_proofs(
+            step_idx, proof, dp_obj, file_info, key_record, cutoff_idx
+        )
+        seen_whole_proofs: set[tuple[str, str]] = set()
+        similar_whole_proofs: list[Proof] = []
+        for r in similar_proof_result:
+            try:
+                proof_obj, origin = self.proof_retriever.get_whole_proof(
+                    r, self.data_loc, self.sentence_db
+                )
+                proof_str = proof_obj.proof_text_to_string()
+                key = (proof_str, origin)
+                if key in seen_whole_proofs:
+                    continue
+                if self.MAX_N_EXAMPLES <= len(similar_whole_proofs):
+                    break
+                seen_whole_proofs.add(key)
+                similar_whole_proofs.append(proof_obj)
+            except ValueError:
+                _logger.warning(f"Couldn't find corresponding proof with {r.origin}")
+
+        passages: list[str] = []
+        for p in similar_whole_proofs:
+            proof_premises = premises_from_proof(p, self.PREMISE_FILTER)
+            premise_str = "\n".join([s.text for s in proof_premises])
+            passages.append(f"{p.proof_text_to_string()}\n{premise_str}")
+
+        basic_example = self.basic_formatter.example_from_step(step_idx, proof)
+        return LmExample(basic_example.input, basic_example.output, passages)
+
+    @classmethod
+    def from_conf(
+        cls,
+        conf: WholeProofPremiseRetrievalFormatterConf,
+    ) -> WholeProofPremiseRetrievalFormatter:
         sentence_db = SentenceDB.load(conf.sentence_db_loc)
         return cls(
             ProofRetriever(conf.proof_bank_loc, cls.MAX_N_EXAMPLES),
@@ -684,14 +795,15 @@ class GPTProofFormatter:
         similar_whole_proofs: list[tuple[str, str]] = []
         for r in similar_proof_result:
             try:
-                whole_proof_and_origin = self.proof_retriever.get_whole_proof(
+                proof, origin = self.proof_retriever.get_whole_proof(
                     r, self.data_loc, self.sentence_db
                 )
-                if whole_proof_and_origin in similar_whole_proofs:
+                key = proof.proof_text_to_string(), origin
+                if key in similar_whole_proofs:
                     continue
                 if self.NUM_STEPS <= len(similar_whole_proofs):
                     break
-                similar_whole_proofs.append(whole_proof_and_origin)
+                similar_whole_proofs.append(key)
             except ValueError:
                 _logger.warning(f"Couldn't find corresponding proof with {r.origin}")
 
@@ -743,6 +855,7 @@ LmFormatter = (
     | PremiseFormatter
     | ProofRetrievalFormatter
     | WholeProofRetrievalFormatter
+    | WholeProofPremiseRetrievalFormatter
     | GPTVanillaFormatter
     | GPTProofFormatter
     | GPTPremiseFormatter

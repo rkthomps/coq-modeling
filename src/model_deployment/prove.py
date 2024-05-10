@@ -280,20 +280,3 @@ def summary_from_result(
         case MCTSSuccess() | MCTSFailure():
             return MCTSSummary.from_search_result(file, theorem, result)
 
-
-if __name__ == "__main__":
-    """This section of the file is just here for evaluation."""
-    from evaluation.evaluate import EvalConf
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("eval_conf_loc")
-    parser.add_argument("proof_map_loc")
-    parser.add_argument("proof_map_idx", type=int)
-
-    args = parser.parse_args(sys.argv[1:])
-    eval_conf_loc = Path(args.eval_conf_loc)
-    proof_map_loc = Path(args.proof_map_loc)
-    proof_map_idx = args.proof_map_idx
-    assert isinstance(proof_map_idx, int)
-
-    eval_conf = EvalConf.from_yaml(eval_conf_loc)
