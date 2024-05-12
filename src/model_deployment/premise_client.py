@@ -19,7 +19,6 @@ from premise_selection.premise_formatter import (
     CONTEXT_ALIASES,
     PREMISE_ALIASES,
 )
-from util.socket_client import ServerAdapter
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
 from coqpyt.coq.structs import TermType
 
@@ -103,20 +102,20 @@ class LookupClientConf:
 @dataclass
 class SelectClientConf:
     ALIAS = "select-client"
-    socket_paths: list[Path]
+    urls: list[str]
     context_format_alias: str
     premise_format_alias: str
     premise_filter_conf: PremiseFilterConf
     sentence_db_loc: Path
 
     def merge(self, other: SelectClientConf) -> SelectClientConf:
-        new_socket_paths = self.socket_paths + other.socket_paths
+        new_urls = self.urls + other.urls
         assert self.context_format_alias == other.context_format_alias
         assert self.premise_format_alias == other.premise_format_alias
         assert self.premise_filter_conf == other.premise_filter_conf
         assert self.sentence_db_loc == other.sentence_db_loc
         return SelectClientConf(
-            new_socket_paths,
+            new_urls,
             self.context_format_alias,
             self.premise_format_alias,
             self.premise_filter_conf,
@@ -126,7 +125,7 @@ class SelectClientConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectClientConf:
         return cls(
-            [Path(p) for p in yaml_data["socket_paths"]],
+            yaml_data["urls"],
             yaml_data["context_format_alias"],
             yaml_data["premise_format_alias"],
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
@@ -137,20 +136,20 @@ class SelectClientConf:
 @dataclass
 class RerankClientConf:
     ALIAS = "rerank-client"
-    socket_paths: list[Path]
+    urls: list[str]
     select_client: PremiseConf
     rerank_num: int
 
     def merge(self, other: RerankClientConf) -> RerankClientConf:
-        new_socket_paths = self.socket_paths + other.socket_paths
+        new_urls = self.urls + other.urls
         new_select_client = merge_premise_confs(self.select_client, other.select_client)
         assert self.rerank_num == other.rerank_num
-        return RerankClientConf(new_socket_paths, new_select_client, self.rerank_num)
+        return RerankClientConf(new_urls, new_select_client, self.rerank_num)
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RerankClientConf:
         return cls(
-            [Path(p) for p in yaml_data["socket_paths"]],
+            yaml_data["urls"],
             premise_conf_from_yaml(yaml_data["select"]),
             yaml_data["rerank_num"],
         )
@@ -247,7 +246,7 @@ def get_ids_from_sentence(s: Sentence) -> list[str]:
 
 class RerankClient:
     def __init__(
-        self, socket_paths: list[Path], select_client: PremiseClient, rerank_num: int
+        self, urls: list[str], select_client: PremiseClient, rerank_num: int
     ):
         self.select_client = select_client
         self.rerank_num = rerank_num
@@ -255,11 +254,7 @@ class RerankClient:
         self.premise_format = self.select_client.premise_format
         self.premise_filter = self.select_client.premise_filter
         self.session = requests.Session()
-        self.urls: list[str] = []
-        for i, path in enumerate(socket_paths):
-            url = f"http://servers-{i}/"
-            self.session.mount(f"http://servers-{i}/", ServerAdapter(path))
-            self.urls.append(url)
+        self.urls = urls
 
     def get_premise_scores_from_strings(
         self, context_str: str, premises: list[Sentence]
@@ -299,7 +294,7 @@ class RerankClient:
     @classmethod
     def from_conf(cls, conf: RerankClientConf) -> RerankClient:
         return cls(
-            conf.socket_paths,
+            conf.urls,
             premise_client_from_conf(conf.select_client),
             conf.rerank_num,
         )
@@ -308,7 +303,7 @@ class RerankClient:
 class SelectPremiseClient:
     def __init__(
         self,
-        socket_paths: list[Path],
+        urls: list[str],
         context_format: type[ContextFormat],
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
@@ -319,11 +314,7 @@ class SelectPremiseClient:
         self.premise_filter = premise_filter
         self.sentence_db = sentence_db
         self.session = requests.Session()
-        self.urls: list[str] = []
-        for i, path in enumerate(socket_paths):
-            url = f"http://servers-{i}/"
-            self.session.mount(f"http://servers-{i}/", ServerAdapter(path))
-            self.urls.append(url)
+        self.urls = urls
 
     def clear_transformation_matrix(self):
         for url in self.urls:
@@ -403,7 +394,7 @@ class SelectPremiseClient:
     @classmethod
     def from_conf(cls, conf: SelectClientConf) -> SelectPremiseClient:
         return cls(
-            conf.socket_paths,
+            conf.urls,
             CONTEXT_ALIASES[conf.context_format_alias],
             PREMISE_ALIASES[conf.premise_format_alias],
             PremiseFilter.from_conf(conf.premise_filter_conf),

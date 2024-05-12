@@ -19,6 +19,7 @@ log.setLevel(logging.ERROR)
 from tactic_gen.lm_example import LmExample
 from data_management.dataset_file import Sentence
 from model_deployment.premise_model_wrapper import RerankWrapper
+from model_deployment.conf_utils import get_ip
 
 wrapper: Optional[RerankWrapper] = None
 
@@ -47,4 +48,4 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
     wrapper = RerankWrapper.from_checkpoint(args.checkpoint_loc)
     serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
-    run_simple(f"unix://{serve_path}", args.port, application)
+    run_simple(get_ip(), args.port, application)

@@ -27,7 +27,6 @@ from tactic_gen.lm_example import (
 )
 from model_deployment.model_result import ModelResult
 
-from util.socket_client import ServerAdapter
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
@@ -74,20 +73,20 @@ class CodellamaTacticGenConf:
 @dataclass
 class LocalTacticGenClientConf:
     ALIAS = "client"
-    socket_paths: list[Path]
+    urls: list[str]
     formatter_confs: list[FormatterConf]
 
     def merge(self, other: LocalTacticGenClientConf) -> LocalTacticGenClientConf:
-        new_socket_paths = self.socket_paths + other.socket_paths
+        new_urls = self.urls + other.urls
         assert len(self.formatter_confs) == len(other.formatter_confs)
         new_formatter_confs = [merge_formatters(f1, f2) for f1, f2 in zip(self.formatter_confs, other.formatter_confs)]
-        return LocalTacticGenClientConf(new_socket_paths, new_formatter_confs) 
+        return LocalTacticGenClientConf(new_urls, new_formatter_confs) 
 
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LocalTacticGenClientConf:
         return cls(
-            [Path(p) for p in yaml_data["socket_paths"]],
+            yaml_data["urls"],
             [formatter_conf_from_yaml(f) for f in yaml_data["formatters"]],
         )
 
@@ -137,15 +136,10 @@ class OpenAiClient:
 
 
 class LocalTacticGenClient:
-    def __init__(self, socket_paths: list[Path], formatters: list[LmFormatter]) -> None:
-        self.socket_paths = socket_paths
+    def __init__(self, urls: list[str], formatters: list[LmFormatter]) -> None:
         self.formatters = formatters
         self.session = requests.Session()
-        self.urls: list[str] = []
-        for i, path in enumerate(socket_paths):
-            url = f"http://servers-{i}/"
-            self.session.mount(f"http://servers-{i}/", ServerAdapter(path))
-            self.urls.append(url)
+        self.urls = urls
 
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         request_id = hash(example)
@@ -166,7 +160,7 @@ class LocalTacticGenClient:
     @classmethod
     def from_conf(cls, conf: LocalTacticGenClientConf) -> TacticGenClient:
         return cls(
-            conf.socket_paths, [formatter_from_conf(f) for f in conf.formatter_confs]
+            conf.urls, [formatter_from_conf(f) for f in conf.formatter_confs]
         )
 
 

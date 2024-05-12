@@ -1,6 +1,8 @@
 from typing import Any, Optional
 from pathlib import Path
 import yaml
+import socket
+import functools
 from dataclasses import dataclass
 
 from data_management.create_lm_dataset import LmDatasetConf
@@ -34,7 +36,6 @@ from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
 from model_deployment.run_whole_proofs import TestWholeProofsConf
 from evaluation.evaluate import EvalConf
-from util.socket_client import ServerAdapter
 from util.constants import (
     PREMISE_DATA_CONF_NAME,
     RERANK_DATA_CONF_NAME,
@@ -57,6 +58,7 @@ TopLevelConf = (
     | PremiseEvalConf
 )
 
+START_PORT = 55555
 
 @dataclass
 class StartTacticModelCommand:
@@ -154,22 +156,39 @@ StartModelCommand = (
 )
 
 
+@functools.cache
+def get_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('10.254.254.254', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
+
+def get_url(ip_addr: str, port: int) -> str:
+    return f"http://{ip_addr}:{port}"
+
 def get_select_command(
     select_conf: SelectConf, start_server_num: int
-) -> tuple[Path, int, StartSelectModelCommand]:
+) -> tuple[str, int, StartSelectModelCommand]:
+    port = START_PORT + start_server_num
     command = StartSelectModelCommand(
-        select_conf.vector_db_loc, select_conf.checkpoint_loc, start_server_num
+        select_conf.vector_db_loc, select_conf.checkpoint_loc, port 
     )
-    server_loc = Path(SERVER_LOC) / str(start_server_num)
-    return server_loc, start_server_num + 1, command
+    return get_url(get_ip(), port), start_server_num + 1, command
 
 
 def get_rerank_command(
     rerank_conf: RerankConf, start_server_num: int
-) -> tuple[Path, int, StartRerankModelCommand]:
-    command = StartRerankModelCommand(rerank_conf.checkpoint_loc, start_server_num)
-    server_loc = Path(SERVER_LOC) / str(start_server_num)
-    return server_loc, start_server_num + 1, command
+) -> tuple[str, int, StartRerankModelCommand]:
+    port = START_PORT + start_server_num
+    command = StartRerankModelCommand(rerank_conf.checkpoint_loc, port)
+    return get_url(get_ip(), port), start_server_num + 1, command
 
 
 def premise_conf_to_client_conf(
@@ -178,7 +197,7 @@ def premise_conf_to_client_conf(
 ) -> tuple[PremiseConf, int, list[StartModelCommand]]:
     match conf:
         case SelectConf():
-            socket_path, next_server_num, command = get_select_command(
+            url, next_server_num, command = get_select_command(
                 conf, start_server_num
             )
             assert 0 < len(conf.checkpoint_loc.parents)
@@ -190,7 +209,7 @@ def premise_conf_to_client_conf(
             data_conf = SelectDataConfig.from_yaml(yaml_data)
             filter_conf = PremiseFilterConf.from_yaml(yaml_data["premise_filter"])
             new_select_client = SelectClientConf(
-                [socket_path],
+                [url],
                 data_conf.context_format_type_alias,
                 data_conf.premise_format_type_alias,
                 filter_conf,
@@ -216,11 +235,11 @@ def premise_conf_to_client_conf(
                 select_conf, next_server_num, commands = premise_conf_to_client_conf(
                     conf.select_conf, start_server_num
                 )
-            rerank_paths, next_server_num, rerank_command = get_rerank_command(
+            rerank_url, next_server_num, rerank_command = get_rerank_command(
                 conf, next_server_num
             )
             new_rerank_conf = RerankClientConf(
-                [rerank_paths], select_conf, conf.rerank_num
+                [rerank_url], select_conf, conf.rerank_num
             )
             return new_rerank_conf, next_server_num, commands + [rerank_command]
         case _:
@@ -296,12 +315,12 @@ def get_tactic_server_alias(conf: FidTacticGenConf | CodellamaTacticGenConf) -> 
 
 def get_tactic_gen_command(
     conf: FidTacticGenConf | CodellamaTacticGenConf, start_server_num: int
-) -> tuple[Path, int, StartTacticModelCommand]:
+) -> tuple[str, int, StartTacticModelCommand]:
+    port = START_PORT + start_server_num
     command = StartTacticModelCommand(
-        get_tactic_server_alias(conf), conf.checkpoint_loc, start_server_num
+        get_tactic_server_alias(conf), conf.checkpoint_loc, port 
     )
-    server_loc = Path(SERVER_LOC) / str(start_server_num)
-    return server_loc, start_server_num + 1, command
+    return get_url(get_ip(), port), start_server_num + 1, command
 
 
 def tactic_gen_to_client_conf(
@@ -331,11 +350,11 @@ def tactic_gen_to_client_conf(
                 )
                 all_commands.extend(commands)
                 all_formatter_confs.append(formatter_client_conf)
-            tactic_path, next_server_num, tac_command = get_tactic_gen_command(
+            url, next_server_num, tac_command = get_tactic_gen_command(
                 conf, next_server_num
             )
             new_tactic_client = LocalTacticGenClientConf(
-                [tactic_path], all_formatter_confs
+                [url], all_formatter_confs
             )
             return new_tactic_client, next_server_num, all_commands + [tac_command]
         case _:

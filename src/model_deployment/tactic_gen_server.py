@@ -18,6 +18,8 @@ from tactic_gen.lm_example import LmExample
 from model_deployment.model_wrapper import ModelWrapper, StubWrapper, wrapper_from_conf
 from model_deployment.model_result import ModelResult
 
+from model_deployment.conf_utils import get_ip
+
 wrapper: ModelWrapper = StubWrapper()
 
 
@@ -47,4 +49,4 @@ if __name__ == "__main__":
     wrapper = wrapper_from_conf(conf)
     log.info("serving model at checkpoint ", args.checkpoint_loc)
     serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
-    run_simple(f"unix://{serve_path}", args.port, application)
+    run_simple(get_ip(), args.port, application)
