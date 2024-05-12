@@ -35,6 +35,7 @@ dependencies = [
     "ipdb",
     "parsy",
     "edist",
+		"Werkzeug",
 ]
 
 [tool.setuptools.packages.find]

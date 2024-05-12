@@ -26,6 +26,9 @@ from data_management.sentence_db import SentenceDB
 from model_deployment.tactic_gen_client import FidTacticGenConf, CodellamaTacticGenConf
 from util.constants import CLEAN_CONFIG, SERVER_LOC
 from util.socket_client import ServerAdapter
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 RUN_MODELS_LOC = Path("./jobs/run-models.sh")
 TACTIC_SERVER_LOC = Path("./src/model_deployment/tactic_gen_server.py")
@@ -92,7 +95,7 @@ def create_eval_proof_map(eval_conf: EvalConf) -> ProofMap:
         print(f"Using proof map located at {proof_map_loc}")
         return ProofMap.load(proof_map_loc)
 
-    print(f"Creating proof map.")
+    _logger.info(f"Creating proof map.")
     data_split = DataSplit.load(eval_conf.data_split_loc)
     sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
     proof_map = ProofMap.create(
@@ -100,28 +103,6 @@ def create_eval_proof_map(eval_conf: EvalConf) -> ProofMap:
     )
     proof_map.save(proof_map_loc)
     return proof_map
-
-
-# def wait_for_servers(num_servers: int):
-#     session = requests.Session()
-#     urls: list[str] = []
-#     for num in range(start_server_num, next_server_num):
-#         url = f"http://servers-{num}/"
-#         path = Path(SERVER_LOC) / str(num)
-#         session.mount(f"http://servers-{i}/", ServerAdapter(path))
-#         urls.append(url)
-
-#     assert len(open_processes) == len(urls)
-#     for process, server_url in zip(started_processes, urls):
-#         while True:
-#             try:
-#                 poll_result = subprocess.Popen.poll(process)
-#                 if poll_result is not None:
-#                     raise ServerFailedError
-#                 response = session.get(server_url)
-#                 break
-#             except requests.exceptions.RequestException:
-#                 continue
 
 
 def wait_for_servers(next_server_num: int):
@@ -182,17 +163,19 @@ def run(
         "#!/bin/bash\n"
         f"#SBATCH -p gpu-preempt\n"
         f"#SBATCH -t {timeout}\n"
+        f"#SBATCH -c {4 * n_gpu}\n"
         f"#SBATCH --ntasks={n_gpu}\n"
-        f"#SBATCH --gres=gpu:{n_gpu_nodes}\n"
+        f"#SBATCH --gres=gpu:{n_gpu}\n"
+        f"#SBATCH --mem=16G\n"
         f"#SBATCH -o slurm-serve-%j.out\n"
-        f"srun -l --gres=gpu:1 {RUN_MODELS_LOC}\n"
+        f"srun -l --gres=gpu:1 --mem=16G -c 4 {RUN_MODELS_LOC}\n"
     )
 
     with GPU_SBATCH_LOC.open("w") as fout:
         fout.write(server_sbatch)
 
     # Start gpus
-    print("Starting gpu servers...")
+    _logger.info("Starting gpu servers...")
     subprocess.run(["sbatch", f"{GPU_SBATCH_LOC}"])
 
     proof_map = create_eval_proof_map(eval_conf)
@@ -200,6 +183,7 @@ def run(
     with open(eval_conf_loc, "wb") as fout:
         pickle.dump(final_eval_conf, fout)
 
+    _logger.info("Waiting for servers...")
     wait_for_servers(next_server_num)
 
     proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
@@ -209,6 +193,7 @@ def run(
         f"#SBATCH -c {n_cpu}\n"
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}\n"
+        f"#SBATCH --mem=16G\n"
         f"SBATCH -o slurm-prove-%j.out\n"
         f"timout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
     )
@@ -217,7 +202,7 @@ def run(
         fout.write(proof_sbatch)
 
     # Start proof workers
-    print("Starting proof workers...")
+    _logger.info("Starting proof workers")
     subprocess.run(["sbatch", f"{PROOF_SBATCH_LOC}"])
 
 
@@ -225,27 +210,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("conf_loc", help="Location of eval configuration")
     parser.add_argument("timeout", help="Timeout for evaluation")
-    parser.add_argument(
-        "n_gpu_tasks_per_node", type=int, help="Number of gpus per node"
-    )
-    parser.add_argument("n_gpu_nodes", type=int, help="Number of nodes.")
+    parser.add_argument("n_gpus", type=int, help="Number of gpus to use.")
     parser.add_argument("n_cpus", type=int, help="Number of cpus to use")
     args = parser.parse_args(sys.argv[1:])
 
     conf_loc = Path(args.conf_loc)
     timeout = args.timeout
-    n_gpu_tasks_per_node = args.n_gpu_tasks_per_node
-    n_gpu_nodes = args.n_gpu_nodes
+    n_gpus = args.n_gpus
     n_cpus = args.n_cpus
 
     assert conf_loc.exists()
     assert isinstance(timeout, str)
-    assert isinstance(n_gpu_tasks_per_node, int)
-    assert isinstance(n_gpu_nodes, int)
+    assert isinstance(n_gpus, int)
     assert isinstance(n_cpus, int)
 
     with conf_loc.open("r") as fin:
         conf = yaml.load(fin, Loader=yaml.Loader)
 
     eval_conf = EvalConf.from_yaml(conf)
-    run(eval_conf, timeout, n_gpu_tasks_per_node, n_gpu_nodes, n_cpus)
+    run(eval_conf, timeout, n_gpus, n_cpus)

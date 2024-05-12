@@ -9,7 +9,7 @@ from util.constants import SERVER_LOC
 import logging
 
 log = logging.getLogger("werkzeug")
-log.setLevel(logging.ERROR)
+log.setLevel(logging.DEBUG)
 
 import requests
 from jsonrpc import JSONRPCResponseManager, dispatcher
@@ -43,7 +43,8 @@ if __name__ == "__main__":
         "alias": args.alias,
         "checkpoint_loc": args.checkpoint_loc,
     }
+    log.info("loading model")
     wrapper = wrapper_from_conf(conf)
-    print("serving model at checkpoint ", args.checkpoint_loc)
+    log.info("serving model at checkpoint ", args.checkpoint_loc)
     serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
     run_simple(f"unix://{serve_path}", args.port, application)
