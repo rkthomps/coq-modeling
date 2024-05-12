@@ -16,6 +16,9 @@ import yaml
 from model_deployment.conf_utils import (
     merge,
     to_client_conf,
+    get_ip,
+    get_url,
+    START_PORT,
     TopLevelConf,
     StartModelCommand,
 )
@@ -25,7 +28,6 @@ from data_management.sentence_db import SentenceDB
 
 from model_deployment.tactic_gen_client import FidTacticGenConf, CodellamaTacticGenConf
 from util.constants import CLEAN_CONFIG, SERVER_LOC
-from util.socket_client import ServerAdapter
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
@@ -108,10 +110,8 @@ def create_eval_proof_map(eval_conf: EvalConf) -> ProofMap:
 def wait_for_servers(next_server_num: int):
     session = requests.Session()
     urls: list[str] = []
-    for num in range(next_server_num):
-        url = f"http://servers-{num}/"
-        path = Path(SERVER_LOC) / str(num)
-        session.mount(f"http://servers-{num}/", ServerAdapter(path))
+    for port_incr in range(next_server_num):
+        url = get_url(get_ip(), port_incr)
         urls.append(url)
 
     for server_url in urls:

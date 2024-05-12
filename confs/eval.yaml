@@ -1,4 +1,4 @@
-n_procs: 8
+n_procs: 2
 split: val
 
 save_loc: ./eval-results/test

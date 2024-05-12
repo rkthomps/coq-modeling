@@ -10,14 +10,20 @@ from pathlib import Path
 from dataclasses import dataclass
 import yaml
 
-from model_deployment.conf_utils import TopLevelConf, to_client_conf, merge
+from model_deployment.conf_utils import (
+    TopLevelConf,
+    to_client_conf,
+    merge,
+    get_ip,
+    get_url,
+    START_PORT,
+)
 
 from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
 from model_deployment.run_whole_proofs import TestWholeProofsConf
 from evaluation.evaluate import EvalConf
-from util.socket_client import ServerAdapter
 
 from premise_selection.evaluate import PremiseEvalConf
 from data_management.create_lm_dataset import LmDatasetConf
@@ -58,7 +64,6 @@ COMMANDS = {
 }
 
 
-
 class CommandNotFoundError(Exception):
     pass
 
@@ -68,16 +73,13 @@ class ServerFailedError(Exception):
 
 
 def wait_for_servers(
-    start_server_num: int,
-    next_server_num: int,
+    num_ports: int,
     open_processes: list[subprocess.Popen[bytes]],
 ):
     session = requests.Session()
     urls: list[str] = []
-    for num in range(start_server_num, next_server_num):
-        url = f"http://servers-{num}/"
-        path = Path(SERVER_LOC) / str(num)
-        session.mount(f"http://servers-{num}/", ServerAdapter(path))
+    for port_incr in range(num_ports):
+        url = get_url(get_ip(), START_PORT + port_incr)
         urls.append(url)
 
     assert len(open_processes) == len(urls)
@@ -128,7 +130,9 @@ if __name__ == "__main__":
         clean_top_level_confs: list[TopLevelConf] = []
         started_processes: list[subprocess.Popen[bytes]] = []
         for d in args.devices:
-            clean_top_level_conf, next_server_num, commands = to_client_conf(top_level_conf, next_server_num)
+            clean_top_level_conf, next_server_num, commands = to_client_conf(
+                top_level_conf, next_server_num
+            )
             clean_top_level_confs.append(clean_top_level_conf)
             env = os.environ | {"CUDA_VISIBLE_DEVICES": f"{d}"}
             for c in commands:
@@ -142,7 +146,7 @@ if __name__ == "__main__":
         print("Merged conf:")
         print(clean_top_level_conf)
         print("Waiting for servers to start...")
-        wait_for_servers(0, next_server_num, started_processes)
+        wait_for_servers(next_server_num, started_processes)
         subprocess.run(["python3", command.py_path, args.config])
     finally:
         if clean_conf_path.exists():
