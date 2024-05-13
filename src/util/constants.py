@@ -12,3 +12,4 @@ RERANK_DATA_CONF_NAME = "rerank-data-config.yaml"
 
 CLEAN_CONFIG = "conf.pkl"
 SERVER_LOC = "./servers"
+PORT_MAP_LOC = "port-map"

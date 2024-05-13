@@ -22,6 +22,8 @@ from premise_selection.premise_formatter import (
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
 from coqpyt.coq.structs import TermType
 
+from util.util import get_basic_logger, FlexibleUrl
+
 
 @dataclass
 class SelectConf:
@@ -102,7 +104,7 @@ class LookupClientConf:
 @dataclass
 class SelectClientConf:
     ALIAS = "select-client"
-    urls: list[str]
+    urls: list[FlexibleUrl]
     context_format_alias: str
     premise_format_alias: str
     premise_filter_conf: PremiseFilterConf
@@ -125,7 +127,7 @@ class SelectClientConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectClientConf:
         return cls(
-            yaml_data["urls"],
+            [FlexibleUrl.from_yaml(u) for u in yaml_data["urls"]],
             yaml_data["context_format_alias"],
             yaml_data["premise_format_alias"],
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
@@ -136,7 +138,7 @@ class SelectClientConf:
 @dataclass
 class RerankClientConf:
     ALIAS = "rerank-client"
-    urls: list[str]
+    urls: list[FlexibleUrl]
     select_client: PremiseConf
     rerank_num: int
 
@@ -149,7 +151,7 @@ class RerankClientConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RerankClientConf:
         return cls(
-            yaml_data["urls"],
+            [FlexibleUrl.from_yaml(u) for u in yaml_data["urls"]],
             premise_conf_from_yaml(yaml_data["select"]),
             yaml_data["rerank_num"],
         )
@@ -245,9 +247,7 @@ def get_ids_from_sentence(s: Sentence) -> list[str]:
 
 
 class RerankClient:
-    def __init__(
-        self, urls: list[str], select_client: PremiseClient, rerank_num: int
-    ):
+    def __init__(self, urls: list[str], select_client: PremiseClient, rerank_num: int):
         self.select_client = select_client
         self.rerank_num = rerank_num
         self.context_format = self.select_client.context_format
@@ -294,7 +294,7 @@ class RerankClient:
     @classmethod
     def from_conf(cls, conf: RerankClientConf) -> RerankClient:
         return cls(
-            conf.urls,
+            [u.get_url() for u in conf.urls],
             premise_client_from_conf(conf.select_client),
             conf.rerank_num,
         )
@@ -394,7 +394,7 @@ class SelectPremiseClient:
     @classmethod
     def from_conf(cls, conf: SelectClientConf) -> SelectPremiseClient:
         return cls(
-            conf.urls,
+            [u.get_url() for u in conf.urls],
             CONTEXT_ALIASES[conf.context_format_alias],
             PREMISE_ALIASES[conf.premise_format_alias],
             PremiseFilter.from_conf(conf.premise_filter_conf),

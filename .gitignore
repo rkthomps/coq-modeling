@@ -26,6 +26,7 @@ slurm*.out
 sentences.db
 
 # Temporary
+port-map
 test_size.py
 err.txt
 .cm-search

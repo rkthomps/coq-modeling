@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional
 import pickle
 import sys, os
+import time
 import subprocess
 import requests
 import json
@@ -16,8 +17,11 @@ import yaml
 from model_deployment.conf_utils import (
     merge,
     to_client_conf,
+    clear_port_map,
+    read_port_map,
     get_ip,
-    get_url,
+    get_flexible_url,
+    update_ips,
     START_PORT,
     TopLevelConf,
     StartModelCommand,
@@ -27,7 +31,7 @@ from data_management.splits import Split, split2str, DataSplit, FileInfo
 from data_management.sentence_db import SentenceDB
 
 from model_deployment.tactic_gen_client import FidTacticGenConf, CodellamaTacticGenConf
-from util.constants import CLEAN_CONFIG, SERVER_LOC
+from util.constants import CLEAN_CONFIG, SERVER_LOC, PORT_MAP_LOC
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
@@ -107,11 +111,20 @@ def create_eval_proof_map(eval_conf: EvalConf) -> ProofMap:
     return proof_map
 
 
-def wait_for_servers(next_server_num: int):
+def wait_for_servers(next_server_num: int) -> dict[int, str]:
+    """Returns a map of port -> ip addr"""
     session = requests.Session()
     urls: list[str] = []
+
+    cur_port_map = read_port_map()
+    while len(cur_port_map) < next_server_num:
+        _logger.info(f"Port map of length {len(cur_port_map)} not complete. Sleeping.")
+        time.sleep(1)
+        cur_port_map = read_port_map()
+
     for port_incr in range(next_server_num):
-        url = get_url(get_ip(), START_PORT + port_incr)
+        port = START_PORT + port_incr
+        url = get_flexible_url(cur_port_map[port], port).get_url()
         urls.append(url)
 
     _logger.info("Waiting for urls: " + str(urls))
@@ -122,6 +135,7 @@ def wait_for_servers(next_server_num: int):
                 break
             except requests.exceptions.RequestException:
                 continue
+    return cur_port_map
 
 
 def run(
@@ -150,6 +164,7 @@ def run(
         raise FileExistsError(f"{final_eval_conf.save_loc}")
     os.makedirs(final_eval_conf.save_loc)
 
+    clear_port_map()
     with RUN_MODELS_LOC.open("w") as fout:
         commands = [
             " ".join(c.to_list_slurm("SLURM_PROCID", len(server_commands)))
@@ -179,12 +194,15 @@ def run(
     subprocess.run(["sbatch", f"{GPU_SBATCH_LOC}"])
 
     proof_map = create_eval_proof_map(eval_conf)
+
+    _logger.info("Waiting for servers...")
+    port_map = wait_for_servers(next_server_num)
+    _logger.info(f"Got port map {port_map}")
+    update_ips(final_eval_conf, port_map)
+
     eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S")
     with open(eval_conf_loc, "wb") as fout:
         pickle.dump(final_eval_conf, fout)
-
-    _logger.info("Waiting for servers...")
-    wait_for_servers(next_server_num)
 
     proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
     proof_sbatch = (

@@ -27,7 +27,7 @@ from tactic_gen.lm_example import (
 )
 from model_deployment.model_result import ModelResult
 
-from util.util import get_basic_logger
+from util.util import get_basic_logger, FlexibleUrl
 
 _logger = get_basic_logger(__name__)
 
@@ -73,20 +73,26 @@ class CodellamaTacticGenConf:
 @dataclass
 class LocalTacticGenClientConf:
     ALIAS = "client"
-    urls: list[str]
+    urls: list[FlexibleUrl]
     formatter_confs: list[FormatterConf]
+
+    def update_ips(self, port_map: dict[int, str]):
+        for url in self.urls:
+            url.ip = port_map[url.port]
 
     def merge(self, other: LocalTacticGenClientConf) -> LocalTacticGenClientConf:
         new_urls = self.urls + other.urls
         assert len(self.formatter_confs) == len(other.formatter_confs)
-        new_formatter_confs = [merge_formatters(f1, f2) for f1, f2 in zip(self.formatter_confs, other.formatter_confs)]
-        return LocalTacticGenClientConf(new_urls, new_formatter_confs) 
-
+        new_formatter_confs = [
+            merge_formatters(f1, f2)
+            for f1, f2 in zip(self.formatter_confs, other.formatter_confs)
+        ]
+        return LocalTacticGenClientConf(new_urls, new_formatter_confs)
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LocalTacticGenClientConf:
         return cls(
-            yaml_data["urls"],
+            [FlexibleUrl.from_yaml(u) for u in yaml_data["urls"]],
             [formatter_conf_from_yaml(f) for f in yaml_data["formatters"]],
         )
 
@@ -160,7 +166,8 @@ class LocalTacticGenClient:
     @classmethod
     def from_conf(cls, conf: LocalTacticGenClientConf) -> TacticGenClient:
         return cls(
-            conf.urls, [formatter_from_conf(f) for f in conf.formatter_confs]
+            [u.get_url() for u in conf.urls],
+            [formatter_from_conf(f) for f in conf.formatter_confs],
         )
 
 
@@ -177,6 +184,14 @@ def tactic_gen_client_from_conf(conf: TacticGenConf) -> TacticGenClient:
             raise ValueError(f"Invalid tactic client config: {str(conf.__class__)}")
 
 
+def tactic_conf_update_ips(conf: TacticGenConf, port_map: dict[int, str]):
+    match conf:
+        case LocalTacticGenClientConf():
+            conf.update_ips(port_map)
+        case _:
+            pass
+
+
 TacticGenConf = (
     LocalTacticGenClientConf
     | FidTacticGenConf
@@ -184,8 +199,9 @@ TacticGenConf = (
     | OpenAiCientConf
 )
 
+
 def merge_tactic_confs(conf1: TacticGenConf, conf2: TacticGenConf) -> TacticGenConf:
-    match conf1:    
+    match conf1:
         case LocalTacticGenClientConf():
             assert isinstance(conf2, LocalTacticGenClientConf)
             return conf1.merge(conf2)

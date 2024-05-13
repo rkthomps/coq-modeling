@@ -1,4 +1,4 @@
-n_procs: 2
+n_procs: 16
 split: val
 
 save_loc: ./eval-results/test
@@ -9,7 +9,7 @@ data_split_loc: splits/final-split.json
 search:
   alias: classical
   node_score_alias: heuristic-score
-  max_branch: 32
+  max_branch: 16
   max_expansions: 500
   depth_limit: 30
   timeout: 120
@@ -100,9 +100,13 @@ max_eval_proofs: 500
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-small-merged/checkpoint-126000
 
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-1024/checkpoint-114500
+
 tactic_gen:
   alias: fid
-  checkpoint_loc: models/t5-fid-small-1024/checkpoint-114500
+  checkpoint_loc: models/t5-fid-small-1024-proof-ret-8/checkpoint-127500 
 
 
 # tactic_gen:

@@ -9,7 +9,7 @@ from werkzeug.serving import run_simple
 import requests
 from jsonrpc import JSONRPCResponseManager, dispatcher
 
-from util.constants import SERVER_LOC
+from util.constants import SERVER_LOC, PORT_MAP_LOC
 
 import logging
 
@@ -45,7 +45,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "port", type=int, help="Port on which to run the select server."
     )
+
     args = parser.parse_args(sys.argv[1:])
+
+    port = args.port
+    ip = get_ip()
+    port_map_loc = Path(PORT_MAP_LOC)
+    assert port_map_loc.exists()
+
+    with port_map_loc.open("a") as fout:
+        fout.write(f"{port}\t{ip}\n")
+
     wrapper = RerankWrapper.from_checkpoint(args.checkpoint_loc)
     serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
     run_simple(get_ip(), args.port, application)

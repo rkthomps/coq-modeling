@@ -57,6 +57,9 @@ class EvalConf:
     tactic_conf: TacticGenConf
     max_eval_proofs: Optional[int]
 
+    def update_ips(self, port_map: dict[int, str]):
+        pass
+
     def get_proof_confs(self) -> Generator[EvalProofConf, None, None]:
         data_split = DataSplit.load(self.data_split_loc)
         sentence_db = SentenceDB.load(self.sentence_db_loc)

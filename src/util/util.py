@@ -1,20 +1,41 @@
 from __future__ import annotations
+from typing import Any
 import logging
 import os
 import re
 from pathlib import Path, Path
 import datetime
+from dataclasses import dataclass
 
 from coqpyt.coq.base_file import CoqFile
 
 
+@dataclass
+class FlexibleUrl:
+    protocol: str
+    ip: str
+    port: int
+
+    def get_url(self) -> str:
+        return f"{self.protocol}://{self.ip}:{self.port}"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> FlexibleUrl:
+        assert isinstance(yaml_data, str)
+        url_pattern = r"(.*?)://(.*?):(.*)"
+        url_match = re.match(url_pattern, yaml_data)
+        assert url_match is not None
+        protocol, ip, port = url_match.groups()
+        return cls(protocol, ip, int(port))
+
+
 def get_fresh_path(dirname: Path, fresh_base: str) -> Path:
     name = fresh_base
-    loc = dirname / name 
+    loc = dirname / name
     while loc.exists():
         name = "_" + name
-        loc = dirname / name 
-    return loc 
+        loc = dirname / name
+    return loc
 
 
 def get_log_level() -> int:

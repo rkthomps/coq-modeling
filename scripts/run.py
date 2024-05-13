@@ -15,7 +15,10 @@ from model_deployment.conf_utils import (
     to_client_conf,
     merge,
     get_ip,
-    get_url,
+    update_ips,
+    get_flexible_url,
+    read_port_map,
+    clear_port_map,
     START_PORT,
 )
 
@@ -31,7 +34,7 @@ from data_management.create_rerank_dataset import RerankDatasetConf
 from data_management.create_premise_dataset import SelectDataConfig
 from data_management.create_goal_dataset import GoalDatasetConf
 
-from util.constants import SERVER_LOC, CLEAN_CONFIG
+from util.constants import SERVER_LOC, CLEAN_CONFIG, PORT_MAP_LOC
 
 
 @dataclass
@@ -75,11 +78,19 @@ class ServerFailedError(Exception):
 def wait_for_servers(
     num_ports: int,
     open_processes: list[subprocess.Popen[bytes]],
-):
+) -> dict[int, str]:
     session = requests.Session()
     urls: list[str] = []
-    for port_incr in range(num_ports):
-        url = get_url(get_ip(), START_PORT + port_incr)
+
+    cur_port_map = read_port_map()
+    while len(cur_port_map) < num_ports:
+        time.sleep(1)
+        cur_port_map = read_port_map()
+        print("Cur port map:", cur_port_map)
+
+    for port_incr in range(next_server_num):
+        port = START_PORT + port_incr
+        url = get_flexible_url(cur_port_map[port], port).get_url()
         urls.append(url)
 
     assert len(open_processes) == len(urls)
@@ -93,6 +104,7 @@ def wait_for_servers(
                 break
             except requests.exceptions.RequestException:
                 continue
+    return cur_port_map
 
 
 if __name__ == "__main__":
@@ -107,6 +119,8 @@ if __name__ == "__main__":
         help="CUDA devices to use for running the command.",
     )
     args = parser.parse_args(sys.argv[1:])
+
+    clear_port_map()
 
     if args.command not in COMMANDS:
         raise (CommandNotFoundError(f"{args.command} not one of {command_list}"))
@@ -140,13 +154,15 @@ if __name__ == "__main__":
                 started_processes.append(process)
 
         clean_top_level_conf = merge(clean_top_level_confs)
-        with clean_conf_path.open("wb") as fout:
-            pickle.dump(clean_top_level_conf, fout)
 
         print("Merged conf:")
         print(clean_top_level_conf)
         print("Waiting for servers to start...")
-        wait_for_servers(next_server_num, started_processes)
+        port_map = wait_for_servers(next_server_num, started_processes)
+        update_ips(clean_top_level_conf, port_map)
+
+        with clean_conf_path.open("wb") as fout:
+            pickle.dump(clean_top_level_conf, fout)
         subprocess.run(["python3", command.py_path, args.config])
     finally:
         if clean_conf_path.exists():

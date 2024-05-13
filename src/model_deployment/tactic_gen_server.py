@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
-from util.constants import SERVER_LOC
+from util.constants import SERVER_LOC, PORT_MAP_LOC
 
 import logging
 
@@ -41,12 +41,22 @@ if __name__ == "__main__":
     parser.add_argument("checkpoint_loc", help="Checkpoint of the model wrapper")
     parser.add_argument("port", type=int, help="Port at which to host the model.")
     args = parser.parse_args(sys.argv[1:])
+
+    port = args.port
+    ip = get_ip()
+    port_map_loc = Path(PORT_MAP_LOC)
+    assert port_map_loc.exists()
+
+    with port_map_loc.open("a") as fout:
+        fout.write(f"{port}\t{ip}\n")
+
     conf = {
         "alias": args.alias,
         "checkpoint_loc": args.checkpoint_loc,
     }
     log.info("loading model")
     wrapper = wrapper_from_conf(conf)
+    log.warning(f"SERVING AT {get_ip()}; {port}")
     log.info("serving model at checkpoint ", args.checkpoint_loc)
     serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
     run_simple(get_ip(), args.port, application)

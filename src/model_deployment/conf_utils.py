@@ -1,4 +1,5 @@
 from typing import Any, Optional
+import os
 from pathlib import Path
 import yaml
 import socket
@@ -36,13 +37,18 @@ from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
 from model_deployment.run_whole_proofs import TestWholeProofsConf
 from evaluation.evaluate import EvalConf
+from util.util import get_basic_logger
+from util.util import FlexibleUrl
 from util.constants import (
     PREMISE_DATA_CONF_NAME,
     RERANK_DATA_CONF_NAME,
     DATA_CONF_NAME,
     CLEAN_CONFIG,
     SERVER_LOC,
+    PORT_MAP_LOC,
 )
+
+_logger = get_basic_logger(__name__)
 
 
 TopLevelConf = (
@@ -58,7 +64,8 @@ TopLevelConf = (
     | PremiseEvalConf
 )
 
-START_PORT = 55555
+START_PORT = 19734
+
 
 @dataclass
 class StartTacticModelCommand:
@@ -162,33 +169,56 @@ def get_ip():
     s.settimeout(0)
     try:
         # doesn't even have to be reachable
-        s.connect(('10.254.254.254', 1))
-        IP = s.getsockname()[0]
+        s.connect(("10.254.254.254", 1))
+        ip = s.getsockname()[0]
     except Exception:
-        IP = '127.0.0.1'
+        ip = "127.0.0.1"
     finally:
         s.close()
-    return IP
+    return ip
 
-def get_url(ip_addr: str, port: int) -> str:
-    return f"http://{ip_addr}:{port}"
+
+def clear_port_map():
+    port_map_loc = Path(PORT_MAP_LOC)
+    if os.path.exists(port_map_loc):
+        os.remove(PORT_MAP_LOC)
+    with port_map_loc.open("w") as _:
+        pass
+
+
+def read_port_map() -> dict[int, str]:
+    port_map_loc = Path(PORT_MAP_LOC)
+    port_map: dict[int, str] = {}
+    with port_map_loc.open("r") as fin:
+        for line in fin:
+            lineitems = line.strip().split("\t")
+            assert len(lineitems) == 2
+            port = int(lineitems[0])
+            ip = lineitems[1]
+            port_map[port] = ip
+    return port_map
+
+
+def get_flexible_url(ip_addr: str, port: int) -> FlexibleUrl:
+    return FlexibleUrl("http", ip_addr, port)
+
 
 def get_select_command(
     select_conf: SelectConf, start_server_num: int
-) -> tuple[str, int, StartSelectModelCommand]:
+) -> tuple[FlexibleUrl, int, StartSelectModelCommand]:
     port = START_PORT + start_server_num
     command = StartSelectModelCommand(
-        select_conf.vector_db_loc, select_conf.checkpoint_loc, port 
+        select_conf.vector_db_loc, select_conf.checkpoint_loc, port
     )
-    return get_url(get_ip(), port), start_server_num + 1, command
+    return get_flexible_url(get_ip(), port), start_server_num + 1, command
 
 
 def get_rerank_command(
     rerank_conf: RerankConf, start_server_num: int
-) -> tuple[str, int, StartRerankModelCommand]:
+) -> tuple[FlexibleUrl, int, StartRerankModelCommand]:
     port = START_PORT + start_server_num
     command = StartRerankModelCommand(rerank_conf.checkpoint_loc, port)
-    return get_url(get_ip(), port), start_server_num + 1, command
+    return get_flexible_url(get_ip(), port), start_server_num + 1, command
 
 
 def premise_conf_to_client_conf(
@@ -197,9 +227,7 @@ def premise_conf_to_client_conf(
 ) -> tuple[PremiseConf, int, list[StartModelCommand]]:
     match conf:
         case SelectConf():
-            url, next_server_num, command = get_select_command(
-                conf, start_server_num
-            )
+            url, next_server_num, command = get_select_command(conf, start_server_num)
             assert 0 < len(conf.checkpoint_loc.parents)
             model_loc = conf.checkpoint_loc.parents[0]
             data_conf_loc = model_loc / PREMISE_DATA_CONF_NAME
@@ -315,12 +343,12 @@ def get_tactic_server_alias(conf: FidTacticGenConf | CodellamaTacticGenConf) -> 
 
 def get_tactic_gen_command(
     conf: FidTacticGenConf | CodellamaTacticGenConf, start_server_num: int
-) -> tuple[str, int, StartTacticModelCommand]:
+) -> tuple[FlexibleUrl, int, StartTacticModelCommand]:
     port = START_PORT + start_server_num
     command = StartTacticModelCommand(
-        get_tactic_server_alias(conf), conf.checkpoint_loc, port 
+        get_tactic_server_alias(conf), conf.checkpoint_loc, port
     )
-    return get_url(get_ip(), port), start_server_num + 1, command
+    return get_flexible_url(get_ip(), port), start_server_num + 1, command
 
 
 def tactic_gen_to_client_conf(
@@ -353,12 +381,20 @@ def tactic_gen_to_client_conf(
             url, next_server_num, tac_command = get_tactic_gen_command(
                 conf, next_server_num
             )
-            new_tactic_client = LocalTacticGenClientConf(
-                [url], all_formatter_confs
-            )
+            new_tactic_client = LocalTacticGenClientConf([url], all_formatter_confs)
             return new_tactic_client, next_server_num, all_commands + [tac_command]
         case _:
             return conf, start_server_num, []
+
+
+def update_ips(conf: TopLevelConf, port_map: dict[int, str]):
+    match conf:
+        case EvalConf():
+            conf.update_ips(port_map)
+        case _:
+            _logger.warning(
+                "IP updating only implemented for evaluation. Inter-node communication might not work."
+            )  # TODO
 
 
 def to_client_conf(
