@@ -111,9 +111,10 @@ def wait_for_servers(next_server_num: int):
     session = requests.Session()
     urls: list[str] = []
     for port_incr in range(next_server_num):
-        url = get_url(get_ip(), port_incr)
+        url = get_url(get_ip(), START_PORT + port_incr)
         urls.append(url)
 
+    _logger.info("Waiting for urls: " + str(urls))
     for server_url in urls:
         while True:
             try:
@@ -163,12 +164,11 @@ def run(
         "#!/bin/bash\n"
         f"#SBATCH -p gpu-preempt\n"
         f"#SBATCH -t {timeout}\n"
-        f"#SBATCH -c {4 * n_gpu}\n"
         f"#SBATCH --ntasks={n_gpu}\n"
         f"#SBATCH --gres=gpu:{n_gpu}\n"
         f"#SBATCH --mem=16G\n"
         f"#SBATCH -o slurm-serve-%j.out\n"
-        f"srun -l --gres=gpu:1 --mem=16G -c 4 {RUN_MODELS_LOC}\n"
+        f"srun -l --gres=gpu:1 --mem=16G {RUN_MODELS_LOC}\n"
     )
 
     with GPU_SBATCH_LOC.open("w") as fout:
