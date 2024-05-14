@@ -67,9 +67,7 @@ def get_proof_info(
     client.shutdown()
     client.exit()
     for i, step in enumerate(steps):
-        if normalize(step.text) in normalize(term.term.text) or normalize(
-            term.term.text
-        ) in normalize(step.text):
+        if normalize(term.term.text) in normalize(step.text):
             return ProofInfo(term, steps[: (i + 1)], i)
     raise ValueError(f"Could not find step defining theorem {term.term.text}")
 
@@ -279,4 +277,3 @@ def summary_from_result(
             return SearchSummary.from_search_result(file, theorem, result)
         case MCTSSuccess() | MCTSFailure():
             return MCTSSummary.from_search_result(file, theorem, result)
-

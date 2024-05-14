@@ -23,8 +23,8 @@ thm_info:
   # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/homographic_correctness.v
   # theorem_name: spec_Qhomographic_Qpositive_to_Q_Zopp_2 
 
-  test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_denumerable.v
-  theorem_name: Z_to_nat_to_Z_i
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_denumerable.v
+  # theorem_name: Z_to_nat_to_Z_i
 
   # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/dvdring.v 
   # theorem_name: lcmr_mulr
@@ -46,6 +46,9 @@ thm_info:
   # The width of the board is positive
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: w_pos
+
+  test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  theorem_name: prestrict_get_default
 
   # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/core/equiv.v
   # theorem_name: equiv_of_fn
@@ -138,7 +141,7 @@ thm_info:
 search:
   alias: classical
   node_score_alias: heuristic-score 
-  max_branch: 32
+  max_branch: 16
   max_expansions: 500
   depth_limit: 30
   timeout: 120
@@ -205,14 +208,17 @@ search:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-base-basic-final/checkpoint-110500
 
+tactic_gen:
+  alias: fid
+  checkpoint_loc: models/t5-fid-small-1024-proof-ret-8/checkpoint-127500 
 
 # tactic_gen:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-small-basic-final/checkpoint-110500
 
-tactic_gen:
-  alias: codellama
-  checkpoint_loc: models/codellama-7b-whole-proof-ret/checkpoint-4500
+# tactic_gen:
+#   alias: codellama
+#   checkpoint_loc: models/codellama-7b-whole-proof-ret/checkpoint-4500
 
 print_proofs: True
 print_trees: True 
