@@ -29,7 +29,7 @@ if __name__ == "__main__":
     parser.add_argument("proof_map_idx", type=int)
 
     args = parser.parse_args(sys.argv[1:])
-    eval_pkl_conf_loc = Path(args.eval_conf_loc)
+    eval_pkl_conf_loc = Path(args.eval_pkl_conf_loc)
     proof_map_loc = Path(args.proof_map_loc)
     proof_map_idx = args.proof_map_idx
     assert proof_map_loc.exists()
