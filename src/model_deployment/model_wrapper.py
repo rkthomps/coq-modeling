@@ -5,6 +5,7 @@ import functools
 
 import sys, os
 import requests
+import re
 import json
 import yaml
 import math
@@ -12,7 +13,7 @@ import math
 from typeguard import typechecked
 from transformers import (
     LlamaForCausalLM,
-    T5Tokenizer,
+    AutoTokenizer,
     CodeLlamaTokenizer,
     BitsAndBytesConfig,
 )
@@ -45,12 +46,19 @@ class FidT5LocalWrapper:
     def __init__(
         self,
         model: FiDT5,
-        tokenizer: T5Tokenizer,
+        tokenizer: AutoTokenizer,
         local_dset: FidDataset,
     ) -> None:
         self.model = model
         self.tokenizer = tokenizer
         self.local_dset = local_dset
+
+    def __add_whitespace(self, tactic: str) -> str:
+        whitespace_pattern = r"\s"
+        whitespace_match = re.match(whitespace_pattern, tactic)
+        if whitespace_match is None:
+            return "\n" + tactic
+        return tactic
 
     def get_current_proof_words(self, current_proof: str) -> list[str]:
         return current_proof.split()
@@ -108,7 +116,7 @@ class FidT5LocalWrapper:
         raw_tactics = self.tokenizer.batch_decode(
             outputs.sequences, skip_special_tokens=True
         )
-        tactics = [f"\n{t}" for t in raw_tactics]
+        tactics = [f"{self.__add_whitespace(t)}" for t in raw_tactics]
         not_pad_or_eos = ~(
             (outputs.sequences == self.tokenizer.pad_token_id)
             + (outputs.sequences == self.tokenizer.eos_token_id)
@@ -127,7 +135,7 @@ class FidT5LocalWrapper:
         model = FiDT5.from_pretrained(checkpoint_loc)
         model.cuda()
         model_name = model_conf["model_name"]
-        tokenizer = T5Tokenizer.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
         max_encode_len = get_required_arg("max_encode_len", model_conf)
         max_decode_len = get_required_arg("max_decode_len", model_conf)
         max_num_passages = get_required_arg("max_num_passages", model_conf)

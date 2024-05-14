@@ -13,7 +13,7 @@ import numpy as np
 from pathlib import Path
 
 from data_management.jsonl_utils import ExampleDB
-from transformers import T5Tokenizer, BatchEncoding
+from transformers import AutoTokenizer, BatchEncoding
 from tactic_gen.lm_example import LmExample
 
 
@@ -21,7 +21,7 @@ class FidDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         data_path: Optional[Path],
-        tokenizer: T5Tokenizer,
+        tokenizer: AutoTokenizer,
         max_encode_len: int,
         max_decode_len: int,
         max_num_passages: int,

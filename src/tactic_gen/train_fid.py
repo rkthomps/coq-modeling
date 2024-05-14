@@ -3,7 +3,7 @@ import argparse
 from typing import Any, Optional
 from pathlib import Path
 import transformers
-from transformers import Trainer, T5Tokenizer, T5ForConditionalGeneration
+from transformers import Trainer, AutoTokenizer, T5ForConditionalGeneration
 from data_management.splits import Split, split_file_path
 
 
@@ -21,7 +21,7 @@ from util.train_utils import (
 
 def get_datasets(
     conf: dict[str, Any],
-    tokenizer: T5Tokenizer,
+    tokenizer: AutoTokenizer,
 ) -> tuple[FidDataset, FidDataset]:
     max_encode_len = get_required_arg("max_encode_len", conf)
     max_decode_len = get_required_arg("max_decode_len", conf)
@@ -51,9 +51,9 @@ def get_datasets(
     return train_dataset, val_dataset
 
 
-def get_tokenizer(conf: dict[str, Any]) -> T5Tokenizer:
+def get_tokenizer(conf: dict[str, Any]) -> AutoTokenizer:
     model_name = get_required_arg("model_name", conf)
-    return T5Tokenizer.from_pretrained(model_name)
+    return AutoTokenizer.from_pretrained(model_name)
 
 
 def get_model(conf: dict[str, Any]) -> T5ForConditionalGeneration:
