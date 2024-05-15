@@ -213,6 +213,7 @@ def run(
         f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}\n"
         f"#SBATCH --mem=16G\n"
         f"#SBATCH -o slurm-prove-%j.out\n"
+        f"sbcast sentences.db /tmp/sentences.db\n"
         f"source venv/bin/activate\n"
         f"timeout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
     )
