@@ -18,7 +18,7 @@ from model_deployment.run_proof import (
     TheoremLocationInfo,
 )
 
-from model_deployment.prove import RunProofConf, LocationInfo, SearchSummary, run_proof, summary_from_result
+from model_deployment.prove import RunProofConf, LocationInfo, Summary, run_proof, summary_from_result
 
 from model_deployment.searcher import (
     SearcherConf,
@@ -99,8 +99,8 @@ def run_test(test_proof: TestProofConf, save_dir: Path):
     summary.save(save_dir)
 
 
-def load_results(save_dir: Path) -> list[SearchSummary]:
-    summaries: list[SearchSummary] = []
+def load_results(save_dir: Path) -> list[Summary]:
+    summaries: list[Summary] = []
     for f in os.listdir(save_dir):
         with (save_dir / f).open("rb") as fin:
             summary = pickle.load(fin)

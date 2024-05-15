@@ -12,6 +12,9 @@ from model_deployment.classical_searcher import ClassicalSearchConf
 from model_deployment.prove import LocationInfo, RunProofConf, run_proof, summary_from_result, SearchSummary, MCTSSummary, Summary
 from model_deployment.tactic_gen_client import tactic_gen_client_from_conf 
 from util.constants import CLEAN_CONFIG
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 def get_orig_summary(file: Path, theorem: str, eval_conf: EvalConf) -> Summary:
     match eval_conf.search_conf:
@@ -52,13 +55,17 @@ if __name__ == "__main__":
     run_conf = RunProofConf(location_info, eval_conf.search_conf, tactic_client, False, False)
 
     file = eval_conf.data_loc / location_info.file_info.file
-    theorem_name = (
-        run_conf.location_info.dataset_file.proofs[
-            run_conf.location_info.dp_proof_idx
-        ].get_theorem_name()
-        + "-"
-        + str(run_conf.location_info.dp_proof_idx)
-    )
+    try:
+        theorem_name = (
+            run_conf.location_info.dataset_file.proofs[
+                run_conf.location_info.dp_proof_idx
+            ].get_theorem_name()
+            + "-"
+            + str(run_conf.location_info.dp_proof_idx)
+        )
+    except ValueError:
+        _logger.info(f"Could not get name of theorem for: {run_conf.location_info.dataset_file.proofs[run_conf.location_info.dp_proof_idx]}")
+        exit()
 
     orig_summary = get_orig_summary(file, theorem_name, eval_conf)
     orig_summary.save(eval_conf.save_loc)
