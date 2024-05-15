@@ -37,6 +37,7 @@ from model_deployment.tactic_gen_client import (
     TacticGenConf,
     tactic_gen_conf_from_yaml,
     tactic_gen_client_from_conf,
+    tactic_conf_update_ips,
     merge_tactic_confs,
 )
 from util.constants import CLEAN_CONFIG
@@ -58,7 +59,7 @@ class EvalConf:
     max_eval_proofs: Optional[int]
 
     def update_ips(self, port_map: dict[int, str]):
-        pass
+        tactic_conf_update_ips(self.tactic_conf, port_map)
 
     def get_proof_confs(self) -> Generator[EvalProofConf, None, None]:
         data_split = DataSplit.load(self.data_split_loc)

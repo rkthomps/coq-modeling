@@ -29,6 +29,7 @@ from model_deployment.premise_client import (
     PremiseConf,
     premise_conf_from_yaml,
     premise_client_from_conf,
+    premise_client_update_ips,
     merge_premise_confs,
 )
 from model_deployment.mine_goals import FileGoals, GoalRecord
@@ -266,6 +267,14 @@ def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
             return GPTPremiseFormatterConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Formatter conf not found: " + attempted_alias)
+
+
+def formatter_update_ips(conf: FormatterConf, port_map: dict[int, str]):
+    match conf:
+        case PremiseFormatterConf() | GPTPremiseFormatterConf():
+            premise_client_update_ips(conf.premise_conf, port_map)
+        case _:
+            pass
 
 
 def formatter_from_conf(conf: FormatterConf) -> LmFormatter:
