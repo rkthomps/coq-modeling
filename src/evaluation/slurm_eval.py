@@ -3,6 +3,7 @@ from typing import Optional
 import pickle
 import sys, os
 import time
+import math
 import subprocess
 import requests
 import json
@@ -43,6 +44,7 @@ PROOF_SBATCH_LOC = Path("./jobs/run-proofs.sh")
 
 PROOF_MAP_LOC = Path("./proof_maps")
 
+MAX_CONCURRENT_PROOFS = 1000
 
 @dataclass
 class ProofMap:
@@ -138,12 +140,7 @@ def wait_for_servers(next_server_num: int) -> dict[int, str]:
     return cur_port_map
 
 
-def run(
-    eval_conf: EvalConf,
-    timeout: str,
-    n_gpu: int,
-    n_cpu: int,
-):
+def start_servers_and_update_conf(eval_conf: EvalConf, timeout: str, n_gpu: int, eval_conf_loc: str):
     server_commands: Optional[list[StartModelCommand]] = None
     clean_eval_confs: list[TopLevelConf] = []
     next_server_num = 0
@@ -193,39 +190,61 @@ def run(
     _logger.info("Starting gpu servers...")
     subprocess.run(["sbatch", f"{GPU_SBATCH_LOC}"])
 
-    proof_map = create_eval_proof_map(eval_conf)
-
     _logger.info("Waiting for servers...")
     port_map = wait_for_servers(next_server_num)
     _logger.info(f"Got port map {port_map}")
     update_ips(final_eval_conf, port_map)
 
-    eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S")
     _logger.info(f"Eval conf: {final_eval_conf}")
     with open(eval_conf_loc, "wb") as fout:
         pickle.dump(final_eval_conf, fout)
 
+
+def start_provers(eval_conf: EvalConf, timeout: str, n_cpu: int, eval_conf_loc: str):
+    proof_map = create_eval_proof_map(eval_conf)
     proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
-    proof_sbatch = (
-        "#!/bin/bash\n"
-        f"#SBATCH -p cpu-preempt\n"
-        f"#SBATCH -c {n_cpu}\n"
-        f"#SBATCH -t {timeout}\n"
-        #f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}\n"
-        f"#SBATCH --array=0-100%{n_cpu}\n"
-        f"#SBATCH --mem=16G\n"
-        f"#SBATCH -o slurm-prove-%j.out\n"
-        f"sbcast sentences.db /tmp/sentences.db\n"
-        f"source venv/bin/activate\n"
-        f"timeout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
-    )
 
-    with PROOF_SBATCH_LOC.open("w") as fout:
-        fout.write(proof_sbatch)
+    n_jobs = math.ceil(len(proof_map) / MAX_CONCURRENT_PROOFS)
+    n_cpu_per_job = n_cpu // n_jobs
 
-    # Start proof workers
-    _logger.info("Starting proof workers")
-    subprocess.run(["sbatch", f"{PROOF_SBATCH_LOC}"])
+    worker_out_loc = Path("slurm-out")
+    os.makedirs(worker_out_loc, exist_ok=True)
+
+    for job_num in range(n_jobs):
+        start_idx = job_num * MAX_CONCURRENT_PROOFS
+        end_idx = min(len(proof_map), start_idx + MAX_CONCURRENT_PROOFS) - 1
+        sbatch_loc = Path(str(PROOF_SBATCH_LOC) + str(job_num))
+
+        proof_sbatch = (
+            "#!/bin/bash\n"
+            f"#SBATCH -p cpu-preempt\n"
+            f"#SBATCH -c {n_cpu_per_job}\n"
+            f"#SBATCH -t {timeout}\n"
+            f"#SBATCH --array={start_idx}-{end_idx}%{n_cpu_per_job}\n"
+            f"#SBATCH --mem=16G\n"
+            f"#SBATCH -o {worker_out_loc}/slurm-prove-%j.out\n"
+            f"sbcast sentences.db /tmp/sentences.db\n"
+            f"source venv/bin/activate\n"
+            f"timeout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
+        )
+
+        with sbatch_loc.open("w") as fout:
+            fout.write(proof_sbatch)
+
+        # Start proof workers
+        _logger.info(f"Starting worker batch {job_num + 1} of {n_jobs}")
+        subprocess.run(["sbatch", f"{sbatch_loc}"])
+
+
+def run(
+    eval_conf: EvalConf,
+    timeout: str,
+    n_gpu: int,
+    n_cpu: int,
+):
+    eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S")
+    start_servers_and_update_conf(eval_conf, timeout, n_gpu, eval_conf_loc)
+    start_provers(eval_conf, timeout, n_cpu, eval_conf_loc)
 
 
 if __name__ == "__main__":
