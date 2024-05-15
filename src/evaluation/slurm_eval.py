@@ -201,6 +201,7 @@ def run(
     update_ips(final_eval_conf, port_map)
 
     eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S")
+    _logger.info(f"Eval conf: {final_eval_conf}")
     with open(eval_conf_loc, "wb") as fout:
         pickle.dump(final_eval_conf, fout)
 
