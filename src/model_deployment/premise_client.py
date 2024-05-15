@@ -402,6 +402,15 @@ class SelectPremiseClient:
         )
 
 
+def premise_client_update_ips(conf: PremiseConf, port_map: dict[int, str]):
+    match conf:
+        case SelectClientConf() | RerankClientConf():
+            for url in conf.urls:
+                url.ip = port_map[url.port]
+        case _:
+            pass
+            
+
 def clean_token(s: str) -> str:
     s = s.lstrip("(,:{")
     s = s.rstrip("),:}")
