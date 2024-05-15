@@ -8,6 +8,9 @@ import functools
 
 from dataclasses import dataclass
 from sqlite3 import connect, Connection, Cursor
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -139,6 +142,11 @@ class SentenceDB:
     def load(cls, db_path: Path) -> SentenceDB:
         if not db_path.exists():
             raise ValueError(f"Database {db_path} does not exis does not exist.")
+        name = db_path.name
+        fast_db_path = Path("/tmp") / name
+        if fast_db_path.exists():
+            _logger.info(f"Using local sentence db at {fast_db_path}")
+            db_path = fast_db_path
         con = connect(
             db_path,
         )
