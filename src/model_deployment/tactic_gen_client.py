@@ -6,6 +6,7 @@ import requests
 import random
 from pathlib import Path
 from dataclasses import dataclass
+from requests.adapters import Retry, HTTPAdapter
 
 import openai
 
@@ -144,7 +145,12 @@ class OpenAiClient:
 class LocalTacticGenClient:
     def __init__(self, urls: list[str], formatters: list[LmFormatter]) -> None:
         self.formatters = formatters
+
         self.session = requests.Session()
+        # retries = Retry(total=5,
+        #                 backoff_factor=0.1,
+        #                 status_forcelist=[ 500, 502, 503, 504 ])
+        # self.session.mount("http://", HTTPAdapter(max_retries=retries))
         self.urls = urls
 
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:

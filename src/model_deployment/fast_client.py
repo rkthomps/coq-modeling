@@ -4,6 +4,8 @@ import threading
 import subprocess
 import time
 import ipdb
+import os
+import signal
 
 from coqpyt.coq.structs import Step
 from coqpyt.lsp.structs import *
@@ -11,6 +13,10 @@ from coqpyt.lsp.json_rpc_endpoint import JsonRpcEndpoint
 from coqpyt.lsp.endpoint import LspEndpoint
 from coqpyt.lsp.client import LspClient
 from coqpyt.coq.lsp.structs import *
+
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 class ClientWrapper:
@@ -69,13 +75,14 @@ class FastLspClient(LspClient):
         else:
             command = coq_lsp
 
-        proc = subprocess.Popen(
+        self.proc = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stdin=subprocess.PIPE,
             shell=True,
+            preexec_fn=os.setsid,
         )
-        json_rpc_endpoint = JsonRpcEndpoint(proc.stdin, proc.stdout)
+        json_rpc_endpoint = JsonRpcEndpoint(self.proc.stdin, self.proc.stdout)
         lsp_endpoint = LspEndpoint(json_rpc_endpoint, timeout=timeout)
         # lsp_endpoint.notify_callbacks = {
         #     "$/coq/fileProgress": self.__handle_file_progress,
@@ -92,7 +99,7 @@ class FastLspClient(LspClient):
         self.init_options = init_options
 
         self.initialize(
-            proc.pid,
+            self.proc.pid,
             "",
             root_uri,
             init_options,
@@ -170,5 +177,13 @@ class FastLspClient(LspClient):
                 The uri in the textDocument should contain an absolute path.
         """
         self.lsp_endpoint.call_method("coq/saveVo", textDocument=textDocument)
+
+    def kill(self) -> None:
+        _logger.info("Killing coq process")
+        try:
+            self.shutdown()
+            self.exit()
+        finally:
+            os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
 
     # TODO: handle performance data notification?

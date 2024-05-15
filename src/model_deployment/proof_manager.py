@@ -137,8 +137,9 @@ class ProofManager:
             os.remove(self.fast_aux_file_path)
         if os.path.exists(self.fast_goal_file_path):
             os.remove(self.fast_goal_file_path)
-        self.fast_aux_client.shutdown()
-        self.fast_aux_client.exit()
+        # self.fast_aux_client.shutdown()
+        # self.fast_aux_client.exit()
+        self.fast_aux_client.kill()
         self.__start_clients()
 
     @property
@@ -397,5 +398,6 @@ class ProofManager:
             os.remove(self.fast_aux_file_path)
         if self.fast_goal_file_path.exists():
             os.remove(self.fast_goal_file_path)
-        self.fast_aux_client.shutdown()
-        self.fast_aux_client.exit()
+        self.fast_aux_client.kill()
+        # self.fast_aux_client.shutdown()
+        # self.fast_aux_client.exit()

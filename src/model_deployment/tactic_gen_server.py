@@ -3,6 +3,7 @@ import sys, os
 import argparse
 from pathlib import Path
 from werkzeug.wrappers import Request, Response
+
 from werkzeug.serving import run_simple
 from util.constants import SERVER_LOC, PORT_MAP_LOC
 
@@ -36,6 +37,8 @@ def application(request: requests.models.Response):
 
 
 if __name__ == "__main__":
+    # from waitress import serve
+
     parser = argparse.ArgumentParser()
     parser.add_argument("alias", help="Alias of the model wrapper")
     parser.add_argument("checkpoint_loc", help="Checkpoint of the model wrapper")
@@ -59,4 +62,5 @@ if __name__ == "__main__":
     log.warning(f"SERVING AT {get_ip()}; {port}")
     log.info("serving model at checkpoint ", args.checkpoint_loc)
     serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
+    # serve(application, host=get_ip(), port=args.port)
     run_simple(get_ip(), args.port, application)

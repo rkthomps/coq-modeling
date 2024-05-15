@@ -139,10 +139,10 @@ if __name__ == "__main__":
     top_level_conf = command.conf.from_yaml(yaml_conf)
     print(top_level_conf)
     clean_conf_path = Path(f"./{CLEAN_CONFIG}")
+    started_processes: list[subprocess.Popen[bytes]] = []
     try:
         next_server_num = 0
         clean_top_level_confs: list[TopLevelConf] = []
-        started_processes: list[subprocess.Popen[bytes]] = []
         for d in args.devices:
             clean_top_level_conf, next_server_num, commands = to_client_conf(
                 top_level_conf, next_server_num
