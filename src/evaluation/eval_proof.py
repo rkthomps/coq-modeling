@@ -12,6 +12,9 @@ from model_deployment.classical_searcher import ClassicalSearchConf
 from model_deployment.prove import LocationInfo, RunProofConf, run_proof, summary_from_result, SearchSummary, MCTSSummary, Summary
 from model_deployment.tactic_gen_client import tactic_gen_client_from_conf 
 from util.constants import CLEAN_CONFIG
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 def get_orig_summary(file: Path, theorem: str, eval_conf: EvalConf) -> Summary:
     match eval_conf.search_conf:
@@ -36,13 +39,19 @@ if __name__ == "__main__":
     assert eval_pkl_conf_loc.exists()
     assert isinstance(proof_map_idx, int)
 
+    _logger.info("loading conf")
     with eval_pkl_conf_loc.open("rb") as fin:
         eval_conf: EvalConf = pickle.load(fin)
 
+    _logger.info("loading proof map")
     proof_map = ProofMap.load(proof_map_loc)
     proof_file_info, proof_idx = proof_map.get(proof_map_idx)
     sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
+
+    _logger.info("loading data point")
     proof_dp = proof_file_info.get_dp(eval_conf.data_loc, sentence_db)
+
+    _logger.info("loading data split")
     data_split = DataSplit.load(eval_conf.data_split_loc)
 
     location_info = LocationInfo(
@@ -60,9 +69,11 @@ if __name__ == "__main__":
         + str(run_conf.location_info.dp_proof_idx)
     )
 
+    _logger.info("saving placeholder")
     orig_summary = get_orig_summary(file, theorem_name, eval_conf)
     orig_summary.save(eval_conf.save_loc)
 
+    _logger.info("running proof")
     result = run_proof(run_conf) 
     summary = summary_from_result(file, theorem_name, result)
     summary.save(eval_conf.save_loc)
