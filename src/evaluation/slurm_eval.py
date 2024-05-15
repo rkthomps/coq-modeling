@@ -201,6 +201,7 @@ def run(
     update_ips(final_eval_conf, port_map)
 
     eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S")
+    _logger.info(f"Eval conf: {final_eval_conf}")
     with open(eval_conf_loc, "wb") as fout:
         pickle.dump(final_eval_conf, fout)
 
@@ -210,7 +211,8 @@ def run(
         f"#SBATCH -p cpu-preempt\n"
         f"#SBATCH -c {n_cpu}\n"
         f"#SBATCH -t {timeout}\n"
-        f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}\n"
+        #f"#SBATCH --array=0-{len(proof_map)}%{n_cpu}\n"
+        f"#SBATCH --array=0-100%{n_cpu}\n"
         f"#SBATCH --mem=16G\n"
         f"#SBATCH -o slurm-prove-%j.out\n"
         f"sbcast sentences.db /tmp/sentences.db\n"
