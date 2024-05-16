@@ -20,7 +20,6 @@ from model_deployment.conf_utils import (
     to_client_conf,
     clear_port_map,
     read_port_map,
-    get_ip,
     get_flexible_url,
     update_ips,
     START_PORT,
@@ -31,8 +30,7 @@ from evaluation.evaluate import EvalConf
 from data_management.splits import Split, split2str, DataSplit, FileInfo
 from data_management.sentence_db import SentenceDB
 
-from model_deployment.tactic_gen_client import FidTacticGenConf, CodellamaTacticGenConf
-from util.constants import CLEAN_CONFIG, SERVER_LOC, PORT_MAP_LOC
+from util.constants import CLEAN_CONFIG
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
@@ -133,7 +131,7 @@ def wait_for_servers(next_server_num: int) -> dict[int, str]:
     for server_url in urls:
         while True:
             try:
-                response = session.get(server_url)
+                session.get(server_url)
                 break
             except requests.exceptions.RequestException:
                 continue
@@ -200,12 +198,13 @@ def start_servers_and_update_conf(eval_conf: EvalConf, timeout: str, n_gpu: int,
         pickle.dump(final_eval_conf, fout)
 
 
-def start_provers(eval_conf: EvalConf, timeout: str, n_cpu: int, eval_conf_loc: str):
+def start_provers(eval_conf: EvalConf, timeout: str, n_cpu: int, eval_conf_loc: str, proof_map: ProofMap):
     proof_map = create_eval_proof_map(eval_conf)
     proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
 
     n_jobs = math.ceil(len(proof_map) / MAX_CONCURRENT_PROOFS)
     n_cpu_per_job = n_cpu // n_jobs
+    assert 0 < n_cpu_per_job
 
     worker_out_loc = Path("slurm-out")
     os.makedirs(worker_out_loc, exist_ok=True)
@@ -235,6 +234,10 @@ def start_provers(eval_conf: EvalConf, timeout: str, n_cpu: int, eval_conf_loc: 
         _logger.info(f"Starting worker batch {job_num + 1} of {n_jobs}")
         subprocess.run(["sbatch", f"{sbatch_loc}"])
 
+def validate(eval_conf: EvalConf, n_cpu: int, proof_map: ProofMap) -> bool: 
+    n_jobs = math.ceil(len(proof_map) / MAX_CONCURRENT_PROOFS)
+    return n_jobs <= n_cpus
+
 
 def run(
     eval_conf: EvalConf,
@@ -242,9 +245,11 @@ def run(
     n_gpu: int,
     n_cpu: int,
 ):
+    proof_map = create_eval_proof_map(eval_conf)
+    assert validate(eval_conf, n_cpu, proof_map)
     eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S")
     start_servers_and_update_conf(eval_conf, timeout, n_gpu, eval_conf_loc)
-    start_provers(eval_conf, timeout, n_cpu, eval_conf_loc)
+    start_provers(eval_conf, timeout, n_cpu, eval_conf_loc, proof_map)
 
 
 if __name__ == "__main__":
