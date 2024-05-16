@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH -p gpu-preempt
+#SBATCH -p gpu-long
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4      # total number of tasks per node
 #SBATCH --gres=gpu:4            # number of gpus per node
-#SBATCH --constraint=vram23
+#SBATCH --constraint=vram32
 #SBATCH --cpus-per-task=4        # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH --time=01-23:59:00          # total run time limit (HH:MM:SS)
 #SBATCH -o slurm-train-fid-%j.out

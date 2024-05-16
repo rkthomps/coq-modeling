@@ -1,7 +1,7 @@
 n_procs: 16
 split: val
 
-save_loc: ./eval-results/codet5-small-basic-1024
+save_loc: ./eval-results/test
 data_loc: raw-data/coq-dataset
 sentence_db_loc: sentences.db
 data_split_loc: splits/final-split.json
@@ -100,13 +100,13 @@ max_eval_proofs: 500
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-small-merged/checkpoint-126000
 
-# tactic_gen:
-#  alias: fid
-#  checkpoint_loc: models/t5-fid-small-1024/checkpoint-114500
-
 tactic_gen:
-  alias: fid
-  checkpoint_loc: models/codet5-fid-small-1024/checkpoint-113500
+ alias: fid
+ checkpoint_loc: models/t5-fid-small-1024/checkpoint-114500
+
+#tactic_gen:
+#  alias: fid
+#  checkpoint_loc: models/codet5-fid-small-1024/checkpoint-113500
 
 # tactic_gen:
 #   alias: fid

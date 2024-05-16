@@ -20,6 +20,9 @@ vector-dbs
 
 # Slurm
 slurm*.out
+jobs/run-models.sh 
+jobs/run-proofs*
+jobs/run-gpus.sh
 
 
 # Sentence database
