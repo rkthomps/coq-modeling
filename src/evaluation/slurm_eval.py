@@ -224,7 +224,7 @@ def start_provers(
         f"#SBATCH -o {worker_out_loc}/slurm-prove-%j.out\n"
         f"sbcast sentences.db /tmp/sentences.db\n"
         f"source venv/bin/activate\n"
-        f"timeout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {eval_queue_loc}\n"
+        f"python3 src/evaluation/eval_proof.py {eval_conf_loc} {eval_queue_loc}\n"
     )
 
     with PROOF_SBATCH_LOC.open("w") as fout:

@@ -3,6 +3,7 @@ import argparse
 import pickle
 import time
 from pathlib import Path
+import multiprocessing as mp
 
 from data_management.splits import DataSplit, FileInfo
 from data_management.sentence_db import SentenceDB
@@ -25,6 +26,13 @@ def get_orig_summary(file: Path, theorem: str, eval_conf: EvalConf) -> Summary:
         case ClassicalSearchConf():
             return SearchSummary.from_search_result(file, theorem, None)
 
+def run_and_save_proof(run_conf: RunProofConf):
+    _logger.info(f"running proof of {theorem_name} from {file}")
+    result = run_proof(run_conf)
+    summary = summary_from_result(file, theorem_name, result)
+    summary.pretty_print()
+    summary.save(eval_conf.save_loc)
+    _logger.info(summary.pretty_print())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -43,6 +51,8 @@ if __name__ == "__main__":
     sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
     data_split = DataSplit.load(eval_conf.data_split_loc)
     q = FileQueue[tuple[FileInfo, int]](queue_loc)
+
+
     while True:
         try:
             file_info, idx = q.get()
@@ -75,8 +85,6 @@ if __name__ == "__main__":
         orig_summary.save(eval_conf.save_loc)
 
         _logger.info(f"running proof of {theorem_name} from {file}")
-        result = run_proof(run_conf) 
-        summary = summary_from_result(file, theorem_name, result)
-        summary.pretty_print()
-        summary.save(eval_conf.save_loc)
-
+        worker_process = mp.Process(target=run_and_save_proof, args=(run_conf,))
+        worker_process.start()
+        worker_process.join(2 * run_conf.search_conf.timeout)
