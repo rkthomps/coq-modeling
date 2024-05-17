@@ -32,6 +32,7 @@ from data_management.sentence_db import SentenceDB
 
 from util.constants import CLEAN_CONFIG
 from util.util import get_basic_logger
+from util.file_queue import FileQueue
 
 _logger = get_basic_logger(__name__)
 
@@ -41,6 +42,7 @@ GPU_SBATCH_LOC = Path("./jobs/run-gpus.sh")
 PROOF_SBATCH_LOC = Path("./jobs/run-proofs.sh")
 
 PROOF_MAP_LOC = Path("./proof_maps")
+QUEUE_LOC = "./queue"
 
 MAX_CONCURRENT_PROOFS = 1000
 
@@ -198,7 +200,7 @@ def start_servers_and_update_conf(eval_conf: EvalConf, timeout: str, n_gpu: int,
         pickle.dump(final_eval_conf, fout)
 
 
-def start_provers(eval_conf: EvalConf, timeout: str, n_cpu: int, eval_conf_loc: str, proof_map: ProofMap):
+def start_provers(eval_conf: EvalConf, timeout: str, n_cpu: int, eval_conf_loc: str, eval_queue_loc: Path):
     proof_map = create_eval_proof_map(eval_conf)
     proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
 
@@ -224,7 +226,7 @@ def start_provers(eval_conf: EvalConf, timeout: str, n_cpu: int, eval_conf_loc: 
             f"#SBATCH -o {worker_out_loc}/slurm-prove-%j.out\n"
             f"sbcast sentences.db /tmp/sentences.db\n"
             f"source venv/bin/activate\n"
-            f"timeout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {proof_map_loc} $SLURM_ARRAY_TASK_ID\n"
+            f"timeout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {eval_queue_loc}\n"
         )
 
         with sbatch_loc.open("w") as fout:
@@ -233,6 +235,13 @@ def start_provers(eval_conf: EvalConf, timeout: str, n_cpu: int, eval_conf_loc: 
         # Start proof workers
         _logger.info(f"Starting worker batch {job_num + 1} of {n_jobs}")
         subprocess.run(["sbatch", f"{sbatch_loc}"])
+
+def initialize_and_fill_queue(queue_loc: Path, eval_conf: EvalConf):
+    proof_map = create_eval_proof_map(eval_conf) 
+    q = FileQueue[tuple[FileInfo, int]](queue_loc)
+    q.initialize()
+    q.put_all(proof_map.proofs)
+
 
 def validate(eval_conf: EvalConf, n_cpu: int, proof_map: ProofMap) -> bool: 
     n_jobs = math.ceil(len(proof_map) / MAX_CONCURRENT_PROOFS)
@@ -247,9 +256,12 @@ def run(
 ):
     proof_map = create_eval_proof_map(eval_conf)
     assert validate(eval_conf, n_cpu, proof_map)
-    eval_conf_loc = CLEAN_CONFIG + datetime.now().strftime("%m%d%H%M%S")
+    time_str = datetime.now().strftime("%m%d%H%M%S")
+    eval_conf_loc = CLEAN_CONFIG + "-" + time_str 
+    eval_queue_loc = Path(QUEUE_LOC + "-" + time_str)
+    initialize_and_fill_queue(eval_queue_loc, eval_conf)
     start_servers_and_update_conf(eval_conf, timeout, n_gpu, eval_conf_loc)
-    start_provers(eval_conf, timeout, n_cpu, eval_conf_loc, proof_map)
+    start_provers(eval_conf, timeout, n_cpu, eval_conf_loc, eval_queue_loc)
 
 
 if __name__ == "__main__":
