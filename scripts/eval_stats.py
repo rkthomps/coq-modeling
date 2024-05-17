@@ -2,8 +2,8 @@ import sys, os
 import csv
 import argparse
 from pathlib import Path
-from model_deployment.prove import Summary, SearchSummary, MCTSSummary
-from model_deployment.run_proofs import SearchSummary, load_results
+from model_deployment.prove import Summary
+from model_deployment.run_proofs import load_results
 
 
 def count_num_correct(summaries: list[Summary]) -> int:

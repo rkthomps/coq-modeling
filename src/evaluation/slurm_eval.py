@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional
 import pickle
 import sys, os
+import stat
 import time
 import math
 import subprocess
@@ -113,6 +114,11 @@ def create_eval_proof_map(eval_conf: EvalConf) -> ProofMap:
     proof_map.save(proof_map_loc)
     return proof_map
 
+def make_executable(p: Path):
+    assert p.exists()
+    st = os.stat(p)
+    os.chmod(p, st.st_mode | stat.S_IEXEC)
+
 
 def wait_for_servers(next_server_num: int) -> dict[int, str]:
     """Returns a map of port -> ip addr"""
@@ -174,6 +180,7 @@ def start_servers_and_update_conf(
             "#!/bin/bash\n" + "source venv/bin/activate\n" + "\n".join(commands)
         )
         fout.write(run_model_file)
+    make_executable(RUN_MODELS_LOC)
 
     server_sbatch = (
         "#!/bin/bash\n"
@@ -224,7 +231,7 @@ def start_provers(
         f"#SBATCH -o {worker_out_loc}/slurm-prove-%j.out\n"
         f"sbcast sentences.db /tmp/sentences.db\n"
         f"source venv/bin/activate\n"
-        f"python3 src/evaluation/eval_proof.py {eval_conf_loc} {eval_queue_loc}\n"
+        f"python3 src/evaluation/eval_worker.py {eval_conf_loc} {eval_queue_loc}\n"
     )
 
     with PROOF_SBATCH_LOC.open("w") as fout:
