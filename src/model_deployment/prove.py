@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 import sys, os
 import argparse
 import pickle
@@ -100,11 +100,12 @@ class MCTSSummary:
     file: Path
     theorem: str
     success: bool
+    proof: Optional[str]
     search_time: float | None
     model_time: float | None
 
     def save(self, save_dir: Path) -> None:
-        save_loc = save_dir / str(self.file / self.theorem).replace(os.path.sep, "-")
+        save_loc = save_dir / str(self.file / (self.theorem + ".pkl")).replace(os.path.sep, "-")
         with save_loc.open("wb") as fout:
             fout.write(pickle.dumps(self))
 
@@ -147,11 +148,11 @@ class MCTSSummary:
     ) -> MCTSSummary:
         match result:
             case MCTSSuccess():
-                return cls(file, theorem, True, result.time, result.model_time)
+                return cls(file, theorem, True, result.successful_proof.proof_text_to_string(), result.time, result.model_time)
             case MCTSFailure():
-                return cls(file, theorem, False, result.time, result.model_time)
+                return cls(file, theorem, False, None, result.time, result.model_time)
             case None:
-                return cls(file, theorem, False, None, None)
+                return cls(file, theorem, False, None, None, None)
 
 
 @dataclass
@@ -159,6 +160,7 @@ class SearchSummary:
     file: Path
     theorem: str
     success: bool
+    proof: Optional[str]
     search_steps: int | None
     max_depth: int | None
     num_proofs_attempted: int | None
@@ -168,7 +170,7 @@ class SearchSummary:
     num_nodes_pruned: int | None
 
     def save(self, save_dir: Path) -> None:
-        save_loc = save_dir / str(self.file / self.theorem).replace(os.path.sep, "-")
+        save_loc = save_dir / str(self.file / (self.theorem + ".pkl")).replace(os.path.sep, "-")
         with save_loc.open("wb") as fout:
             fout.write(pickle.dumps(self))
 
@@ -223,7 +225,7 @@ class SearchSummary:
         result: ClassicalSuccess | ClassicalFailure | None,
     ) -> SearchSummary:
         if result is None:
-            return cls(file, theorem, False, None, None, None, None, None, None, None)
+            return cls(file, theorem, False, None, None, None, None, None, None, None, None)
         search_size = result.search_tree.root.size()
         num_errors = result.search_tree.root.num_errors()
         num_pruned = result.search_tree.root.num_pruned()
@@ -239,6 +241,7 @@ class SearchSummary:
                     file,
                     theorem,
                     True,
+                    result.get_proof(),
                     expand_num,
                     max_depth,
                     search_size,
@@ -254,6 +257,7 @@ class SearchSummary:
                     file,
                     theorem,
                     False,
+                    None,
                     expand_num,
                     max_depth,
                     search_size,

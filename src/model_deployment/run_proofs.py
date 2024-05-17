@@ -102,6 +102,8 @@ def run_test(test_proof: TestProofConf, save_dir: Path):
 def load_results(save_dir: Path) -> list[Summary]:
     summaries: list[Summary] = []
     for f in os.listdir(save_dir):
+        if not f.endswith(".pkl"):
+            continue
         with (save_dir / f).open("rb") as fin:
             summary = pickle.load(fin)
             summaries.append(summary)

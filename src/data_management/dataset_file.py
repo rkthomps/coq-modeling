@@ -337,17 +337,17 @@ class FocusedStep:
 
 class Proof:
     name_matches = [
-        re.compile(r"Theorem\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Lemma\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Proposition\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Remark\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Corollary\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
-        re.compile(r"Property\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
+        re.compile(r"\S+\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
     ]
 
     def __init__(self, theorem: Term, steps: list[FocusedStep]) -> None:
         self.theorem = theorem
         self.steps = steps
+    
+    def is_proof_independent(self) -> bool:
+        if 0 == len(self.steps):
+            return True
+        return "Defined" not in self.steps[-1].step.text
 
     def proof_text_to_string(self, include_theorem: bool = True) -> str:
         theorem_text = self.theorem.term.text

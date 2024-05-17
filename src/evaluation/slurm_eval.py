@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional
 import pickle
 import sys, os
+import shutil
 import stat
 import time
 import math
@@ -91,7 +92,9 @@ class ProofMap:
         proofs: list[tuple[FileInfo, int]] = []
         for f in tqdm(data_split.get_file_list(split)):
             f_proofs = f.get_proofs(data_loc, sentence_db)
-            for i, _ in enumerate(f_proofs):
+            for i, f_proof in enumerate(f_proofs):
+                if not f_proof.is_proof_independent():
+                    continue
                 proofs.append((f, i))
         return cls(proofs)
 
@@ -166,9 +169,6 @@ def start_servers_and_update_conf(
 
     final_eval_conf = merge(clean_eval_confs)
     assert isinstance(final_eval_conf, EvalConf)
-    if final_eval_conf.save_loc.exists():
-        raise FileExistsError(f"{final_eval_conf.save_loc}")
-    os.makedirs(final_eval_conf.save_loc)
 
     clear_port_map()
     with RUN_MODELS_LOC.open("w") as fout:
@@ -289,4 +289,9 @@ if __name__ == "__main__":
         conf = yaml.load(fin, Loader=yaml.Loader)
 
     eval_conf = EvalConf.from_yaml(conf)
+    if eval_conf.save_loc.exists():
+        raise FileExistsError(f"{eval_conf.save_loc}")
+    os.makedirs(eval_conf.save_loc)
+    shutil.copy(conf_loc, eval_conf.save_loc / conf.yaml)
+
     run(eval_conf, timeout, n_gpus, n_workers, n_threads_per_worker)
