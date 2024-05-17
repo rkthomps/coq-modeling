@@ -46,7 +46,6 @@ def collate_example(
     return final_input_str, final_output_str
 
 
-@typechecked
 class LmDataset(Dataset):
     def __init__(
         self,

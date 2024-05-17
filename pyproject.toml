@@ -8,6 +8,7 @@ version = "0.0.1"
 dependencies = [
     "torch",
     "openai",
+    "jax[cuda]",
     "transformers",
     "tqdm",
     "trl",

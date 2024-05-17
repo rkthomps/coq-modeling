@@ -12,6 +12,7 @@ from yaml import load, Loader
 import jsonlines
 
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from trl import SFTTrainer
 import transformers
 from transformers import (
     LlamaForCausalLM,
@@ -54,32 +55,38 @@ from data_management.create_lm_dataset import DATA_CONF_NAME
 
 
 def get_lora_conf(conf: dict[str, Any]) -> LoraConfig:
-    return LoraConfig(
-        r=get_required_arg("peft_lora_r", conf),
-        lora_alpha=get_required_arg("peft_lora_alpha", conf),
+    lora_alpha = get_required_arg("peft_lora_alpha", conf)
+    lora_r = get_required_arg("peft_lora_r", conf)
+
+    peft_config = LoraConfig(
+        lora_alpha=lora_alpha,
+        lora_dropout=0.1,
+        r=lora_r,
         bias="none",
         task_type="CAUSAL_LM",
+        target_modules="all-linear",
     )
+    return peft_config
 
 
 def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
+    # https://huggingface.co/docs/bitsandbytes/main/en/fsdp_qlora
     model_name = get_required_arg("model_name", conf)
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
-        llm_int8_enable_fp32_cpu_offload=True,
-        bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_storage=torch.bfloat16,
     )
 
     model = LlamaForCausalLM.from_pretrained(
         model_name,
         quantization_config=quantization_config,
-        load_in_4bit=True,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
     )
 
-    model = prepare_model_for_kbit_training(model)
+    # model = prepare_model_for_kbit_training(model)
     # https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/inference/quantization/quantization.py
     # https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/huggingface/zero_inference
     assert type(model) == LlamaForCausalLM
@@ -154,20 +161,23 @@ def get_trainer(
     print("\n\nRetrieving Model...")
     raw_model = get_model(conf)
     lora_config = get_lora_conf(conf)
-    model = get_peft_model(raw_model, lora_config)
+    raw_model.add_adapter(lora_config)
+    # model = get_peft_model(raw_model, lora_config)
 
     print("\n\nConstructing Dataset...")
     train_dataset, val_dataset = get_datasets(conf, tokenizer)
 
     print("\n\nBuilding Trainer...")
-    return Trainer(
-        model=model,
+    trainer = Trainer(
+        model=raw_model,
+        # peft_config=lora_config,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         data_collator=train_dataset.collator,
         tokenizer=tokenizer,
     )
+    return trainer
 
 
 if __name__ == "__main__":

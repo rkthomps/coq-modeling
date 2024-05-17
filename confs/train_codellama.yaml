@@ -1,7 +1,7 @@
 # File Paths
-data_path: data/whole-proof-ret
+data_path: data/basic-final
 model_name: codellama/CodeLlama-7b-hf
-output_dir: models/codellama-7b-whole-proof-ret
+output_dir: models/codellama-7b-basic
 
 # Training Args
 max_seq_len: 512
@@ -13,7 +13,7 @@ learning_rate: 1.0e-3
 num_train_epochs: 2
 peft_lora_r: 64
 peft_lora_alpha: 16
-deepspeed: /home/kthompson/coq-modeling/deepspeed.json
+#deepspeed: /home/kthompson/coq-modeling/deepspeed.json
 
 # Evaluation Args
 eval_steps: 500 
@@ -27,4 +27,4 @@ logging_steps: 10
 save_total_limit: 2
 
 # Train from checkpoint
-checkpoint_name: "models/codellama-7b-whole-proof-ret/checkpoint-4500"
+#checkpoint_name: "models/codellama-7b-whole-proof-ret/checkpoint-4500"

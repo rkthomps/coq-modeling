@@ -14,6 +14,7 @@ from pathlib import Path
 
 from data_management.jsonl_utils import ExampleDB
 from transformers import AutoTokenizer, BatchEncoding
+from trl import DataCollatorForCompletionOnlyLM
 from tactic_gen.lm_example import LmExample
 
 

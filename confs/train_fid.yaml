@@ -3,14 +3,14 @@ data_path: "data/basic-final"
 #model_name: "google-t5/t5-small"
 #model_name: "google-t5/t5-base"
 model_name: Salesforce/codet5-small
-output_dir: "models/codet5-fid-small-1024" 
+output_dir: "models/codet5-fid-small-1024-5e-4" 
 
 # Training Args
 max_encode_len: 960
 max_decode_len: 64
 max_num_passages: 1 # This should coincide with the number of inputs. This means if you want no passages, you need to use a base dataset with no passages.  
 per_device_train_batch_size: 4
-learning_rate: 1.0e-3
+learning_rate: 5.0e-4
 num_train_epochs: 50
 max_steps: 130000
 
@@ -26,4 +26,5 @@ logging_steps: 100
 save_total_limit: 2
 
 # Train from checkpoint
+checkpoint_name: "models/codet5-fid-small-1024-1e-4/checkpoint-25500",
 #checkpoint_name: "/home/ubuntu/coq-modeling/models/codellama-7b-tpe-1k/checkpoint-15700"
