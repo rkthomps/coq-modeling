@@ -46,6 +46,7 @@ QUEUE_LOC = "./queue"
 
 MAX_CONCURRENT_PROOFS = 1000
 
+
 @dataclass
 class ProofMap:
     proofs: list[tuple[FileInfo, int]]
@@ -140,7 +141,9 @@ def wait_for_servers(next_server_num: int) -> dict[int, str]:
     return cur_port_map
 
 
-def start_servers_and_update_conf(eval_conf: EvalConf, timeout: str, n_gpu: int, eval_conf_loc: str):
+def start_servers_and_update_conf(
+    eval_conf: EvalConf, timeout: str, n_gpu: int, eval_conf_loc: str
+):
     server_commands: Optional[list[StartModelCommand]] = None
     clean_eval_confs: list[TopLevelConf] = []
     next_server_num = 0
@@ -200,68 +203,58 @@ def start_servers_and_update_conf(eval_conf: EvalConf, timeout: str, n_gpu: int,
         pickle.dump(final_eval_conf, fout)
 
 
-def start_provers(eval_conf: EvalConf, timeout: str, n_cpu: int, eval_conf_loc: str, eval_queue_loc: Path):
-    proof_map = create_eval_proof_map(eval_conf)
-    proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
-
-    n_jobs = math.ceil(len(proof_map) / MAX_CONCURRENT_PROOFS)
-    n_cpu_per_job = n_cpu // n_jobs
-    assert 0 < n_cpu_per_job
-
+def start_provers(
+    eval_conf: EvalConf,
+    timeout: str,
+    n_workers: int,
+    n_threads_per_worker: int,
+    eval_conf_loc: str,
+    eval_queue_loc: Path,
+):
     worker_out_loc = Path("slurm-out")
     os.makedirs(worker_out_loc, exist_ok=True)
 
-    for job_num in range(n_jobs):
-        start_idx = job_num * MAX_CONCURRENT_PROOFS
-        end_idx = min(len(proof_map), start_idx + MAX_CONCURRENT_PROOFS) - 1
-        sbatch_loc = Path(str(PROOF_SBATCH_LOC) + str(job_num))
+    proof_sbatch = (
+        "#!/bin/bash\n"
+        f"#SBATCH -p cpu-preempt\n"
+        f"#SBATCH -c {n_threads_per_worker}\n"
+        f"#SBATCH -t {timeout}\n"
+        f"#SBATCH --array=0-{n_workers - 1}\n"
+        f"#SBATCH --mem=16G\n"
+        f"#SBATCH -o {worker_out_loc}/slurm-prove-%j.out\n"
+        f"sbcast sentences.db /tmp/sentences.db\n"
+        f"source venv/bin/activate\n"
+        f"timeout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {eval_queue_loc}\n"
+    )
 
-        proof_sbatch = (
-            "#!/bin/bash\n"
-            f"#SBATCH -p cpu-preempt\n"
-            f"#SBATCH -c {n_cpu_per_job}\n"
-            f"#SBATCH -t {timeout}\n"
-            f"#SBATCH --array={start_idx}-{end_idx}%{n_cpu_per_job}\n"
-            f"#SBATCH --mem=16G\n"
-            f"#SBATCH -o {worker_out_loc}/slurm-prove-%j.out\n"
-            f"sbcast sentences.db /tmp/sentences.db\n"
-            f"source venv/bin/activate\n"
-            f"timeout {2 * eval_conf.search_conf.timeout} python3 src/evaluation/eval_proof.py {eval_conf_loc} {eval_queue_loc}\n"
-        )
+    with PROOF_SBATCH_LOC.open("w") as fout:
+        fout.write(proof_sbatch)
 
-        with sbatch_loc.open("w") as fout:
-            fout.write(proof_sbatch)
+    # Start proof workers
+    subprocess.run(["sbatch", f"{PROOF_SBATCH_LOC}"])
 
-        # Start proof workers
-        _logger.info(f"Starting worker batch {job_num + 1} of {n_jobs}")
-        subprocess.run(["sbatch", f"{sbatch_loc}"])
 
 def initialize_and_fill_queue(queue_loc: Path, eval_conf: EvalConf):
-    proof_map = create_eval_proof_map(eval_conf) 
+    proof_map = create_eval_proof_map(eval_conf)
     q = FileQueue[tuple[FileInfo, int]](queue_loc)
     q.initialize()
     q.put_all(proof_map.proofs)
 
-
-def validate(eval_conf: EvalConf, n_cpu: int, proof_map: ProofMap) -> bool: 
-    n_jobs = math.ceil(len(proof_map) / MAX_CONCURRENT_PROOFS)
-    return n_jobs <= n_cpus
 
 
 def run(
     eval_conf: EvalConf,
     timeout: str,
     n_gpu: int,
-    n_cpu: int,
+    n_workers: int,
+    n_threads_per_worker: int,
 ):
-    proof_map = create_eval_proof_map(eval_conf)
-    assert validate(eval_conf, n_cpu, proof_map)
     time_str = datetime.now().strftime("%m%d%H%M%S")
-    eval_conf_loc = CLEAN_CONFIG + "-" + time_str 
+    eval_conf_loc = CLEAN_CONFIG + "-" + time_str
     eval_queue_loc = Path(QUEUE_LOC + "-" + time_str)
     initialize_and_fill_queue(eval_queue_loc, eval_conf)
     start_servers_and_update_conf(eval_conf, timeout, n_gpu, eval_conf_loc)
-    start_provers(eval_conf, timeout, n_cpu, eval_conf_loc, eval_queue_loc)
+    start_provers(eval_conf, timeout, n_workers, n_threads_per_worker, eval_conf_loc, eval_queue_loc)
 
 
 if __name__ == "__main__":
@@ -269,21 +262,24 @@ if __name__ == "__main__":
     parser.add_argument("conf_loc", help="Location of eval configuration")
     parser.add_argument("timeout", help="Timeout for evaluation")
     parser.add_argument("n_gpus", type=int, help="Number of gpus to use.")
-    parser.add_argument("n_cpus", type=int, help="Number of cpus to use")
+    parser.add_argument("n_workers", type=int, help="Number of workers to use.")
+    parser.add_argument("n_threads_per_worker", type=int, help="Number of threads per worker.")
     args = parser.parse_args(sys.argv[1:])
 
     conf_loc = Path(args.conf_loc)
     timeout = args.timeout
     n_gpus = args.n_gpus
-    n_cpus = args.n_cpus
+    n_workers = args.n_workers
+    n_threads_per_worker = args.n_threads_per_worker
 
     assert conf_loc.exists()
     assert isinstance(timeout, str)
     assert isinstance(n_gpus, int)
-    assert isinstance(n_cpus, int)
+    assert isinstance(n_workers, int)
+    assert isinstance(n_threads_per_worker, int)
 
     with conf_loc.open("r") as fin:
         conf = yaml.load(fin, Loader=yaml.Loader)
 
     eval_conf = EvalConf.from_yaml(conf)
-    run(eval_conf, timeout, n_gpus, n_cpus)
+    run(eval_conf, timeout, n_gpus, n_workers, n_threads_per_worker)

@@ -9,7 +9,7 @@ class TestFastClient:
 
     @classmethod
     def teardown_class(cls):
-        cls.wrapper.close()
+        cls.wrapper.client.kill()
 
     @classmethod
     def setup_class(cls):
