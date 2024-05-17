@@ -78,7 +78,7 @@ if __name__ == "__main__":
             )
         except ValueError:
             _logger.info(f"Could not get name of theorem for: {run_conf.location_info.dataset_file.proofs[run_conf.location_info.dp_proof_idx]}")
-            exit()
+            continue
 
         _logger.info("saving placeholder")
         orig_summary = get_orig_summary(file, theorem_name, eval_conf)
