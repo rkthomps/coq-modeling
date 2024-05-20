@@ -71,9 +71,7 @@ class EvalConf:
         for file_info in file_list:
             proofs = file_info.get_proofs(self.data_loc, sentence_db)
             for i, proof in enumerate(proofs):
-                try:
-                    proof.get_theorem_name()
-                except ValueError:
+                if not proof.is_proof_independent():
                     _logger.debug(f"Skipping {proof.theorem.term.text}")
                     continue
                 yield EvalProofConf(
