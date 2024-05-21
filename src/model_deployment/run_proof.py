@@ -107,7 +107,6 @@ class TestProofConf:
         )
 
 
-
 PROOF_KEYWORDS = ["Lemma", "Theorem", "Proposition", "Remark", "Example", "Property"]
 
 
@@ -116,7 +115,6 @@ def get_term(dp_file: DatasetFile, theorem_str: str) -> Term:
         if proof.theorem.term.text.strip() == theorem_str.strip():
             return proof.theorem
     raise ValueError(f"{theorem_str} not found in {dp_file.file_context.file}")
-
 
 
 if __name__ == "__main__":
@@ -130,6 +128,7 @@ if __name__ == "__main__":
                 print("".join(result.qed_node.combined_proof_steps))
                 print("depth", result.search_tree.root.get_deepest_node())
             case ClassicalFailure():
+                print("last expand", result.search_tree.root.get_last_node_expanded())
                 print("failed")
             case MCTSSuccess():
                 print(result.successful_proof.proof_text_to_string())

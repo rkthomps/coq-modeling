@@ -58,7 +58,7 @@ def get_proof_info(
     file_loc = (data_loc / file_info.file).resolve()
     workspace_loc = (data_loc / file_info.workspace).resolve()
     workspace_uri = f"file://{workspace_loc.resolve()}"
-    client = FastLspClient(workspace_uri, timeout=60)
+    client = FastLspClient(workspace_uri, timeout=240)
     fresh_file_loc = get_fresh_path(file_loc, file_loc.name)
     client_wrapper = ClientWrapper(client, f"file://{fresh_file_loc}")
     with file_loc.open("r") as fin:
@@ -105,7 +105,9 @@ class MCTSSummary:
     model_time: float | None
 
     def save(self, save_dir: Path) -> None:
-        save_loc = save_dir / str(self.file / (self.theorem + ".pkl")).replace(os.path.sep, "-")
+        save_loc = save_dir / str(self.file / (self.theorem + ".pkl")).replace(
+            os.path.sep, "-"
+        )
         with save_loc.open("wb") as fout:
             fout.write(pickle.dumps(self))
 
@@ -148,7 +150,14 @@ class MCTSSummary:
     ) -> MCTSSummary:
         match result:
             case MCTSSuccess():
-                return cls(file, theorem, True, result.successful_proof.proof_text_to_string(), result.time, result.model_time)
+                return cls(
+                    file,
+                    theorem,
+                    True,
+                    result.successful_proof.proof_text_to_string(),
+                    result.time,
+                    result.model_time,
+                )
             case MCTSFailure():
                 return cls(file, theorem, False, None, result.time, result.model_time)
             case None:
@@ -170,7 +179,9 @@ class SearchSummary:
     num_nodes_pruned: int | None
 
     def save(self, save_dir: Path) -> None:
-        save_loc = save_dir / str(self.file / (self.theorem + ".pkl")).replace(os.path.sep, "-")
+        save_loc = save_dir / str(self.file / (self.theorem + ".pkl")).replace(
+            os.path.sep, "-"
+        )
         with save_loc.open("wb") as fout:
             fout.write(pickle.dumps(self))
 
@@ -225,7 +236,9 @@ class SearchSummary:
         result: ClassicalSuccess | ClassicalFailure | None,
     ) -> SearchSummary:
         if result is None:
-            return cls(file, theorem, False, None, None, None, None, None, None, None, None)
+            return cls(
+                file, theorem, False, None, None, None, None, None, None, None, None
+            )
         search_size = result.search_tree.root.size()
         num_errors = result.search_tree.root.num_errors()
         num_pruned = result.search_tree.root.num_pruned()

@@ -584,6 +584,7 @@ class AlphaGoalComparer:
     ) -> bool:
         if self.__goal_set_as_hard_as(gs1, gs2):
             return True
+        # return False
         try:
             parsed1 = self.parse_goal_list(gs1, client, file_prefix)
             parsed2 = self.parse_goal_list(gs2, client, file_prefix)
