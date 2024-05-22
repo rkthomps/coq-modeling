@@ -7,6 +7,7 @@ import traceback
 import csv
 import json
 import ipdb
+from pathlib import Path
 import multiprocessing as mp
 from tqdm import tqdm
 
@@ -148,24 +149,6 @@ class PathManager:
 VALID_FILE_NAME = "valid_files.csv"
 
 
-def could_have_proof(repos_dir: str, project_name: str, valid_file: ValidFile) -> bool:
-    file_path = os.path.join(repos_dir, project_name, valid_file.relpath)
-    with open(file_path, "r") as fin:
-        contents = fin.read()
-    # All the possible ways to name a proof
-    if (
-        "Theorem" in contents
-        or "Lemma" in contents
-        or "Fact" in contents
-        or "Remark" in contents
-        or "Corollary" in contents
-        or "Proposition" in contents
-        or "Property" in contents
-    ):
-        return True
-    return False
-
-
 def get_valid_files(repos_dir: str, project_name: str) -> list[ValidFile]:
     repo_loc = os.path.join(repos_dir, project_name)
     valid_files: list[ValidFile] = []
@@ -177,12 +160,13 @@ def get_valid_files(repos_dir: str, project_name: str) -> list[ValidFile]:
     return valid_files
 
 
+def find_valid_files(project_loc: Path) -> list[ValidFile]:
+    pass
+
+
 
 def process_file(repos_dir: str, project_name: str, dp_dir: str, file: ValidFile, pm: PathManager) -> None:
     _logger.info(f"Processing {file.relpath}")
-    if not could_have_proof(repos_dir, project_name, file):
-        _logger.info(f"{file.relpath} could not possibly have proofs. Continuing.")
-        return 
     file_folder = get_data_point_loc(project_name, file, dp_dir)
     if os.path.exists(file_folder):
         _logger.warning(f"{file_folder} exists. Continuing.")
@@ -238,13 +222,20 @@ TRANSPLANT_OPAM_DIR = os.path.join("/root", ".opam")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Get Data Points for a given project")
-    parser.add_argument("repos_dir", help="Location where repositories are downloaded.")
-    parser.add_argument("opam_dir", help="Location of local opam switch.")
+    parser.add_argument("project_loc", help="Path to this project.")
     parser.add_argument("project_name", help="Project for which you want data points.")
     parser.add_argument("dp_dir", help="Location to save the data point files.")
     parser.add_argument("--n_procs", "-n", type=int, help="Number of processes to use for the project.")
 
     args = parser.parse_args(sys.argv[1:])
+
+    project_loc = Path(args.project_loc)
+    dp_dir = Path(args.dp_dir)
+    project_name = args.project_name
+
+    os.makedirs(dp_dir, exist_ok=True)
+    assert project_loc.exists()
+
     abs_repos = os.path.abspath(args.repos_dir)
     abs_opam = os.path.abspath(args.opam_dir)
     pm = PathManager({

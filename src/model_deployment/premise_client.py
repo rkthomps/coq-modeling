@@ -156,6 +156,22 @@ class RerankClientConf:
             yaml_data["rerank_num"],
         )
 
+@dataclass
+class TextProofRetrieverConf:
+    max_examples: int
+    data_loc: Path
+    sentence_db_loc: Path
+
+
+@dataclass
+class TFIdfProofClientConf:
+    context_format_alias: str
+    premise_format_alias: str
+    premise_filter_conf: PremiseFilterConf
+    text_proof_retriever_conf: TextProofRetrieverConf
+    nucleus_size: int
+
+
 
 PremiseConf = (
     SelectConf
@@ -163,6 +179,7 @@ PremiseConf = (
     | RerankConf
     | RerankClientConf
     | TFIdfConf
+    | TFIdfProofClientConf
     | BM250OkapiConf
     | LookupClientConf
 )
@@ -271,11 +288,11 @@ class RerankClient:
         return response["result"]
 
     def get_ranked_premise_generator(
-        self, step: FocusedStep, proof: Proof, premises: list[Sentence]
+        self, step: FocusedStep, proof: Proof, dp_obj: DatasetFile, premises: list[Sentence]
     ) -> Iterable[Sentence]:
         rerank_premises: list[Sentence] = []
         for premise in self.select_client.get_ranked_premise_generator(
-            step, proof, premises
+            step, proof, dp_obj, premises
         ):
             rerank_premises.append(premise)
             if self.rerank_num <= len(rerank_premises):
@@ -378,7 +395,7 @@ class SelectPremiseClient:
         return scores
 
     def get_ranked_premise_generator(
-        self, step: FocusedStep, proof: Proof, premises: list[Sentence]
+        self, step: FocusedStep, proof: Proof, dp_obj: DatasetFile, premises: list[Sentence]
     ) -> Iterable[Sentence]:
         formatted_context = self.context_format.format(step, proof)
         premise_scores = self.get_premise_scores_from_strings(
@@ -490,6 +507,169 @@ def compute_query_tf(query: list[str]) -> dict[str, float]:
         tfs[k] = 0.5 + 0.5 * (v / max_term_freq)
     return tfs
 
+def tf_idf(query: list[str], docs: list[list[str]], idfs: Optional[dict[str, float]]=None) -> list[float]:
+    if idfs is None:
+        idfs = compute_idfs(docs)
+    query_tfs = compute_query_tf(query)
+    doc_tfs = [compute_doc_tf(doc_to_hashable(d)) for d in docs]
+    similarities: list[float] = []
+    for doc_tf_dict in doc_tfs:
+        dot_prod = 0
+        for term, query_tf in query_tfs.items():
+            if term not in doc_tf_dict:
+                continue
+            if term not in idfs:
+                continue
+            query_tf_idf = query_tf * idfs[term]
+            doc_tf_idf = doc_tf_dict[term] * idfs[term]
+            dot_prod += query_tf_idf * doc_tf_idf
+        similarities.append(dot_prod)
+    return similarities
+
+
+
+class TextProofRetriever:
+    def __init__(self, max_examples:int, data_loc: Path, sentence_db: SentenceDB) -> None:
+        self.max_examples = max_examples
+        self.data_loc = data_loc
+        self.sentence_db = sentence_db
+        self.dp_cache = DPCache()
+    
+    def get_available_proofs(self, key_proof: Proof, dp_obj: DatasetFile) -> list[Proof]:
+        available_proofs: list[Proof] = []
+        for proof in dp_obj.proofs:
+            if proof == key_proof:
+                break
+            available_proofs.append(proof)
+        
+        for dep in dp_obj.dependencies: 
+            dep_obj = self.dp_cache.get_dp(dep, self.data_loc, self.sentence_db)
+            for proof in dep_obj.proofs:
+                available_proofs.append(proof)
+        return available_proofs
+    
+
+    def get_goal_ids(self, goals: list[Goal]) -> list[str]:
+        ids: list[str] = []
+        for g in goals:
+            hyp_ids, goal_ids = get_ids_from_goal(g)
+            ids.extend(hyp_ids)
+            ids.extend(goal_ids)
+        return ids
+
+
+    def get_similar_proofs(self, key_step: FocusedStep, key_proof: Proof, dp_obj: DatasetFile) -> list[Proof]:
+        if len(key_step.goals) == 0:
+            return []
+        query_ids = self.get_goal_ids(key_step.goals)
+        available_proofs = self.get_available_proofs(key_proof, dp_obj)
+        reference_proofs: list[Proof] = []
+        docs: list[list[str]] = []
+        for ref_proof in available_proofs:
+            for step in ref_proof.steps:
+                reference_proofs.append(ref_proof)
+                docs.append(self.get_goal_ids(step.goals))
+        assert len(docs) == len(reference_proofs)
+        scores = tf_idf(query_ids, docs)
+        arg_sorted_scores = sorted(
+            range(len(scores)), key=lambda idx: -1 * scores[idx]
+        )
+        similar_proofs: list[Proof] = []
+        for proof_idx in arg_sorted_scores:
+            if self.max_examples <= len(similar_proofs):
+                continue
+            similar_proof = reference_proofs[proof_idx]
+            if similar_proof in similar_proofs:
+                continue
+            similar_proofs.append(similar_proof)
+        return similar_proofs
+    
+    @classmethod
+    def from_conf(cls, conf: TextProofRetrieverConf) -> TextProofRetriever:
+        return cls(
+            conf.max_examples,
+            conf.data_loc,
+            SentenceDB.load(conf.sentence_db_loc),
+        )
+
+
+
+class BreakNukeLoop(Exception):
+    pass
+
+
+class TFIdfProofClient:
+    def __init__(
+        self, 
+        context_format: type[ContextFormat],
+        premise_format: type[PremiseFormat],
+        premise_filter: PremiseFilter,
+        proof_retriever: TextProofRetriever,
+        nucleus_size: int,
+    ):
+        self.context_format = context_format
+        self.premise_format = premise_format
+        self.premise_filter = premise_filter
+        self.proof_retriever = proof_retriever
+        self.nucleus_size = nucleus_size
+
+
+    def get_ranked_premise_generator(self, step: FocusedStep, proof: Proof, dp_obj: DatasetFile, premises: list[Sentence]) -> Iterable[Sentence]:
+        if 0 == len(step.goals) or 0 == len(premises):
+            empty_result: list[Sentence] = []
+            return empty_result
+        similar_proofs = self.proof_retriever.get_similar_proofs(step, proof, dp_obj)
+        # Use the similar proofs to build a nucleus of relevent lemmas
+        # How big should the nucleous be? 
+        nucleus_premises: list[Sentence] = []
+        try:
+            for s_proof in similar_proofs:
+                for s_step in s_proof.steps:
+                    for s in s_step.step.context: 
+                        if self.nucleus_size <= len(nucleus_premises):
+                            raise BreakNukeLoop
+                        if not self.premise_filter.filter_premise(s):
+                            continue
+                        if s in nucleus_premises:
+                            continue
+                        nucleus_premises.append(s)
+        except BreakNukeLoop:
+            pass
+
+        # Need to normalize tf idf vectors? they're already kind of normalized.
+        docs = [get_ids_from_sentence(p) for p in premises]
+        idfs = compute_idfs(docs)
+        max_scores: Optional[list[float]] = None
+        for n in nucleus_premises:
+            query = get_ids_from_sentence(n) 
+            scores = tf_idf(query, docs, idfs)
+            if max_scores is None:
+                max_scores = scores
+            else:
+                max_scores = [max(a, b) for a, b in zip(max_scores, scores)]
+        
+        if max_scores is None:
+            query_hyp_ids, query_goal_ids = get_ids_from_goal(step.goals[0])
+            query_ids = query_hyp_ids + query_goal_ids
+            max_scores = tf_idf(query_ids, docs, idfs) 
+
+        assert max_scores is not None
+        arg_sorted_premise_scores = sorted(
+            range(len(max_scores)), key=lambda idx: -1 * max_scores[idx]
+        )
+        for idx in arg_sorted_premise_scores:
+            yield premises[idx]
+    
+    @classmethod
+    def from_conf(cls, conf: TFIdfProofClientConf):
+        return cls(
+            CONTEXT_ALIASES[conf.context_format_alias],
+            PREMISE_ALIASES[conf.premise_format_alias],
+            PremiseFilter.from_conf(conf.premise_filter_conf),
+            TextProofRetriever.from_conf(conf.text_proof_retriever_conf),
+            conf.nucleus_size,
+        )
+
 
 @dataclass
 class TFIdfClient:
@@ -506,27 +686,14 @@ class TFIdfClient:
         query_ids = query_hyp_ids + query_goal_ids
         # query_ids = query_goal_ids
         # query = tokenize(context_str)
-        idfs = compute_idfs(premise_docs)
-        query_tfs = compute_query_tf(query_ids)
-        doc_tfs = [compute_doc_tf(doc_to_hashable(p)) for p in premise_docs]
-        similarities: list[float] = []
-        for doc_tf_dict in doc_tfs:
-            dot_prod = 0
-            for term, query_tf in query_tfs.items():
-                if term not in doc_tf_dict:
-                    continue
-                if term not in idfs:
-                    continue
-                query_tf_idf = query_tf * idfs[term]
-                doc_tf_idf = doc_tf_dict[term] * idfs[term]
-                dot_prod += query_tf_idf * doc_tf_idf
-            similarities.append(dot_prod)
-        return similarities
+        return tf_idf(query_ids, premise_docs)
+
 
     def get_ranked_premise_generator(
         self,
         step: FocusedStep,
         proof: Proof,
+        dp_obj: DatasetFile, 
         premises: list[Sentence],
     ) -> Iterable[Sentence]:
         if len(step.goals) == 0:
@@ -584,6 +751,7 @@ class LookupClient:
         self,
         step: FocusedStep,
         proof: Proof,
+        dp_obj: DatasetFile,
         premises: list[Sentence],
     ) -> Iterable[Sentence]:
         if len(step.goals) == 0:
@@ -698,6 +866,7 @@ class BM25OkapiClient:
         self,
         step: FocusedStep,
         proof: Proof,
+        dp_obj: DatasetFile,
         premises: list[Sentence],
     ) -> Iterable[Sentence]:
         formatted_context = self.context_format.format(step, proof)
@@ -721,7 +890,7 @@ class BM25OkapiClient:
 
 
 PremiseClient = (
-    SelectPremiseClient | RerankClient | TFIdfClient | BM25OkapiClient | LookupClient
+    SelectPremiseClient | RerankClient | TFIdfClient | TFIdfProofClient | BM25OkapiClient | LookupClient
 )
 
 dp_cache = DPCache()

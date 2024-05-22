@@ -7,6 +7,8 @@ import os
 import heapq
 from pathlib import Path
 from dataclasses import dataclass
+from edist import ted, seted, sed
+
 
 from data_management.splits import FileInfo
 from data_management.dataset_file import (
@@ -31,7 +33,11 @@ from model_deployment.premise_client import (
     premise_client_from_conf,
     premise_client_update_ips,
     merge_premise_confs,
+    get_ids_from_goal, 
+    get_ids_from_sentence,
+    tf_idf,
 )
+
 from model_deployment.mine_goals import FileGoals, GoalRecord
 from model_deployment.transform_ast import AdjTree
 from data_management.sentence_db import SentenceDB
@@ -366,6 +372,8 @@ class ProofCandidateReversed(ProofCandidate):
 
     def __lt__(self, other: ProofCandidate) -> bool:
         return other.distance < self.distance
+
+
 
 
 class ProofRetriever:
