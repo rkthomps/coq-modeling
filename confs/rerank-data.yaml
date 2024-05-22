@@ -1,19 +1,129 @@
-n_procs: 16
+n_procs: 8
 train_sample_loc: samples/final/train.json
 val_sample_loc: samples/final/val.json
 test_sample_loc: samples/final/test.json
 sentence_db_loc: sentences.db
-output_dataset_loc: data/rerank
+output_dataset_loc: data/rerank-proof
 
-lm_formatter:
+# rerank_formatter:
+#   alias: basic
+#   consider_num: 128
+#   negatives_per_positive: 3
+#   select_conf: 
+#     alias: tfidf
+#     context_format_alias: basic
+#     premise_format_alias: basic
+#     premise_filter:
+#       coq_excludes:
+#       - THEOREM
+#       - LEMMA
+#       - DEFINITION
+#       - NOTATION
+#       - INDUCTIVE
+#       - COINDUCTIVE
+#       - RECORD
+#       - CLASS
+#       - INSTANCE
+#       - FIXPOINT
+#       - COFIXPOINT
+#       - SCHEME
+#       - VARIANT
+#       - FACT
+#       - REMARK
+#       - COROLLARY
+#       - PROPOSITION
+#       - PROPERTY
+#       - OBLIGATION
+#       - TACTIC
+#       - RELATION
+#       - SETOID
+#       - FUNCTION
+#       - DERIVE
+#       - OTHER
+
+#       non_coq_excludes:
+#       - DEFINITION
+#       - NOTATION
+#       - INDUCTIVE
+#       - COINDUCTIVE
+#       - RECORD
+#       - CLASS
+#       - INSTANCE
+#       - FIXPOINT
+#       - COFIXPOINT
+#       - SCHEME
+#       - VARIANT
+#       - OBLIGATION
+#       - TACTIC
+#       - RELATION
+#       - SETOID
+#       - FUNCTION
+#       - DERIVE
+#       - OTHER
+
+#       general_excludes: []
+
+rerank_formatter:
+  alias: proof 
+  consider_num: 128
+  negatives_per_positive: 3
+  include_proofs_num: 8
+
+  text_proof_retriever:
+    max_examples: 8
+    data_loc: raw-data/coq-dataset
+    sentence_db_loc: sentences.db
+
   select_conf: 
     alias: tfidf
     context_format_alias: basic
     premise_format_alias: basic
     premise_filter:
-      coq_excludes: []    
-      non_coq_excludes: []
-      general_excludes: []
+      coq_excludes:
+      - THEOREM
+      - LEMMA
+      - DEFINITION
+      - NOTATION
+      - INDUCTIVE
+      - COINDUCTIVE
+      - RECORD
+      - CLASS
+      - INSTANCE
+      - FIXPOINT
+      - COFIXPOINT
+      - SCHEME
+      - VARIANT
+      - FACT
+      - REMARK
+      - COROLLARY
+      - PROPOSITION
+      - PROPERTY
+      - OBLIGATION
+      - TACTIC
+      - RELATION
+      - SETOID
+      - FUNCTION
+      - DERIVE
+      - OTHER
 
-  consider_num: 256
-  negatives_per_positive: 4
+      non_coq_excludes:
+      - DEFINITION
+      - NOTATION
+      - INDUCTIVE
+      - COINDUCTIVE
+      - RECORD
+      - CLASS
+      - INSTANCE
+      - FIXPOINT
+      - COFIXPOINT
+      - SCHEME
+      - VARIANT
+      - OBLIGATION
+      - TACTIC
+      - RELATION
+      - SETOID
+      - FUNCTION
+      - DERIVE
+      - OTHER
+
+      general_excludes: []

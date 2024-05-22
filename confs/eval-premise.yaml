@@ -10,9 +10,17 @@ save_loc: prem-lemma-online
 #   vector_db_loc: vector-dbs/prem-lemma
 
 premise:
-  alias: tfidf
+  alias: tfidf-proof
   context_format_alias: basic
   premise_format_alias: basic
+
+  text_proof_retriever:
+    max_examples: 20
+    data_loc: raw-data/coq-dataset
+    sentence_db_loc: sentences.db
+  
+  nucleus_size: 10
+
   premise_filter:
     coq_excludes:
     - THEOREM
@@ -62,4 +70,58 @@ premise:
     - OTHER
 
     general_excludes: []
+
+# premise:
+#   alias: tfidf
+#   context_format_alias: basic
+#   premise_format_alias: basic
+#   premise_filter:
+#     coq_excludes:
+#     - THEOREM
+#     - LEMMA
+#     - DEFINITION
+#     - NOTATION
+#     - INDUCTIVE
+#     - COINDUCTIVE
+#     - RECORD
+#     - CLASS
+#     - INSTANCE
+#     - FIXPOINT
+#     - COFIXPOINT
+#     - SCHEME
+#     - VARIANT
+#     - FACT
+#     - REMARK
+#     - COROLLARY
+#     - PROPOSITION
+#     - PROPERTY
+#     - OBLIGATION
+#     - TACTIC
+#     - RELATION
+#     - SETOID
+#     - FUNCTION
+#     - DERIVE
+#     - OTHER
+
+#     non_coq_excludes:
+#     - DEFINITION
+#     - NOTATION
+#     - INDUCTIVE
+#     - COINDUCTIVE
+#     - RECORD
+#     - CLASS
+#     - INSTANCE
+#     - FIXPOINT
+#     - COFIXPOINT
+#     - SCHEME
+#     - VARIANT
+#     - OBLIGATION
+#     - TACTIC
+#     - RELATION
+#     - SETOID
+#     - FUNCTION
+#     - DERIVE
+#     - OTHER
+
+#     general_excludes: []
 

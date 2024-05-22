@@ -22,7 +22,13 @@ from data_management.splits import Split, FileInfo, split_file_path
 from data_management.sentence_db import SentenceDB
 from data_management.jsonl_utils import shuffle, deduplicate
 from premise_selection.rerank_example import RerankExample
-from premise_selection.rerank_formatter import RerankFormatter, RerankFormatterConf
+from premise_selection.rerank_formatter import (
+    RerankFormatter,
+    RerankFormatterConf,
+    rerank_conf_from_yaml,
+    rerank_formatter_from_conf,
+    close_rerank_formatter,
+)
 from util.constants import RERANK_DATA_CONF_NAME, CLEAN_CONFIG
 
 import multiprocessing as mp
@@ -47,7 +53,7 @@ class RerankDatasetConf:
             Path(yaml_data["test_sample_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["output_dataset_loc"]),
-            RerankFormatterConf.from_yaml(yaml_data["rerank_formatter"]),
+            rerank_conf_from_yaml(yaml_data["rerank_formatter"]),
         )
 
 
@@ -68,7 +74,7 @@ def writer(q: Queue[Optional[RerankExample]], out_file: str) -> None:
 
 def examples_to_queue(
     example_sample: ExampleSample,
-    rerank_formatter: RerankFormatter,
+    rerank_formatter_conf: RerankFormatterConf,
     file_info: FileInfo,
     sentence_db_loc: Path,
     selected_steps: SelectedSteps,
@@ -76,6 +82,7 @@ def examples_to_queue(
 ) -> None:
     sentence_db = SentenceDB.load(sentence_db_loc)
     dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
+    rerank_formatter = rerank_formatter_from_conf(rerank_formatter_conf)
     match selected_steps:
         case AllSteps():
             for proof in dp_obj.proofs:
@@ -99,11 +106,13 @@ def examples_to_queue(
                 )
                 for example in examples:
                     q.put(example)
+    close_rerank_formatter(rerank_formatter)
+    sentence_db.close()
 
 
 __ArgTuple = tuple[
     ExampleSample,
-    RerankFormatter,
+    RerankFormatterConf,
     FileInfo,
     Path,
     SelectedSteps,
@@ -113,7 +122,7 @@ __ArgTuple = tuple[
 
 def __get_split_transformation_args(
     example_sampler: ExampleSample,
-    formatter: RerankFormatter,
+    formatter_conf: RerankFormatterConf,
     sentence_db_loc: Path,
     q: Queue[RerankExample | None],
 ) -> list[__ArgTuple]:
@@ -122,7 +131,7 @@ def __get_split_transformation_args(
         arg_list.append(
             (
                 example_sampler,
-                formatter,
+                formatter_conf,
                 file,
                 sentence_db_loc,
                 selected_steps,
@@ -137,26 +146,25 @@ def get_split_transformation_args(
     split: Split,
     q: Queue[Optional[RerankExample]],
 ) -> list[__ArgTuple]:
-    rerank_formatter = RerankFormatter.from_conf(example_config.rerank_formatter_conf)
     match split:
         case Split.TRAIN:
             return __get_split_transformation_args(
                 load_sample(example_config.train_sample_loc),
-                rerank_formatter,
+                example_config.rerank_formatter_conf,
                 example_config.sentence_db_loc,
                 q,
             )
         case Split.VAL:
             return __get_split_transformation_args(
                 load_sample(example_config.val_sample_loc),
-                rerank_formatter,
+                example_config.rerank_formatter_conf,
                 example_config.sentence_db_loc,
                 q,
             )
         case Split.TEST:
             return __get_split_transformation_args(
                 load_sample(example_config.test_sample_loc),
-                rerank_formatter,
+                example_config.rerank_formatter_conf,
                 example_config.sentence_db_loc,
                 q,
             )

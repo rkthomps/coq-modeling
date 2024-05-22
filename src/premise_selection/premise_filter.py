@@ -53,7 +53,7 @@ class PremiseFilter:
         self.coq_excludes = coq_excludes
         self.non_coq_excludes = non_coq_excludes
         self.general_excludes = general_excludes
-        self.__print_warnings()
+        # self.__print_warnings()
         self.__oof_cache: Optional[OOFCache] = None
 
     def __print_warnings(self) -> None:

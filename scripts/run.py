@@ -114,7 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("config", help="Yaml configuration file for command.")
     parser.add_argument(
         "devices",
-        nargs="*",
+        nargs="+",
         type=int,
         help="CUDA devices to use for running the command.",
     )

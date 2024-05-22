@@ -33,7 +33,7 @@ from model_deployment.premise_client import (
     premise_client_from_conf,
     premise_client_update_ips,
     merge_premise_confs,
-    get_ids_from_goal, 
+    get_ids_from_goal,
     get_ids_from_sentence,
     tf_idf,
 )
@@ -374,8 +374,6 @@ class ProofCandidateReversed(ProofCandidate):
         return other.distance < self.distance
 
 
-
-
 class ProofRetriever:
     def __init__(self, proof_bank_loc: Path, max_examples: int):
         self.proof_bank_loc = proof_bank_loc
@@ -570,6 +568,9 @@ class WholeProofRetrievalFormatter:
         basic_example = self.basic_formatter.example_from_step(step_idx, proof)
         return LmExample(basic_example.input, basic_example.output, passages)
 
+    def close(self):
+        self.sentence_db.close()
+
     @classmethod
     def from_conf(
         cls, conf: WholeProofRetrievalFormatterConf
@@ -730,7 +731,10 @@ class PremiseFormatter:
             step, proof, dp_obj
         )
         ranked_premises = self.premise_client.get_ranked_premise_generator(
-            step, proof, filtered_result.avail_premises
+            step,
+            proof,
+            dp_obj,
+            filtered_result.avail_premises,
         )
         top_premises: list[Sentence] = []
         for premise in ranked_premises:
@@ -877,3 +881,15 @@ LmFormatter = (
     | GPTProofFormatter
     | GPTPremiseFormatter
 )
+
+
+def close_lm_formatter(lm_formatter: LmFormatter):
+    match lm_formatter:
+        case (
+            WholeProofRetrievalFormatter()
+            | WholeProofPremiseRetrievalFormatter()
+            | GPTProofFormatter()
+        ):
+            lm_formatter.sentence_db.close()
+        case _:
+            pass

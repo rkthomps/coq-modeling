@@ -127,6 +127,7 @@ def examples_to_queue(
                         cutoff_idx=None,
                     )
                     q.put(example)
+    sentence_db.close()
 
 
 __ArgTuple = tuple[
