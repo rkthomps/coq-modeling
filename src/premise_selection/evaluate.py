@@ -167,7 +167,7 @@ def run_evaluation(eval_conf: PremiseEvalConf) -> EvalData:
                 if (num_positive_premises == 0) or (num_avail_premises == 0):
                     continue
                 ranked_premises_generator = premise_client.get_ranked_premise_generator(
-                    step, proof, filter_result.avail_premises
+                    step, proof, dset_file, filter_result.avail_premises
                 )
 
                 hits_on: list[int] = []
