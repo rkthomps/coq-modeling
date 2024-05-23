@@ -58,7 +58,7 @@ class EvalConf:
     tactic_conf: TacticGenConf
     max_eval_proofs: Optional[int]
 
-    def update_ips(self, port_map: dict[int, str]):
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
         tactic_conf_update_ips(self.tactic_conf, port_map)
 
     def get_proof_confs(self) -> Generator[EvalProofConf, None, None]:

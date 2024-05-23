@@ -19,7 +19,7 @@ from tactic_gen.lm_example import LmExample
 from model_deployment.model_wrapper import ModelWrapper, StubWrapper, wrapper_from_conf
 from model_deployment.model_result import ModelResult
 
-from model_deployment.conf_utils import get_ip
+from model_deployment.conf_utils import get_ip, get_free_port
 
 wrapper: ModelWrapper = StubWrapper()
 
@@ -42,16 +42,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("alias", help="Alias of the model wrapper")
     parser.add_argument("checkpoint_loc", help="Checkpoint of the model wrapper")
-    parser.add_argument("port", type=int, help="Port at which to host the model.")
+    parser.add_argument("id", type=int, help="Id of model.")
     args = parser.parse_args(sys.argv[1:])
-
-    port = args.port
-    ip = get_ip()
-    port_map_loc = Path(PORT_MAP_LOC)
-    assert port_map_loc.exists()
-
-    with port_map_loc.open("a") as fout:
-        fout.write(f"{port}\t{ip}\n")
 
     conf = {
         "alias": args.alias,
@@ -59,8 +51,15 @@ if __name__ == "__main__":
     }
     log.info("loading model")
     wrapper = wrapper_from_conf(conf)
-    log.warning(f"SERVING AT {get_ip()}; {port}")
-    log.info("serving model at checkpoint ", args.checkpoint_loc)
-    serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
-    # serve(application, host=get_ip(), port=args.port)
-    run_simple(get_ip(), args.port, application)
+
+    id = args.id
+    ip = get_ip()
+    port = get_free_port()
+    log.warning(f"SERVING AT {ip}; {port}")
+    port_map_loc = Path(PORT_MAP_LOC)
+    assert port_map_loc.exists()
+
+    with port_map_loc.open("a") as fout:
+        fout.write(f"{id}\t{ip}\t{port}\n")
+
+    run_simple(id, port, application)

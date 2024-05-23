@@ -18,19 +18,20 @@ log.setLevel(logging.ERROR)
 
 from tactic_gen.lm_example import LmExample
 from data_management.dataset_file import Sentence
+from premise_selection.rerank_example import RerankExample
 from model_deployment.premise_model_wrapper import RerankWrapper
-from model_deployment.conf_utils import get_ip
+from model_deployment.conf_utils import get_ip, get_free_port
 
 wrapper: Optional[RerankWrapper] = None
 
 
 @dispatcher.add_method
 def get_scores(
-    context: str,
-    premise_strs: list[str],
+    rerank_examples_json: list[Any],
 ) -> list[float]:
     assert wrapper is not None
-    return wrapper.get_premise_scores(context, premise_strs)
+    examples = [RerankExample.from_json(e) for e in rerank_examples_json]
+    return wrapper.get_scores(examples)
 
 
 @Request.application
@@ -42,20 +43,19 @@ def application(request: requests.models.Response):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("checkpoint_loc", help="Location of select model checkpoint.")
-    parser.add_argument(
-        "port", type=int, help="Port on which to run the select server."
-    )
+    parser.add_argument("id", type=int, help="Model id (important for evaluation).")
 
     args = parser.parse_args(sys.argv[1:])
 
-    port = args.port
+    wrapper = RerankWrapper.from_checkpoint(args.checkpoint_loc)
+
+    id = args.id
     ip = get_ip()
+    port = get_free_port()
+    log.warning(f"SERVING AT {ip}; {port}")
     port_map_loc = Path(PORT_MAP_LOC)
     assert port_map_loc.exists()
 
     with port_map_loc.open("a") as fout:
-        fout.write(f"{port}\t{ip}\n")
-
-    wrapper = RerankWrapper.from_checkpoint(args.checkpoint_loc)
-    serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
-    run_simple(get_ip(), args.port, application)
+        fout.write(f"{id}\t{ip}\t{port}\n")
+    run_simple(ip, port, application)

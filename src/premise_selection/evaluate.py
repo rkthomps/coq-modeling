@@ -15,14 +15,13 @@ from tqdm import tqdm
 from data_management.dataset_file import Sentence
 from data_management.sentence_db import SentenceDB
 from data_management.splits import DataSplit, Split, str2split
-from model_deployment.premise_client import (
+from model_deployment.rerank_client import (
     PremiseConf,
     PremiseClient,
-    SelectPremiseClient,
     premise_client_from_conf,
     premise_conf_from_yaml,
-    get_dependency_examples,
 )
+from model_deployment.premise_client import SelectPremiseClient
 from util.util import get_basic_logger
 from util.constants import CLEAN_CONFIG
 

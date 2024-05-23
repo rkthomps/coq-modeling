@@ -66,12 +66,7 @@ class RerankWrapper:
         self.max_seq_len = max_seq_len
         self.batch_size = batch_size
 
-    def get_premise_scores(
-        self,
-        context_str: str,
-        premise_strs: list[str],
-    ) -> list[float]:
-        rerank_examples = [RerankExample(p, context_str, False) for p in premise_strs]
+    def get_scores(self, rerank_examples: list[RerankExample]) -> list[float]:
         rerank_batches = batch_examples(rerank_examples, self.batch_size)
         probs: list[float] = []
         with torch.no_grad():
@@ -79,6 +74,9 @@ class RerankWrapper:
                 collated_batch = collate_examples(
                     batch, self.tokenizer, self.max_seq_len
                 )
+                # nice_strs = self.tokenizer.batch_decode(
+                #     collated_batch["input_ids"], skip_special_tokens=True
+                # )
                 batch_outputs = self.reranker(**collated_batch)
                 batch_logits = batch_outputs["logits"]
                 batch_probs = torch.sigmoid(batch_logits)

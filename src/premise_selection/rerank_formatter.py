@@ -8,23 +8,23 @@ from data_management.dataset_file import FocusedStep, Proof, DatasetFile, Senten
 from model_deployment.premise_client import (
     TextProofRetrieverConf,
     TextProofRetriever,
-    PremiseConf,
-    PremiseClient,
-    premise_client_from_conf,
-    premise_conf_from_yaml,
+    SelectClient,
+    SelectClientConf,
+    select_client_from_conf,
+    select_conf_from_yaml,
 )
 
 
 @dataclass
 class BasicRerankFormatterConf:
     ALIAS = "basic"
-    select_conf: PremiseConf
+    select_conf: SelectClientConf
     consider_num: int
     negatives_per_positive: int
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> BasicRerankFormatterConf:
-        premise_conf = premise_conf_from_yaml(yaml_data["select_conf"])
+        premise_conf = select_conf_from_yaml(yaml_data["select_conf"])
         consider_num = yaml_data["consider_num"]
         negatives_per_positive = yaml_data["negatives_per_positive"]
         return cls(premise_conf, consider_num, negatives_per_positive)
@@ -33,7 +33,7 @@ class BasicRerankFormatterConf:
 @dataclass
 class ProofRerankFormatterConf:
     ALIAS = "proof"
-    select_conf: PremiseConf
+    select_conf: SelectClientConf
     proof_retriever: TextProofRetrieverConf
     consider_num: int
     include_proofs_num: int
@@ -42,7 +42,7 @@ class ProofRerankFormatterConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofRerankFormatterConf:
         return cls(
-            premise_conf_from_yaml(yaml_data["select_conf"]),
+            select_conf_from_yaml(yaml_data["select_conf"]),
             TextProofRetrieverConf.from_yaml(yaml_data["text_proof_retriever"]),
             yaml_data["consider_num"],
             yaml_data["include_proofs_num"],
@@ -67,13 +67,19 @@ def rerank_conf_from_yaml(yaml_data: Any) -> RerankFormatterConf:
 class BasicRerankFormatter:
     def __init__(
         self,
-        premise_client: PremiseClient,
+        premise_client: SelectClient,
         consider_num: int,
         negatives_per_positive: int,
     ) -> None:
         self.premise_client = premise_client
         self.consider_num = consider_num
         self.negatives_per_positive = negatives_per_positive
+
+    def get_formatted_context(
+        self, step: FocusedStep, proof: Proof, dp_obj: DatasetFile
+    ) -> str:
+        formatted_context = self.premise_client.context_format.format(step, proof)
+        return formatted_context
 
     def examples_from_step(
         self,
@@ -87,7 +93,7 @@ class BasicRerankFormatter:
         ranked_premises = self.premise_client.get_ranked_premise_generator(
             step, proof, dp_obj, filtered_result.avail_premises
         )
-        formatted_context = self.premise_client.context_format.format(step, proof)
+        formatted_context = self.get_formatted_context(step, proof, dp_obj)
 
         negative_premise_bank: list[Sentence] = []
         for i, premise in enumerate(ranked_premises):
@@ -122,14 +128,14 @@ class BasicRerankFormatter:
 
     @classmethod
     def from_conf(cls, conf: BasicRerankFormatterConf) -> BasicRerankFormatter:
-        premise_client = premise_client_from_conf(conf.select_conf)
+        premise_client = select_client_from_conf(conf.select_conf)
         return cls(premise_client, conf.consider_num, conf.negatives_per_positive)
 
 
 class ProofRerankFormatter:
     def __init__(
         self,
-        premise_client: PremiseClient,
+        premise_client: SelectClient,
         proof_retriever: TextProofRetriever,
         include_proofs_num: int,
         consider_num: int,
@@ -140,6 +146,18 @@ class ProofRerankFormatter:
         self.include_proofs_num = include_proofs_num
         self.consider_num = consider_num
         self.negatives_per_positive = negatives_per_positive
+
+    def get_formatted_context(
+        self, step: FocusedStep, proof: Proof, dp_obj: DatasetFile
+    ) -> str:
+        all_top_proofs = self.proof_retriever.get_similar_proofs(step, proof, dp_obj)
+        top_proofs = all_top_proofs[: self.include_proofs_num][
+            ::-1
+        ]  # want closest proofs last
+        top_proofs_str = "\n".join([p.proof_text_to_string() for p in top_proofs])
+        formatted_context = self.premise_client.context_format.format(step, proof)
+        proof_formatted_context = top_proofs_str + "\n\n" + formatted_context
+        return proof_formatted_context
 
     def examples_from_step(
         self,
@@ -153,11 +171,6 @@ class ProofRerankFormatter:
         ranked_premises = self.premise_client.get_ranked_premise_generator(
             step, proof, dp_obj, filtered_result.avail_premises
         )
-        all_top_proofs = self.proof_retriever.get_similar_proofs(step, proof, dp_obj)
-        top_proofs = all_top_proofs[: self.include_proofs_num]
-        top_proofs_str = "\n".join([p.proof_text_to_string() for p in top_proofs])
-        formatted_context = self.premise_client.context_format.format(step, proof)
-        proof_formatted_context = top_proofs_str + "\n\n" + formatted_context
 
         negative_premise_bank: list[Sentence] = []
         for i, premise in enumerate(ranked_premises):
@@ -168,6 +181,7 @@ class ProofRerankFormatter:
             negative_premise_bank.append(premise)
 
         examples: list[RerankExample] = []
+        proof_formatted_context = self.get_formatted_context(step, proof, dp_obj)
         for pos_premise in filtered_result.pos_premises:
             formatted_pos_premise = self.premise_client.premise_format.format(
                 pos_premise
@@ -193,7 +207,7 @@ class ProofRerankFormatter:
     @classmethod
     def from_conf(cls, conf: ProofRerankFormatterConf) -> ProofRerankFormatter:
         return cls(
-            premise_client_from_conf(conf.select_conf),
+            select_client_from_conf(conf.select_conf),
             TextProofRetriever.from_conf(conf.proof_retriever),
             conf.consider_num,
             conf.include_proofs_num,

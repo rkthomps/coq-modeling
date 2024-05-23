@@ -22,6 +22,7 @@ from tactic_gen.lm_example import (
 from tactic_gen.lm_example import (
     LmFormatter,
     FormatterConf,
+    formatter_update_ips,
     formatter_conf_from_yaml,
     formatter_from_conf,
     merge_formatters,
@@ -77,9 +78,12 @@ class LocalTacticGenClientConf:
     urls: list[FlexibleUrl]
     formatter_confs: list[FormatterConf]
 
-    def update_ips(self, port_map: dict[int, str]):
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
         for url in self.urls:
-            url.ip = port_map[url.port]
+            new_ip, new_port = port_map[url.id]
+            url.ip = new_ip
+            url.port = new_port
+        [formatter_update_ips(f, port_map) for f in self.formatter_confs]
 
     def merge(self, other: LocalTacticGenClientConf) -> LocalTacticGenClientConf:
         new_urls = self.urls + other.urls
@@ -190,7 +194,7 @@ def tactic_gen_client_from_conf(conf: TacticGenConf) -> TacticGenClient:
             raise ValueError(f"Invalid tactic client config: {str(conf.__class__)}")
 
 
-def tactic_conf_update_ips(conf: TacticGenConf, port_map: dict[int, str]):
+def tactic_conf_update_ips(conf: TacticGenConf, port_map: dict[int, tuple[str, int]]):
     match conf:
         case LocalTacticGenClientConf():
             conf.update_ips(port_map)

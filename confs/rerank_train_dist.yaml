@@ -1,20 +1,20 @@
 # File Paths
-data_path: "data/rerank-basic"
+data_path: "data/rerank-proof"
 model_name: "facebook/opt-125m"
-output_dir: "models/rerank-basic" 
+output_dir: "models/rerank-proof" 
 
 # Training Args
-max_seq_len: 500
+max_seq_len: 1024
 per_device_train_batch_size: 4
 learning_rate: 1.0e-4
 num_train_epochs: 5
 gradient_accumulation_steps: 2
 
 # Evaluation Args
-eval_steps: 100
+eval_steps: 500 
 eval_accumulation_steps: 1
 per_device_eval_batch_size: 4
-save_steps: 100 
+save_steps: 500
 num_eval_examples: 2000 # Evaluation would take ~2 hours each time w/o limiting this
 
 # Logging Args

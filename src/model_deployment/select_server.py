@@ -18,7 +18,7 @@ from jsonrpc import JSONRPCResponseManager, dispatcher
 from tactic_gen.lm_example import LmExample
 from data_management.dataset_file import Sentence
 from model_deployment.premise_model_wrapper import SelectWrapper
-from model_deployment.conf_utils import get_ip
+from model_deployment.conf_utils import get_ip, get_free_port
 
 wrapper: Optional[SelectWrapper] = None
 
@@ -62,14 +62,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_args(sys.argv[1:])
 
-    port = args.port
+    wrapper = SelectWrapper.from_checkpoint(args.checkpoint_loc, args.vector_db_loc)
+
+    id = args.id
     ip = get_ip()
+    port = get_free_port()
+    log.warning(f"SERVING AT {ip}; {port}")
     port_map_loc = Path(PORT_MAP_LOC)
     assert port_map_loc.exists()
 
     with port_map_loc.open("a") as fout:
-        fout.write(f"{port}\t{ip}\n")
-
-    wrapper = SelectWrapper.from_checkpoint(args.checkpoint_loc, args.vector_db_loc)
-    serve_path = (Path(f"./{SERVER_LOC}") / str(args.port)).resolve()
-    run_simple(get_ip(), args.port, application)
+        fout.write(f"{id}\t{ip}\t{port}\n")
+    run_simple(ip, port, application)

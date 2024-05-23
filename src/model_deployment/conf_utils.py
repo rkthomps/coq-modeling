@@ -1,5 +1,6 @@
 from typing import Any, Optional
 import os
+import socket
 from pathlib import Path
 import yaml
 import socket
@@ -23,19 +24,22 @@ from tactic_gen.lm_example import (
     PremiseFormatterConf,
     GPTPremiseFormatterConf,
 )
-from model_deployment.premise_client import (
+from model_deployment.rerank_client import (
     PremiseConf,
-    SelectConf,
     SelectClientConf,
+    SelectModelClientConf,
     RerankConf,
     RerankClientConf,
+    premise_conf_update_ips,
 )
+from model_deployment.premise_client import SelectModelClientConf, SelectModelConf
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
     FidTacticGenConf,
     CodellamaTacticGenConf,
     LocalTacticGenClientConf,
 )
+from model_deployment.observe_premise_selection import PremiseObserveConf
 from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
@@ -66,16 +70,15 @@ TopLevelConf = (
     | RerankDatasetConf
     | GoalDatasetConf
     | PremiseEvalConf
+    | PremiseObserveConf
 )
-
-START_PORT = 19734
 
 
 @dataclass
 class StartTacticModelCommand:
     alias: str
     checkpoint_loc: Path
-    port: int
+    id: int
     TACTIC_GEN_SERVER_SCRIPT = Path("src/model_deployment/tactic_gen_server.py")
 
     def to_list(self) -> list[str]:
@@ -84,16 +87,7 @@ class StartTacticModelCommand:
             f"{self.TACTIC_GEN_SERVER_SCRIPT}",
             self.alias,
             f"{self.checkpoint_loc}",
-            f"{self.port}",
-        ]
-
-    def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
-        return [
-            "python3",
-            f"{self.TACTIC_GEN_SERVER_SCRIPT}",
-            self.alias,
-            f"{self.checkpoint_loc}",
-            f"$(expr ${env_var_name} \\* {commands_per_task} + {self.port})",
+            f"{self.id}",
         ]
 
 
@@ -101,7 +95,7 @@ class StartTacticModelCommand:
 class StartSelectModelCommand:
     vector_db_loc: Optional[Path]
     checkpoint_loc: Path
-    port: int
+    id: int
     SELECT_SERVER_SCRIPT = Path("src/model_deployment/select_server.py")
 
     def to_list(self) -> list[str]:
@@ -110,7 +104,7 @@ class StartSelectModelCommand:
                 "python3",
                 f"{self.SELECT_SERVER_SCRIPT}",
                 f"{self.checkpoint_loc}",
-                f"{self.port}",
+                f"{self.id}",
             ]
         return [
             "python3",
@@ -118,31 +112,14 @@ class StartSelectModelCommand:
             "--vector_db_loc",
             f"{self.vector_db_loc}",
             f"{self.checkpoint_loc}",
-            f"{self.port}",
-        ]
-
-    def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
-        if self.vector_db_loc is None:
-            return [
-                "python3",
-                f"{self.SELECT_SERVER_SCRIPT}",
-                f"{self.checkpoint_loc}",
-                f"$(expr ${env_var_name} \\* {commands_per_task} + {self.port})",
-            ]
-        return [
-            "python3",
-            f"{self.SELECT_SERVER_SCRIPT}",
-            "--vector_db_loc",
-            f"{self.vector_db_loc}",
-            f"{self.checkpoint_loc}",
-            f"$(expr ${env_var_name} \\* {commands_per_task} + {self.port})",
+            f"{self.id}",
         ]
 
 
 @dataclass
 class StartRerankModelCommand:
     checkpoint_loc: Path
-    port: int
+    id: int
     RERANK_SERVER_SCRIPT = Path("src/model_deployment/rerank_server.py")
 
     def to_list(self) -> list[str]:
@@ -150,21 +127,19 @@ class StartRerankModelCommand:
             "python3",
             f"{self.RERANK_SERVER_SCRIPT}",
             f"{self.checkpoint_loc}",
-            f"{self.port}",
-        ]
-
-    def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
-        return [
-            "python3",
-            f"{self.RERANK_SERVER_SCRIPT}",
-            f"{self.checkpoint_loc}",
-            f'"expr ${env_var_name} * {commands_per_task} + {self.port}"',
+            f"{self.id}",
         ]
 
 
 StartModelCommand = (
     StartTacticModelCommand | StartSelectModelCommand | StartRerankModelCommand
 )
+
+
+def get_free_port():
+    sock = socket.socket()
+    sock.bind(("", 0))
+    return sock.getsockname()[1]
 
 
 @functools.cache
@@ -190,39 +165,38 @@ def clear_port_map():
         pass
 
 
-def read_port_map() -> dict[int, str]:
+def read_port_map() -> dict[int, tuple[str, int]]:
     port_map_loc = Path(PORT_MAP_LOC)
-    port_map: dict[int, str] = {}
+    port_map: dict[int, tuple[str, int]] = {}
     with port_map_loc.open("r") as fin:
         for line in fin:
             lineitems = line.strip().split("\t")
-            assert len(lineitems) == 2
-            port = int(lineitems[0])
+            assert len(lineitems) == 3
+            id = int(lineitems[0])
             ip = lineitems[1]
-            port_map[port] = ip
+            port = int(lineitems[2])
+            port_map[id] = (ip, port)
     return port_map
 
 
-def get_flexible_url(ip_addr: str, port: int) -> FlexibleUrl:
-    return FlexibleUrl("http", ip_addr, port)
+def get_flexible_url(id: int, ip_addr: str, port: Optional[int] = None) -> FlexibleUrl:
+    return FlexibleUrl(id, "http", ip_addr, port)
 
 
 def get_select_command(
-    select_conf: SelectConf, start_server_num: int
+    select_conf: SelectModelConf, start_server_num: int
 ) -> tuple[FlexibleUrl, int, StartSelectModelCommand]:
-    port = START_PORT + start_server_num
     command = StartSelectModelCommand(
-        select_conf.vector_db_loc, select_conf.checkpoint_loc, port
+        select_conf.vector_db_loc, select_conf.checkpoint_loc, start_server_num
     )
-    return get_flexible_url(get_ip(), port), start_server_num + 1, command
+    return get_flexible_url(start_server_num, get_ip()), start_server_num + 1, command
 
 
 def get_rerank_command(
     rerank_conf: RerankConf, start_server_num: int
 ) -> tuple[FlexibleUrl, int, StartRerankModelCommand]:
-    port = START_PORT + start_server_num
-    command = StartRerankModelCommand(rerank_conf.checkpoint_loc, port)
-    return get_flexible_url(get_ip(), port), start_server_num + 1, command
+    command = StartRerankModelCommand(rerank_conf.checkpoint_loc, start_server_num)
+    return get_flexible_url(start_server_num, get_ip()), start_server_num + 1, command
 
 
 def premise_conf_to_client_conf(
@@ -230,7 +204,7 @@ def premise_conf_to_client_conf(
     start_server_num: int,
 ) -> tuple[PremiseConf, int, list[StartModelCommand]]:
     match conf:
-        case SelectConf():
+        case SelectModelConf():
             url, next_server_num, command = get_select_command(conf, start_server_num)
             assert 0 < len(conf.checkpoint_loc.parents)
             model_loc = conf.checkpoint_loc.parents[0]
@@ -240,7 +214,7 @@ def premise_conf_to_client_conf(
                 yaml_data = yaml.load(fin, Loader=yaml.Loader)
             data_conf = SelectDataConfig.from_yaml(yaml_data)
             filter_conf = PremiseFilterConf.from_yaml(yaml_data["premise_filter"])
-            new_select_client = SelectClientConf(
+            new_select_client = SelectModelClientConf(
                 [url],
                 data_conf.context_format_type_alias,
                 data_conf.premise_format_type_alias,
@@ -249,29 +223,25 @@ def premise_conf_to_client_conf(
             )
             return new_select_client, next_server_num, [command]
         case RerankConf():
-            if conf.select_conf is None:
-                assert 0 < len(conf.checkpoint_loc.parents)
-                model_loc = conf.checkpoint_loc.parents[0]
-                data_conf_loc = model_loc / RERANK_DATA_CONF_NAME
-                assert data_conf_loc.exists()
-                with data_conf_loc.open("r") as fin:
-                    yaml_data = yaml.load(fin, Loader=yaml.Loader)
-                data_conf = RerankDatasetConf.from_yaml(yaml_data)
-                rerank_formatter, next_server_num, commands = (
-                    rerank_formatter_conf_to_client_conf(
-                        data_conf.rerank_formatter_conf, start_server_num
-                    )
+            assert 0 < len(conf.checkpoint_loc.parents)
+            model_loc = conf.checkpoint_loc.parents[0]
+            data_conf_loc = model_loc / RERANK_DATA_CONF_NAME
+            assert data_conf_loc.exists()
+            with data_conf_loc.open("r") as fin:
+                yaml_data = yaml.load(fin, Loader=yaml.Loader)
+            data_conf = RerankDatasetConf.from_yaml(yaml_data)
+            rerank_formatter, next_server_num, commands = (
+                rerank_formatter_conf_to_client_conf(
+                    data_conf.rerank_formatter_conf, start_server_num
                 )
-                select_conf = rerank_formatter.select_conf
-            else:
-                select_conf, next_server_num, commands = premise_conf_to_client_conf(
-                    conf.select_conf, start_server_num
-                )
+            )
+            select_conf = rerank_formatter.select_conf
+
             rerank_url, next_server_num, rerank_command = get_rerank_command(
                 conf, next_server_num
             )
             new_rerank_conf = RerankClientConf(
-                [rerank_url], select_conf, conf.rerank_num
+                [rerank_url], select_conf, conf.rerank_num, rerank_formatter
             )
             return new_rerank_conf, next_server_num, commands + [rerank_command]
         case _:
@@ -306,6 +276,7 @@ def rerank_formatter_conf_to_client_conf(
     clean_premise_conf, next_server_num, start_commands = premise_conf_to_client_conf(
         conf.select_conf, start_server_num
     )
+    assert isinstance(clean_premise_conf, SelectClientConf)
     match conf:
         case BasicRerankFormatterConf():
             new_rerank_formatter_conf = BasicRerankFormatterConf(
@@ -359,11 +330,10 @@ def get_tactic_server_alias(conf: FidTacticGenConf | CodellamaTacticGenConf) -> 
 def get_tactic_gen_command(
     conf: FidTacticGenConf | CodellamaTacticGenConf, start_server_num: int
 ) -> tuple[FlexibleUrl, int, StartTacticModelCommand]:
-    port = START_PORT + start_server_num
     command = StartTacticModelCommand(
-        get_tactic_server_alias(conf), conf.checkpoint_loc, port
+        get_tactic_server_alias(conf), conf.checkpoint_loc, start_server_num
     )
-    return get_flexible_url(get_ip(), port), start_server_num + 1, command
+    return get_flexible_url(start_server_num, get_ip()), start_server_num + 1, command
 
 
 def tactic_gen_to_client_conf(
@@ -402,10 +372,14 @@ def tactic_gen_to_client_conf(
             return conf, start_server_num, []
 
 
-def update_ips(conf: TopLevelConf, port_map: dict[int, str]):
+def update_ips(conf: TopLevelConf, port_map: dict[int, tuple[str, int]]):
     match conf:
         case EvalConf():
             conf.update_ips(port_map)
+        case PremiseEvalConf():
+            premise_conf_update_ips(conf.premise_conf, port_map)
+        case PremiseObserveConf():
+            premise_conf_update_ips(conf.premise_conf, port_map)
         case _:
             _logger.warning(
                 "IP updating only implemented for evaluation. Inter-node communication might not work."
@@ -523,6 +497,21 @@ def to_client_conf(
                 conf.max_eval_proofs,
             )
             return eval_conf, next_server_num, commands
+        case PremiseObserveConf():
+            premise_conf, next_server_num, commands = premise_conf_to_client_conf(
+                conf.premise_conf, start_server_num
+            )
+            observe_conf = PremiseObserveConf(
+                conf.data_loc,
+                conf.file_loc,
+                conf.data_split_loc,
+                conf.sentence_db_loc,
+                conf.proof_name,
+                conf.step_idx,
+                premise_conf,
+                conf.print_num,
+            )
+            return observe_conf, next_server_num, commands
 
 
 def merge_two(conf1: TopLevelConf, conf2: TopLevelConf) -> TopLevelConf:

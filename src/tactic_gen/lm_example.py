@@ -26,16 +26,13 @@ from tactic_gen.n_step_sampler import (
     n_step_from_conf,
 )
 from premise_selection.premise_filter import PremiseFilter, NO_COQ_LEMMA_FILTER
-from model_deployment.premise_client import (
+from model_deployment.rerank_client import (
     PremiseClient,
     PremiseConf,
     premise_conf_from_yaml,
     premise_client_from_conf,
-    premise_client_update_ips,
+    premise_conf_update_ips,
     merge_premise_confs,
-    get_ids_from_goal,
-    get_ids_from_sentence,
-    tf_idf,
 )
 
 from model_deployment.mine_goals import FileGoals, GoalRecord
@@ -240,6 +237,14 @@ FormatterConf = (
 )
 
 
+def formatter_update_ips(f: FormatterConf, port_map: dict[int, tuple[str, int]]):
+    match f:
+        case PremiseFormatterConf() | GPTPremiseFormatterConf():
+            premise_conf_update_ips(f.premise_conf, port_map)
+        case _:
+            pass
+
+
 def merge_formatters(f1: FormatterConf, f2: FormatterConf) -> FormatterConf:
     match f1:
         case PremiseFormatterConf():
@@ -273,14 +278,6 @@ def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
             return GPTPremiseFormatterConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Formatter conf not found: " + attempted_alias)
-
-
-def formatter_update_ips(conf: FormatterConf, port_map: dict[int, str]):
-    match conf:
-        case PremiseFormatterConf() | GPTPremiseFormatterConf():
-            premise_client_update_ips(conf.premise_conf, port_map)
-        case _:
-            pass
 
 
 def formatter_from_conf(conf: FormatterConf) -> LmFormatter:

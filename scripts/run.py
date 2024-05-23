@@ -19,9 +19,9 @@ from model_deployment.conf_utils import (
     get_flexible_url,
     read_port_map,
     clear_port_map,
-    START_PORT,
 )
 
+from model_deployment.observe_premise_selection import PremiseObserveConf
 from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
@@ -64,6 +64,9 @@ COMMANDS = {
         GoalDatasetConf, Path("src/data_management/create_goal_dataset.py")
     ),
     "eval-premise": Command(PremiseEvalConf, Path("src/premise_selection/evaluate.py")),
+    "observe-premise": Command(
+        PremiseObserveConf, Path("src/model_deployment/observe_premise_selection.py")
+    ),
 }
 
 
@@ -78,7 +81,7 @@ class ServerFailedError(Exception):
 def wait_for_servers(
     num_ports: int,
     open_processes: list[subprocess.Popen[bytes]],
-) -> dict[int, str]:
+) -> dict[int, tuple[str, int]]:
     session = requests.Session()
     urls: list[str] = []
 
@@ -89,8 +92,8 @@ def wait_for_servers(
         print("Cur port map:", cur_port_map)
 
     for port_incr in range(next_server_num):
-        port = START_PORT + port_incr
-        url = get_flexible_url(cur_port_map[port], port).get_url()
+        ip_addr, port = cur_port_map[port_incr]
+        url = get_flexible_url(port_incr, ip_addr, port).get_url()
         urls.append(url)
 
     assert len(open_processes) == len(urls)

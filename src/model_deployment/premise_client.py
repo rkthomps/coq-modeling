@@ -26,31 +26,14 @@ from util.util import get_basic_logger, FlexibleUrl
 
 
 @dataclass
-class SelectConf:
+class SelectModelConf:
     ALIAS = "select"
     checkpoint_loc: Path
     vector_db_loc: Optional[Path]
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> SelectConf:
+    def from_yaml(cls, yaml_data: Any) -> SelectModelConf:
         return cls(Path(yaml_data["checkpoint_loc"]), Path(yaml_data["vector_db_loc"]))
-
-
-@dataclass
-class RerankConf:
-    ALIAS = "rerank"
-    checkpoint_loc: Path
-    rerank_num: int
-    select_conf: Optional[PremiseConf]
-
-    @classmethod
-    def from_yaml(cls, yaml_data: Any) -> RerankConf:
-        select_conf = None
-        if "select" in yaml_data:
-            select_conf = premise_conf_from_yaml(yaml_data["select"])
-        return cls(
-            Path(yaml_data["checkpoint_loc"]), yaml_data["rerank_num"], select_conf
-        )
 
 
 @dataclass
@@ -102,7 +85,7 @@ class LookupClientConf:
 
 
 @dataclass
-class SelectClientConf:
+class SelectModelClientConf:
     ALIAS = "select-client"
     urls: list[FlexibleUrl]
     context_format_alias: str
@@ -110,13 +93,13 @@ class SelectClientConf:
     premise_filter_conf: PremiseFilterConf
     sentence_db_loc: Path
 
-    def merge(self, other: SelectClientConf) -> SelectClientConf:
+    def merge(self, other: SelectModelClientConf) -> SelectModelClientConf:
         new_urls = self.urls + other.urls
         assert self.context_format_alias == other.context_format_alias
         assert self.premise_format_alias == other.premise_format_alias
         assert self.premise_filter_conf == other.premise_filter_conf
         assert self.sentence_db_loc == other.sentence_db_loc
-        return SelectClientConf(
+        return SelectModelClientConf(
             new_urls,
             self.context_format_alias,
             self.premise_format_alias,
@@ -124,36 +107,20 @@ class SelectClientConf:
             self.sentence_db_loc,
         )
 
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
+        for url in self.urls:
+            new_ip, new_port = port_map[url.id]
+            url.ip = new_ip
+            url.port = new_port
+
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> SelectClientConf:
+    def from_yaml(cls, yaml_data: Any) -> SelectModelClientConf:
         return cls(
             [FlexibleUrl.from_yaml(u) for u in yaml_data["urls"]],
             yaml_data["context_format_alias"],
             yaml_data["premise_format_alias"],
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
             Path(yaml_data["sentence_db_loc"]),
-        )
-
-
-@dataclass
-class RerankClientConf:
-    ALIAS = "rerank-client"
-    urls: list[FlexibleUrl]
-    select_client: PremiseConf
-    rerank_num: int
-
-    def merge(self, other: RerankClientConf) -> RerankClientConf:
-        new_urls = self.urls + other.urls
-        new_select_client = merge_premise_confs(self.select_client, other.select_client)
-        assert self.rerank_num == other.rerank_num
-        return RerankClientConf(new_urls, new_select_client, self.rerank_num)
-
-    @classmethod
-    def from_yaml(cls, yaml_data: Any) -> RerankClientConf:
-        return cls(
-            [FlexibleUrl.from_yaml(u) for u in yaml_data["urls"]],
-            premise_conf_from_yaml(yaml_data["select"]),
-            yaml_data["rerank_num"],
         )
 
 
@@ -192,11 +159,11 @@ class TFIdfProofClientConf:
         )
 
 
-PremiseConf = (
-    SelectConf
-    | SelectClientConf
-    | RerankConf
-    | RerankClientConf
+ID_FORM = re.compile(r"[^\[\]\{\}\(\):=,\s]+")
+
+SelectClientConf = (
+    SelectModelClientConf
+    | SelectModelConf
     | TFIdfConf
     | TFIdfProofClientConf
     | BM250OkapiConf
@@ -204,30 +171,13 @@ PremiseConf = (
 )
 
 
-def merge_premise_confs(conf1: PremiseConf, conf2: PremiseConf) -> PremiseConf:
-    match conf1:
-        case SelectClientConf():
-            assert isinstance(conf2, SelectClientConf)
-            return conf1.merge(conf2)
-        case RerankClientConf():
-            assert isinstance(conf2, RerankClientConf)
-            return conf1.merge(conf2)
-        case _:
-            assert conf1 == conf2
-            return conf1
-
-
-def premise_conf_from_yaml(yaml_data: Any) -> PremiseConf:
+def select_conf_from_yaml(yaml_data: Any) -> SelectClientConf:
     attempted_alias = yaml_data["alias"]
     match attempted_alias:
-        case SelectConf.ALIAS:
-            return SelectConf.from_yaml(yaml_data)
-        case SelectClientConf.ALIAS:
-            return SelectClientConf.from_yaml(yaml_data)
-        case RerankConf.ALIAS:
-            return RerankConf.from_yaml(yaml_data)
-        case RerankClientConf.ALIAS:
-            return RerankClientConf.from_yaml(yaml_data)
+        case SelectModelConf.ALIAS:
+            return SelectModelConf.from_yaml(yaml_data)
+        case SelectModelClientConf.ALIAS:
+            return SelectModelClientConf.from_yaml(yaml_data)
         case TFIdfConf.ALIAS:
             return TFIdfConf.from_yaml(yaml_data)
         case TFIdfProofClientConf.ALIAS:
@@ -238,29 +188,6 @@ def premise_conf_from_yaml(yaml_data: Any) -> PremiseConf:
             return LookupClientConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Unknown Configuration")
-
-
-def premise_client_from_conf(conf: PremiseConf) -> PremiseClient:
-    match conf:
-        case SelectConf():
-            raise ValueError("Select Conf Cannot be directly converted into a client.")
-        case SelectClientConf():
-            return SelectPremiseClient.from_conf(conf)
-        case RerankConf():
-            raise ValueError("Rerank Conf CAnnot be directly converted into a client.")
-        case RerankClientConf():
-            return RerankClient.from_conf(conf)
-        case TFIdfConf():
-            return TFIdfClient.from_conf(conf)
-        case TFIdfProofClientConf():
-            return TFIdfProofClient.from_conf(conf)
-        case BM250OkapiConf():
-            return BM25OkapiClient.from_conf(conf)
-        case LookupClientConf():
-            return LookupClient.from_conf(conf)
-
-
-ID_FORM = re.compile(r"[^\[\]\{\}\(\):=,\s]+")
 
 
 def get_ids_from_goal(goal: Goal) -> tuple[list[str], list[str]]:
@@ -284,64 +211,6 @@ def get_ids_from_goal(goal: Goal) -> tuple[list[str], list[str]]:
 def get_ids_from_sentence(s: Sentence) -> list[str]:
     sentence_ids = re.findall(ID_FORM, s.text)
     return sentence_ids
-
-
-class RerankClient:
-    def __init__(self, urls: list[str], select_client: PremiseClient, rerank_num: int):
-        self.select_client = select_client
-        self.rerank_num = rerank_num
-        self.context_format = self.select_client.context_format
-        self.premise_format = self.select_client.premise_format
-        self.premise_filter = self.select_client.premise_filter
-        self.session = requests.Session()
-        self.urls = urls
-
-    def get_premise_scores_from_strings(
-        self, context_str: str, premises: list[Sentence]
-    ) -> list[float]:
-        premise_strs = [self.premise_format.format(s) for s in premises]
-        request_data = {
-            "method": "get_scores",
-            "params": [context_str, premise_strs],
-            "jsonrpc": "2.0",
-            "id": 0,
-        }
-        request_url = random.choice(self.urls)
-        response = self.session.post(request_url, json=request_data).json()
-        return response["result"]
-
-    def get_ranked_premise_generator(
-        self,
-        step: FocusedStep,
-        proof: Proof,
-        dp_obj: DatasetFile,
-        premises: list[Sentence],
-    ) -> Iterable[Sentence]:
-        rerank_premises: list[Sentence] = []
-        for premise in self.select_client.get_ranked_premise_generator(
-            step, proof, dp_obj, premises
-        ):
-            rerank_premises.append(premise)
-            if self.rerank_num <= len(rerank_premises):
-                break
-        context_str = self.context_format.format(step, proof)
-        rerank_scores = self.get_premise_scores_from_strings(
-            context_str, rerank_premises
-        )
-        num_premises = len(rerank_scores)
-        arg_sorted_premise_scores = sorted(
-            range(num_premises), key=lambda idx: -1 * rerank_scores[idx]
-        )
-        for idx in arg_sorted_premise_scores:
-            yield rerank_premises[idx]
-
-    @classmethod
-    def from_conf(cls, conf: RerankClientConf) -> RerankClient:
-        return cls(
-            [u.get_url() for u in conf.urls],
-            premise_client_from_conf(conf.select_client),
-            conf.rerank_num,
-        )
 
 
 class SelectPremiseClient:
@@ -440,7 +309,7 @@ class SelectPremiseClient:
             yield premises[idx]
 
     @classmethod
-    def from_conf(cls, conf: SelectClientConf) -> SelectPremiseClient:
+    def from_conf(cls, conf: SelectModelClientConf) -> SelectPremiseClient:
         return cls(
             [u.get_url() for u in conf.urls],
             CONTEXT_ALIASES[conf.context_format_alias],
@@ -448,15 +317,6 @@ class SelectPremiseClient:
             PremiseFilter.from_conf(conf.premise_filter_conf),
             SentenceDB.load(conf.sentence_db_loc),
         )
-
-
-def premise_client_update_ips(conf: PremiseConf, port_map: dict[int, str]):
-    match conf:
-        case SelectClientConf() | RerankClientConf():
-            for url in conf.urls:
-                url.ip = port_map[url.port]
-        case _:
-            pass
 
 
 def clean_token(s: str) -> str:
@@ -618,7 +478,7 @@ class TextProofRetriever:
                 continue
             similar_proofs.append(similar_proof)
         return similar_proofs
-    
+
     def close(self):
         self.sentence_db.close()
 
@@ -930,16 +790,32 @@ class BM25OkapiClient:
         )
 
 
-PremiseClient = (
+SelectClient = (
     SelectPremiseClient
-    | RerankClient
     | TFIdfClient
     | TFIdfProofClient
     | BM25OkapiClient
     | LookupClient
 )
 
+
 dp_cache = DPCache()
+
+
+def select_client_from_conf(conf: SelectClientConf) -> SelectClient:
+    match conf:
+        case SelectModelConf():
+            raise ValueError("Select Conf Cannot be directly converted into a client.")
+        case SelectModelClientConf():
+            return SelectPremiseClient.from_conf(conf)
+        case TFIdfConf():
+            return TFIdfClient.from_conf(conf)
+        case TFIdfProofClientConf():
+            return TFIdfProofClient.from_conf(conf)
+        case BM250OkapiConf():
+            return BM25OkapiClient.from_conf(conf)
+        case LookupClientConf():
+            return LookupClient.from_conf(conf)
 
 
 def get_dependency_examples(

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 from typing import Any
 import logging
 import os
@@ -12,21 +13,22 @@ from coqpyt.coq.base_file import CoqFile
 
 @dataclass
 class FlexibleUrl:
+    id: int
     protocol: str
     ip: str
-    port: int
+    port: Optional[int]
 
     def get_url(self) -> str:
+        if self.port is None:
+            raise ValueError(f"Port has not been assigned for url {id}")
         return f"{self.protocol}://{self.ip}:{self.port}"
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> FlexibleUrl:
-        assert isinstance(yaml_data, str)
-        url_pattern = r"(.*?)://(.*?):(.*)"
-        url_match = re.match(url_pattern, yaml_data)
-        assert url_match is not None
-        protocol, ip, port = url_match.groups()
-        return cls(protocol, ip, int(port))
+        port = None
+        if "port" in yaml_data:
+            port = yaml_data["port"]
+        return cls(yaml_data["id"], yaml_data["protocol"], yaml_data["ip"], port)
 
 
 def get_fresh_path(dirname: Path, fresh_base: str) -> Path:
