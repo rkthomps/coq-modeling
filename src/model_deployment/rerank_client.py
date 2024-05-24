@@ -167,7 +167,7 @@ class RerankClient:
         context_str = self.rerank_formatter.get_formatted_context(step, proof, dp_obj)
         rerank_examples = [
             RerankExample(self.premise_format.format(p), context_str, False)
-            for p in premises
+            for p in rerank_premises
         ]
         rerank_scores = self.get_scores(rerank_examples)
         num_premises = len(rerank_scores)

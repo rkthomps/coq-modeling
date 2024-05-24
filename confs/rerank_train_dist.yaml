@@ -1,10 +1,10 @@
 # File Paths
 data_path: "data/rerank-proof"
 model_name: "facebook/opt-125m"
-output_dir: "models/rerank-proof" 
+output_dir: "models/rerank-proof-masked" 
 
 # Training Args
-max_seq_len: 1024
+max_seq_len: 512
 per_device_train_batch_size: 4
 learning_rate: 1.0e-4
 num_train_epochs: 5

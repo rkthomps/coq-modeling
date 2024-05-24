@@ -5,7 +5,7 @@ model_name: "facebook/opt-125m"
 output_dir: "models/rerank" 
 
 # Training Args
-max_seq_len: 1024
+max_seq_len: 512
 per_device_train_batch_size: 64 
 learning_rate: 1.0e-4
 num_train_epochs: 5

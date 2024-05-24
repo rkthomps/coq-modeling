@@ -1,5 +1,6 @@
 from typing import Any, Optional
 
+import re
 import jsonlines
 from transformers import AutoTokenizer, GPT2Tokenizer
 from torch.utils.data import Dataset, DataLoader
@@ -36,6 +37,17 @@ def allocate_tokens(
     return tokenizer.decode(to_add, skip_special_tokens=True), len(to_add)
 
 
+def mask_premise(premise: str) -> str:
+    premise_name = re.search(r"\S+\s+(\S+?)[\[\]\{\}\(\):=,\s]", premise)
+    if premise_name is None:
+        print("No match for ", premise)
+        return premise
+    match_start, match_end = premise_name.span(1)
+    masked_premise = premise[:match_start] + " <name> " + premise[match_end:]
+    # print(masked_premise)
+    return masked_premise
+
+
 def collate_examples(
     examples: list[RerankExample],
     tokenizer: GPT2Tokenizer,
@@ -46,7 +58,8 @@ def collate_examples(
     for example in examples:
         premise_str, _ = allocate_tokens(
             tokenizer,
-            example.premise,
+            mask_premise(example.premise),
+            # example.premise,
             max_seq_len // 2,
             truncate_front=False,
         )
