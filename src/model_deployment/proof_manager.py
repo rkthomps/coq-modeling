@@ -33,7 +33,7 @@ from tactic_gen.lm_example import (
 )
 
 from model_deployment.fast_client import FastLspClient, ClientWrapper
-from model_deployment.mine_goals import get_goal_record, GoalRecord
+from proof_retrieval.mine_goals import get_goal_record, GoalRecord
 from util.coqpyt_utils import get_all_goals
 from util.util import get_basic_logger
 

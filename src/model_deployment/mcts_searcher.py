@@ -11,7 +11,7 @@ from data_management.dataset_file import DatasetFile, Proof
 from tactic_gen.lm_example import GPTProofFormatter, ProofRetrievalFormatter, LmExample
 
 from model_deployment.model_result import ModelResult, filter_recs
-from model_deployment.mine_goals import GoalRecord
+from proof_retrieval.mine_goals import GoalRecord
 from model_deployment.goal_comparer import GoalScorer, AlphaGoalComparer
 from model_deployment.proof_manager import ProofManager, TacticResult
 from model_deployment.tactic_gen_client import TacticGenClient

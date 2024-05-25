@@ -25,9 +25,10 @@ from coqpyt.lsp.structs import (
 )
 
 from model_deployment.fast_client import FastLspClient
-#from coqpyt.coq.lsp.client import CoqLspClient 
+
+# from coqpyt.coq.lsp.client import CoqLspClient
 from data_management.splits import FileInfo, Split, DataSplit
-from model_deployment.transform_ast import (
+from proof_retrieval.transform_ast import (
     term_from_ast,
     get_body_from_definition,
     StrTree,
@@ -116,10 +117,12 @@ def get_fg_goal(goal: GoalAnswer) -> Goal:
         raise EmptyFgGoalError("No foreground goals.")
     return fg_goals[0]
 
+
 def fmt_hyp(h: Hyp) -> str:
     lhs = " ".join(h.names)
     rhs = h.ty
     return f"({lhs} : {rhs})"
+
 
 def fix_reserved_ids(g: Goal) -> Goal:
     """
@@ -142,7 +145,7 @@ def fix_reserved_ids(g: Goal) -> Goal:
             else:
                 h_new_names.append(name)
         new_hyps.append(Hyp(h_new_names, tys[i]))
-    return Goal(new_hyps, cur_body) 
+    return Goal(new_hyps, cur_body)
 
 
 def get_goal_record(
@@ -250,7 +253,9 @@ def get_file_goals(
 ) -> None:
     file_abs = os.path.abspath(os.path.join(data_loc, file_info.file))
     workspace_abs = os.path.abspath(os.path.join(data_loc, file_info.workspace))
-    with CoqFile(file_abs, workspace=workspace_abs, low_verbosity=False, timeout=timeout) as coq_file:
+    with CoqFile(
+        file_abs, workspace=workspace_abs, low_verbosity=False, timeout=timeout
+    ) as coq_file:
         steps = coq_file.steps
     tmp_file = get_fresh_path(".", "goal_aux.v")
     client_uri = f"file://{workspace_abs}"
@@ -329,13 +334,18 @@ new_repos = {
     "repos/coq-community-gaia",
 }
 
+
 def get_args(
     data_loc: str, data_split: DataSplit, save_loc: str, timeout: int
 ) -> list[__ARG]:
     args: list[__ARG] = []
     for split in Split:
         for file_info in data_split.get_file_list(split):
-            if file_info.repository in new_repos or split == Split.VAL or split == Split.TEST:
+            if (
+                file_info.repository in new_repos
+                or split == Split.VAL
+                or split == Split.TEST
+            ):
                 args.append((data_loc, file_info, save_loc, timeout))
     args.reverse()
     return args
@@ -366,7 +376,7 @@ if __name__ == "__main__":
     sys.setrecursionlimit(1500)
     data_split = DataSplit.load(args.data_split_loc)
     mining_args = get_args(args.data_loc, data_split, args.save_goals, args.timeout)
-    
+
     # for arg_tuple in mining_args:
     #     compute_file_goals(*arg_tuple)
 

@@ -8,7 +8,7 @@ from data_management.dataset_file import FileContext, Proof
 from data_management.sentence_db import SentenceDB
 from tactic_gen.lm_example import LmExample
 from model_deployment.node_score import NodeScore
-from model_deployment.mine_goals import GoalRecord
+from proof_retrieval.mine_goals import GoalRecord
 from termcolor import colored
 
 
