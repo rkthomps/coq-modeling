@@ -23,6 +23,10 @@ from proof_retrieval.tfidf import tf_idf
 from proof_retrieval.mine_goals import FileGoals, GoalRecord
 from proof_retrieval.transform_ast import AdjTree
 
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
+
 
 class ProofCandidate:
     def __init__(self, distance: int, candidate: GoalRecord, origin: str):
@@ -225,12 +229,12 @@ class TextProofRetriever:
                 break
             available_proofs.append(proof)
 
-        print("Dependencies", dp_obj.dependencies)
+        # print("Dependencies", dp_obj.dependencies)
         for dep in dp_obj.dependencies:
             try:
                 dep_obj = self.dp_cache.get_dp(dep, self.data_loc, self.sentence_db)
             except FileNotFoundError:
-                print("Could not find dependency: ", dep)
+                _logger.warning(f"Could not find dependency: {dep}")
                 continue
             for proof in dep_obj.proofs:
                 available_proofs.append(proof)

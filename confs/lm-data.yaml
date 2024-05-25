@@ -1,33 +1,72 @@
-n_procs: 16
-train_sample_loc: samples/final/train.json
-val_sample_loc: samples/final/val.json
-test_sample_loc: samples/final/test.json
+n_procs: 8
+train_sample_loc: samples/rnd-complete/train.json
+val_sample_loc: samples/rnd-complete/val.json
+test_sample_loc: samples/rnd-complete/test.json
 sentence_db_loc: sentences.db
-output_dataset_loc: data/proof-premise
-
-# lm_formatters:
-#   - alias: proof-last 
-#     n_step_sampler:
-#       alias: one
-
+output_dataset_loc: data/general-random
 
 lm_formatters:
-  - alias: whole-proof-ret-premise
-    proof_bank_loc: proof-goals
-    data_loc: raw-data/coq-dataset
-    sentence_db_loc: sentences.db
-    n_step_sampler:
+  - alias: general 
+    num_proofs: 20
+    num_premises: 50
+    n_step_conf:
       alias: one
+    
+    proof_ret:
+      max_examples: 20
+      data_loc: raw-data/coq-dataset
+      sentence_db_loc: sentences.db
 
-# lm_formatters:
-#   - alias: premise
-#     premise_conf:
-#       alias: lookup 
-#       context_format_alias: basic
-#       premise_format_alias: basic
-#       premise_filter:
-#         coq_excludes: []    
-#         non_coq_excludes: []
-#         general_excludes: []
-#     n_step_sampler:
-#       alias: one
+    premise:
+      alias: tfidf
+      context_format_alias: basic
+      premise_format_alias: basic
+      premise_filter:
+        coq_excludes:
+        - THEOREM
+        - LEMMA
+        - DEFINITION
+        - NOTATION
+        - INDUCTIVE
+        - COINDUCTIVE
+        - RECORD
+        - CLASS
+        - INSTANCE
+        - FIXPOINT
+        - COFIXPOINT
+        - SCHEME
+        - VARIANT
+        - FACT
+        - REMARK
+        - COROLLARY
+        - PROPOSITION
+        - PROPERTY
+        - OBLIGATION
+        - TACTIC
+        - RELATION
+        - SETOID
+        - FUNCTION
+        - DERIVE
+        - OTHER
+
+        non_coq_excludes:
+        - DEFINITION
+        - NOTATION
+        - INDUCTIVE
+        - COINDUCTIVE
+        - RECORD
+        - CLASS
+        - INSTANCE
+        - FIXPOINT
+        - COFIXPOINT
+        - SCHEME
+        - VARIANT
+        - OBLIGATION
+        - TACTIC
+        - RELATION
+        - SETOID
+        - FUNCTION
+        - DERIVE
+        - OTHER
+
+        general_excludes: []

@@ -15,7 +15,6 @@ from openai import OpenAI
 
 from tactic_gen.lm_example import (
     LmExample,
-    GPTFormatter,
     FormatterConf,
     formatter_conf_from_yaml,
 )
@@ -115,7 +114,8 @@ class OpenAiCientConf:
 
 
 class OpenAiClient:
-    def __init__(self, model_name: str, formatter: GPTFormatter):
+    # TODO include system message in this object. Not fomratter
+    def __init__(self, model_name: str, formatter: LmFormatter):
         self.model_name = model_name
         self.client = OpenAI(organization=os.environ["OPENAI_ORG_KEY"])
         self.formatter = formatter
@@ -142,7 +142,6 @@ class OpenAiClient:
     @classmethod
     def from_conf(cls, conf: OpenAiCientConf) -> OpenAiClient:
         formatter = formatter_from_conf(conf.formatter_conf)
-        assert isinstance(formatter, GPTFormatter)
         return cls(conf.model_name, formatter)
 
 

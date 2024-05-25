@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from data_management.create_lm_dataset import LmDatasetConf
 from data_management.create_rerank_dataset import RerankDatasetConf
 from data_management.create_premise_dataset import SelectDataConfig
-from data_management.create_goal_dataset import GoalDatasetConf
 from premise_selection.premise_filter import PremiseFilterConf
 from premise_selection.rerank_formatter import (
     RerankFormatterConf,
@@ -21,8 +20,7 @@ from premise_selection.evaluate import PremiseEvalConf
 
 from tactic_gen.lm_example import (
     FormatterConf,
-    PremiseFormatterConf,
-    GPTPremiseFormatterConf,
+    GeneralFormatterConf,
 )
 from model_deployment.rerank_client import (
     PremiseConf,
@@ -68,7 +66,6 @@ TopLevelConf = (
     | EvalConf
     | SelectDataConfig
     | RerankDatasetConf
-    | GoalDatasetConf
     | PremiseEvalConf
     | PremiseObserveConf
 )
@@ -253,20 +250,21 @@ def formatter_conf_to_client_conf(
     start_server_num: int,
 ) -> tuple[FormatterConf, int, list[StartModelCommand]]:
     match conf:
-        case PremiseFormatterConf():
-            premise_conf, next_server_num, commands = premise_conf_to_client_conf(
-                conf.premise_conf, start_server_num
-            )
-            new_premise_formatter = PremiseFormatterConf(premise_conf, conf.n_step_conf)
-            return new_premise_formatter, next_server_num, commands
-        case GPTPremiseFormatterConf():
-            premise_conf, next_server_num, commands = premise_conf_to_client_conf(
-                conf.premise_conf, start_server_num
-            )
-            new_premise_formatter = GPTPremiseFormatterConf(premise_conf)
-            return new_premise_formatter, next_server_num, commands
-        case _:
-            return conf, start_server_num, []
+        case GeneralFormatterConf():
+            if conf.premise_client_conf is not None:
+                premise_conf, next_server_num, commands = premise_conf_to_client_conf(
+                    conf.premise_client_conf, start_server_num
+                )
+                new_general_formatter = GeneralFormatterConf(
+                    premise_conf,
+                    conf.proof_retriever_conf,
+                    conf.n_step_conf,
+                    conf.num_premises,
+                    conf.num_proofs,
+                )
+                return new_general_formatter, next_server_num, commands
+            else:
+                return conf, start_server_num, []
 
 
 def rerank_formatter_conf_to_client_conf(
@@ -443,8 +441,6 @@ def to_client_conf(
                 rerank_formatter_conf,
             )
             return reraank_data_conf, next_server_num, commands
-        case GoalDatasetConf():
-            return conf, start_server_num, []
         case PremiseEvalConf():
             premise_conf, next_server_num, commands = premise_conf_to_client_conf(
                 conf.premise_conf, start_server_num

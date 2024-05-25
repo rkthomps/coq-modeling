@@ -8,7 +8,7 @@ import time
 from coqpyt.coq.lsp.structs import Goal
 
 from data_management.dataset_file import DatasetFile, Proof
-from tactic_gen.lm_example import GPTProofFormatter, ProofRetrievalFormatter, LmExample
+from tactic_gen.lm_example import LmExample
 
 from model_deployment.model_result import ModelResult, filter_recs
 from proof_retrieval.mine_goals import GoalRecord
@@ -185,12 +185,7 @@ class MCTSSearcher:
 
     @property
     def need_goal_record(self):
-        return any(
-            [
-                isinstance(f, GPTProofFormatter | ProofRetrievalFormatter)
-                for f in self.tactic_client.formatters
-            ]
-        )
+        return False
 
     def search(self, **kwags: Any) -> MCTSSuccess | MCTSFailure:
         start_time = time.time()

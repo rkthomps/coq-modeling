@@ -28,8 +28,6 @@ from data_management.splits import Split, FileInfo
 from tactic_gen.lm_example import (
     LmExample,
     LmFormatter,
-    ProofRetrievalFormatter,
-    GPTProofFormatter,
 )
 
 from model_deployment.fast_client import FastLspClient, ClientWrapper

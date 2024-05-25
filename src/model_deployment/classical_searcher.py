@@ -23,9 +23,6 @@ from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Proof
 from tactic_gen.lm_example import (
     LmExample,
-    GPTProofFormatter,
-    ProofRetrievalFormatter,
-    WholeProofRetrievalFormatter,
 )
 
 
@@ -192,17 +189,7 @@ class ClassicalSearcher:
 
     @property
     def need_goal_record(self):
-        return any(
-            [
-                isinstance(
-                    f,
-                    GPTProofFormatter
-                    | ProofRetrievalFormatter
-                    | WholeProofRetrievalFormatter,
-                )
-                for f in self.tactic_client.formatters
-            ]
-        )
+        return False
 
     def search(
         self, print_trees: bool = False, print_proofs: bool = False

@@ -1,7 +1,7 @@
 import time
 from dataclasses import dataclass
 
-from tactic_gen.lm_example import LmExample, ProofRetrievalFormatter, GPTProofFormatter
+from tactic_gen.lm_example import LmExample
 from data_management.dataset_file import DatasetFile
 
 from model_deployment.tactic_gen_client import TacticGenClient
@@ -32,7 +32,7 @@ class WholeProofSearcher:
 
     @property
     def need_goal_record(self) -> bool:
-        return isinstance(self.formatter, ProofRetrievalFormatter | GPTProofFormatter)
+        return False
 
     def search(self) -> WholeProofResult:
         initial_proof = ""

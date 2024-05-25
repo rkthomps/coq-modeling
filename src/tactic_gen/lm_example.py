@@ -160,7 +160,7 @@ class GeneralFormatter:
             simliar_proofs = self.proof_retriever.get_similar_proofs(
                 step, proof, dp_obj
             )[: self.num_proofs]
-            similar_proof_strs = [str(p) for p in simliar_proofs]
+            similar_proof_strs = [p.proof_text_to_string() for p in simliar_proofs]
         else:
             similar_proof_strs = None
 

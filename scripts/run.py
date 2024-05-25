@@ -32,7 +32,6 @@ from premise_selection.evaluate import PremiseEvalConf
 from data_management.create_lm_dataset import LmDatasetConf
 from data_management.create_rerank_dataset import RerankDatasetConf
 from data_management.create_premise_dataset import SelectDataConfig
-from data_management.create_goal_dataset import GoalDatasetConf
 
 from util.constants import SERVER_LOC, CLEAN_CONFIG, PORT_MAP_LOC
 
@@ -60,9 +59,6 @@ COMMANDS = {
         RerankDatasetConf, Path("src/data_management/create_rerank_dataset.py")
     ),
     "lm-data": Command(LmDatasetConf, Path("src/data_management/create_lm_dataset.py")),
-    "goal-data": Command(
-        GoalDatasetConf, Path("src/data_management/create_goal_dataset.py")
-    ),
     "eval-premise": Command(PremiseEvalConf, Path("src/premise_selection/evaluate.py")),
     "observe-premise": Command(
         PremiseObserveConf, Path("src/model_deployment/observe_premise_selection.py")
