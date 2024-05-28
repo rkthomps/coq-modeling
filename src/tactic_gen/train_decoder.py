@@ -14,15 +14,15 @@ import jsonlines
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 import transformers
 from transformers import (
-    LlamaForCausalLM,
-    CodeLlamaTokenizer,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizer,
     BitsAndBytesConfig,
     TrainingArguments,
+    CodeLlamaTokenizer,
     Trainer,
-    HfArgumentParser,
-    BatchEncoding,
 )
-from transformers.integrations import HfDeepSpeedConfig
 import torch
 from torch.utils.data import Dataset
 
@@ -40,10 +40,7 @@ from util.train_utils import (
     REQS_NAME,
     GIT_NAME,
 )
-from tactic_gen.lm_example import LmExample
-from tactic_gen.codellama_data import LmDataset
-from data_management.splits import Split, split2str, split_file_path
-from data_management.create_lm_dataset import DATA_CONF_NAME
+from tactic_gen.tactic_data import LmDataset
 
 
 # This doc details how to finetune codellama:
@@ -54,47 +51,45 @@ from data_management.create_lm_dataset import DATA_CONF_NAME
 
 
 def get_lora_conf(conf: dict[str, Any]) -> LoraConfig:
-    return LoraConfig(
-        r=get_required_arg("peft_lora_r", conf),
-        lora_alpha=get_required_arg("peft_lora_alpha", conf),
+    peft_config = LoraConfig(
+        lora_alpha=16,
+        lora_dropout=0.1,
+        r=64,
         bias="none",
         task_type="CAUSAL_LM",
+        target_modules="all-linear",
     )
+    return peft_config
 
 
-def get_model(conf: dict[str, Any]) -> LlamaForCausalLM:
+def get_model(conf: dict[str, Any]) -> PreTrainedModel:
     model_name = get_required_arg("model_name", conf)
-    quantization_config = BitsAndBytesConfig(
+    bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
-        llm_int8_enable_fp32_cpu_offload=True,
-        bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_storage=torch.bfloat16,
     )
 
-    model = LlamaForCausalLM.from_pretrained(
+    model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        quantization_config=quantization_config,
-        load_in_4bit=True,
-        torch_dtype=torch.float16,
+        quantization_config=bnb_config,
+        torch_dtype=torch.bfloat16,
     )
 
-    model = prepare_model_for_kbit_training(model)
+    # https://huggingface.co/docs/bitsandbytes/main/en/fsdp_qlora
+    # model = prepare_model_for_kbit_training(model)
     # https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/inference/quantization/quantization.py
     # https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/huggingface/zero_inference
-    assert type(model) == LlamaForCausalLM
     return model
 
 
 def get_datasets(
     conf: dict[str, Any],
-    tokenizer: CodeLlamaTokenizer,
+    tokenizer: PreTrainedTokenizer,
 ) -> tuple[LmDataset, LmDataset]:
-    max_num_passages = get_required_arg("max_num_passages", conf)
-    max_tokens_per_passage = get_required_arg("max_tokens_per_passage", conf)
-    max_input_len = get_required_arg("max_input_len", conf)
-    max_seq_len = get_required_arg("max_seq_len", conf)
-
+    example_collator_conf = get_required_arg("example_collator", conf)
     data_path = Path(get_required_arg("data_path", conf))
     num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
     train_path = data_path / "train.db"
@@ -102,50 +97,28 @@ def get_datasets(
     train_dataset = LmDataset(
         train_path,
         tokenizer,
-        max_num_passages,
-        max_tokens_per_passage,
-        max_input_len,
-        max_seq_len,
+        example_collator_conf,
     )
     val_dataset = LmDataset(
         val_path,
         tokenizer,
-        max_num_passages,
-        max_tokens_per_passage,
-        max_input_len,
-        max_seq_len,
+        example_collator_conf,
         num_eval_examples,
     )
     return train_dataset, val_dataset
 
 
-def get_tokenizer(conf: dict[str, Any]) -> CodeLlamaTokenizer:
+def get_tokenizer(conf: dict[str, Any]) -> PreTrainedTokenizer:
     model_name = get_required_arg("model_name", conf)
-    seq_len = get_required_arg("max_seq_len", conf)
-    tokenizer: CodeLlamaTokenizer = CodeLlamaTokenizer.from_pretrained(model_name)
-    tokenizer.add_eos_token = True
-
-    pad_token = "<PRE>"
-    encoded_ids = tokenizer.encode(pad_token)
-    assert len(encoded_ids) == 3
-    assert encoded_ids[0] == tokenizer.bos_token_id
-    assert encoded_ids[2] == tokenizer.eos_token_id
-
-    tokenizer.pad_token = pad_token
-    tokenizer.pad_token_id = encoded_ids[1]
-
-    # tokenizer.padding_side = "right"
-    # tokenizer.truncation_side = "right"
-    # tokenizer.model_max_length = seq_len
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    if isinstance(tokenizer, CodeLlamaTokenizer):
+        tokenizer.add_eos_token = True
     return tokenizer
 
 
 def get_trainer(
     conf: dict[str, Any], local_rank: Optional[int], checkpoint_name: Optional[str]
 ) -> Trainer:
-    max_seq_len = get_required_arg("max_seq_len", conf)
-    max_input_len = get_required_arg("max_input_len", conf)
-
     print("\n\nBuilding Training Config...")
     training_args = get_training_args(conf, local_rank)
     print("\n\nRetrieving Tokenizer...")
