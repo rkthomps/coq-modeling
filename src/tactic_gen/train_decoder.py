@@ -40,7 +40,7 @@ from util.train_utils import (
     REQS_NAME,
     GIT_NAME,
 )
-from tactic_gen.tactic_data import LmDataset
+from tactic_gen.tactic_data import LmDataset, example_collator_from_conf
 
 
 # This doc details how to finetune codellama:
@@ -92,17 +92,17 @@ def get_datasets(
     example_collator_conf = get_required_arg("example_collator", conf)
     data_path = Path(get_required_arg("data_path", conf))
     num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
+    hard_seq_len = get_required_arg("hard_seq_len", conf)
     train_path = data_path / "train.db"
     val_path = data_path / "val.db"
-    train_dataset = LmDataset(
-        train_path,
-        tokenizer,
-        example_collator_conf,
-    )
+
+    example_collator = example_collator_from_conf(example_collator_conf)
+    train_dataset = LmDataset(train_path, tokenizer, example_collator, hard_seq_len)
     val_dataset = LmDataset(
         val_path,
         tokenizer,
-        example_collator_conf,
+        example_collator,
+        hard_seq_len,
         num_eval_examples,
     )
     return train_dataset, val_dataset
@@ -111,8 +111,20 @@ def get_datasets(
 def get_tokenizer(conf: dict[str, Any]) -> PreTrainedTokenizer:
     model_name = get_required_arg("model_name", conf)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if isinstance(tokenizer, CodeLlamaTokenizer):
-        tokenizer.add_eos_token = True
+    if model_name.startswith("codellama") or model_name.startswith(
+        "openai-community/gpt"
+    ):
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        # print("ADDING PAD TOKEN")
+        # tokenizer.add_eos_token = True
+        # pad_token = "<PRE>"
+        # encoded_ids = tokenizer.encode(pad_token)
+        # assert len(encoded_ids) == 3
+        # assert encoded_ids[0] == tokenizer.bos_token_id
+        # assert encoded_ids[2] == tokenizer.eos_token_id
+
+        # tokenizer.pad_token = pad_token
+        # tokenizer.pad_token_id = encoded_ids[1]
     return tokenizer
 
 
@@ -133,7 +145,7 @@ def get_trainer(
     train_dataset, val_dataset = get_datasets(conf, tokenizer)
 
     print("\n\nBuilding Trainer...")
-    return Trainer(
+    trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
@@ -141,6 +153,18 @@ def get_trainer(
         data_collator=train_dataset.collator,
         tokenizer=tokenizer,
     )
+
+    print(
+        tokenizer.decode(
+            trainer.train_dataset[0]["input_ids"], skip_special_tokens=True
+        )
+    )
+    for i in range(1000):
+        tok_len = len(trainer.train_dataset[i]["input_ids"])
+        if train_dataset.hard_seq_len < tok_len:
+            print(tokenizer.decode(trainer.train_dataset[i]["input_ids"]))
+
+    return trainer
 
 
 if __name__ == "__main__":

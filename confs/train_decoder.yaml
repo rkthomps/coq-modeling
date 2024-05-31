@@ -1,19 +1,24 @@
 # File Paths
-data_path: data/whole-proof-ret
-model_name: codellama/CodeLlama-7b-hf
-output_dir: models/codellama-7b-whole-proof-ret
+data_path: data/general-random
+#model_name: codellama/CodeLlama-7b-hf
+model_name: deepseek-ai/deepseek-coder-1.3b-instruct
+#model_name: openai-community/gpt2 
+output_dir: models/deepseek-basic-rnd
 
 # Training Args
-max_seq_len: 512
-max_input_len: 224 
-max_num_passages: 2
-max_tokens_per_passage: 112
+hard_seq_len: 512
 per_device_train_batch_size: 4
 learning_rate: 1.0e-3
 num_train_epochs: 2
 peft_lora_r: 64
 peft_lora_alpha: 16
-deepspeed: /home/kthompson/coq-modeling/deepspeed.json
+
+# Data Format 
+example_collator:
+  alias: basic
+  state_tokens: 140 
+  script_tokens: 100 
+  out_tokens: 16 
 
 # Evaluation Args
 eval_steps: 500 
@@ -27,4 +32,4 @@ logging_steps: 10
 save_total_limit: 2
 
 # Train from checkpoint
-checkpoint_name: "models/codellama-7b-whole-proof-ret/checkpoint-4500"
+#checkpoint_name: "models/codellama-7b-whole-proof-ret/checkpoint-4500"

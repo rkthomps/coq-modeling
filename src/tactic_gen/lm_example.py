@@ -180,7 +180,7 @@ class GeneralFormatter:
         else:
             relevant_premise_strs = None
 
-        script = proof.proof_text_to_string()
+        script = proof.proof_prefix_to_string(step)
         goals = fmt_goals(step.goals)
         n_step_sample = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
         output = "".join([fs.step.text for fs in n_step_sample.steps])
