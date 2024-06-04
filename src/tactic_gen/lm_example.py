@@ -42,13 +42,13 @@ class LmExample:
         self,
         proof_script: str,
         proof_state: str,
-        target: str,
+        next_steps: list[str],
         proofs: Optional[list[str]] = None,
         premises: Optional[list[str]] = None,
     ) -> None:
         self.proof_script = proof_script
         self.proof_state = proof_state
-        self.target = target
+        self.next_steps = next_steps
         self.proofs = proofs
         self.premises = premises
 
@@ -56,19 +56,24 @@ class LmExample:
         return {
             "proof_script": self.proof_script,
             "proof_state": self.proof_state,
-            "target": self.target,
+            "next_steps": self.next_steps,
             "proofs": self.proofs,
             "premises": self.premises,
         }
 
     @classmethod
     def from_json(cls, json_data: Any) -> LmExample:
+        # Backward compatability
+        if "target" in json_data:
+            next_steps = [json_data["target"]]
+        else:
+            next_steps = json_data["next_steps"]
         proofs = json_data["proofs"] if "proofs" in json_data else None
         premises = json_data["premises"] if "premises" in json_data else None
         return cls(
             json_data["proof_script"],
             json_data["proof_state"],
-            json_data["target"],
+            next_steps,
             proofs,
             premises,
         )
@@ -84,7 +89,6 @@ class GeneralFormatterConf:
     ALIAS = "general"
     premise_client_conf: Optional[PremiseConf]
     proof_retriever_conf: Optional[TextProofRetrieverConf]
-    n_step_conf: NStepConf
     num_premises: Optional[int]
     num_proofs: Optional[int]
 
@@ -93,7 +97,6 @@ class GeneralFormatterConf:
             return GeneralFormatterConf(
                 self.premise_client_conf,
                 self.proof_retriever_conf,
-                self.n_step_conf,
                 self.num_premises,
                 self.num_proofs,
             )
@@ -104,7 +107,6 @@ class GeneralFormatterConf:
         return GeneralFormatterConf(
             new_premise_client,
             self.proof_retriever_conf,
-            self.n_step_conf,
             self.num_premises,
             self.num_proofs,
         )
@@ -130,7 +132,6 @@ class GeneralFormatterConf:
         return cls(
             premise_conf,
             proof_ret_conf,
-            n_step_conf_from_yaml(yaml_data["n_step_conf"]),
             num_premises,
             num_proofs,
         )
@@ -141,13 +142,11 @@ class GeneralFormatter:
         self,
         premise_client: Optional[PremiseClient],
         proof_retriever: Optional[TextProofRetriever],
-        n_step_sampler: NStepSampler,
         num_premises: Optional[int],
         num_proofs: Optional[int],
     ):
         self.premise_client = premise_client
         self.proof_retriever = proof_retriever
-        self.n_step_sampler = n_step_sampler
         self.num_premises = num_premises
         self.num_proofs = num_proofs
 
@@ -182,10 +181,9 @@ class GeneralFormatter:
 
         script = proof.proof_prefix_to_string(step)
         goals = fmt_goals(step.goals)
-        n_step_sample = self.n_step_sampler.sample_steps(proof.steps[step_idx:])
-        output = "".join([fs.step.text for fs in n_step_sample.steps])
+        next_steps = [s.step.text for s in proof.steps[step_idx:]]
         return LmExample(
-            script, goals, output, similar_proof_strs, relevant_premise_strs
+            script, goals, next_steps, similar_proof_strs, relevant_premise_strs
         )
 
     def close(self):
@@ -206,11 +204,9 @@ class GeneralFormatter:
         else:
             proof_retriever = None
 
-        n_step_sampler = n_step_from_conf(conf.n_step_conf)
         return cls(
             premise_client,
             proof_retriever,
-            n_step_sampler,
             conf.num_premises,
             conf.num_proofs,
         )

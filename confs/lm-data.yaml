@@ -1,19 +1,17 @@
 n_procs: 8
-train_sample_loc: samples/rnd-complete/train.json
-val_sample_loc: samples/rnd-complete/val.json
-test_sample_loc: samples/rnd-complete/test.json
-# train_sample_loc: samples/final/train.json
-# val_sample_loc: samples/final/val.json
-# test_sample_loc: samples/final/test.json
+# train_sample_loc: samples/rnd-complete/train.json
+# val_sample_loc: samples/rnd-complete/val.json
+# test_sample_loc: samples/rnd-complete/test.json
+train_sample_loc: samples/final/train.json
+val_sample_loc: samples/final/val.json
+test_sample_loc: samples/final/test.json
 sentence_db_loc: sentences.db
-output_dataset_loc: data/general-random
+output_dataset_loc: data/general-final-nstep
 
 lm_formatters:
   - alias: general 
     num_proofs: 20
     num_premises: 50
-    n_step_conf:
-      alias: one
     
     proof_ret:
       max_examples: 20

@@ -258,7 +258,6 @@ def formatter_conf_to_client_conf(
                 new_general_formatter = GeneralFormatterConf(
                     premise_conf,
                     conf.proof_retriever_conf,
-                    conf.n_step_conf,
                     conf.num_premises,
                     conf.num_proofs,
                 )

@@ -1,12 +1,12 @@
 # File Paths
-data_path: data/general-random
+data_path: data/general-final
 #model_name: codellama/CodeLlama-7b-hf
 model_name: deepseek-ai/deepseek-coder-1.3b-instruct
 #model_name: openai-community/gpt2 
-output_dir: models/deepseek-basic-rnd
+output_dir: models/deepseek-proof-prem-final
 
 # Training Args
-hard_seq_len: 512
+hard_seq_len: 1024
 per_device_train_batch_size: 4
 learning_rate: 1.0e-3
 num_train_epochs: 2
@@ -14,11 +14,20 @@ peft_lora_r: 64
 peft_lora_alpha: 16
 
 # Data Format 
+# example_collator:
+#   alias: basic
+#   state_tokens: 500 
+#   script_tokens: 300 
+#   out_tokens: 32 
+
 example_collator:
-  alias: basic
-  state_tokens: 140 
-  script_tokens: 100 
-  out_tokens: 16 
+  alias: proof-premise
+  state_tokens: 243 
+  script_tokens: 243 
+  proof_tokens: 243 
+  premise_tokens: 243 
+  out_tokens: 32 
+
 
 # Evaluation Args
 eval_steps: 500 

@@ -25,6 +25,7 @@ from transformers import (
 )
 import torch
 from torch.utils.data import Dataset
+from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 
 # from datasets import Dataset
 import numpy as np
@@ -111,6 +112,10 @@ def get_datasets(
 def get_tokenizer(conf: dict[str, Any]) -> PreTrainedTokenizer:
     model_name = get_required_arg("model_name", conf)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer.padding_side = "right"
+    tokenizer.truncation_side = "left"
+    tokenizer.add_eos_token = True
+    assert tokenizer.pad_token_id != tokenizer.eos_token_id
     if model_name.startswith("codellama") or model_name.startswith(
         "openai-community/gpt"
     ):
@@ -126,6 +131,11 @@ def get_tokenizer(conf: dict[str, Any]) -> PreTrainedTokenizer:
         # tokenizer.pad_token = pad_token
         # tokenizer.pad_token_id = encoded_ids[1]
     return tokenizer
+
+
+# def formatting_func(examples: list[str]) -> list[str]:
+#     # Formatting is done upon dataset creation
+#     return examples
 
 
 def get_trainer(
@@ -144,26 +154,28 @@ def get_trainer(
     print("\n\nConstructing Dataset...")
     train_dataset, val_dataset = get_datasets(conf, tokenizer)
 
+    print(tokenizer.decode(train_dataset[0].input_ids))
+
     print("\n\nBuilding Trainer...")
+    # trainer = SFTTrainer(
+    #     model=model,
+    #     tokenizer=tokenizer,
+    #     args=training_args,
+    #     data_collator=train_dataset.collator,
+    #     train_dataset=train_dataset,
+    #     eval_dataset=val_dataset,
+    #     max_seq_length=hard_seq_len,
+    # )
+
     trainer = Trainer(
         model=model,
+        tokenizer=tokenizer,
         args=training_args,
+        data_collator=train_dataset.collator,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        data_collator=train_dataset.collator,
-        tokenizer=tokenizer,
+        # max_seq_length=hard_seq_len,
     )
-
-    print(
-        tokenizer.decode(
-            trainer.train_dataset[0]["input_ids"], skip_special_tokens=True
-        )
-    )
-    for i in range(1000):
-        tok_len = len(trainer.train_dataset[i]["input_ids"])
-        if train_dataset.hard_seq_len < tok_len:
-            print(tokenizer.decode(trainer.train_dataset[i]["input_ids"]))
-
     return trainer
 
 
