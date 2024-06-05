@@ -41,7 +41,10 @@ from util.train_utils import (
     REQS_NAME,
     GIT_NAME,
 )
+from util.util import get_basic_logger
 from tactic_gen.tactic_data import LmDataset, example_collator_from_conf
+
+_logger = get_basic_logger(__name__)
 
 
 # This doc details how to finetune codellama:
@@ -86,6 +89,20 @@ def get_model(conf: dict[str, Any]) -> PreTrainedModel:
     return model
 
 
+def get_train_val_path(data_path: Path) -> tuple[Path, Path]:
+    tmp_path = Path("/tmp") / data_path.name
+    if tmp_path.exists():
+        train_path = tmp_path / "train.db"
+        val_path = tmp_path / "val.db"
+        _logger.info(f"Using tmp data at {tmp_path}")
+        return train_path, val_path
+    else:
+        train_path = data_path / "train.db"
+        val_path = data_path / "val.db"
+        _logger.info(f"Using data at {data_path}")
+        return train_path, val_path
+
+
 def get_datasets(
     conf: dict[str, Any],
     tokenizer: PreTrainedTokenizer,
@@ -94,8 +111,7 @@ def get_datasets(
     data_path = Path(get_required_arg("data_path", conf))
     num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
     hard_seq_len = get_required_arg("hard_seq_len", conf)
-    train_path = data_path / "train.db"
-    val_path = data_path / "val.db"
+    train_path, val_path = get_train_val_path(data_path)
 
     example_collator = example_collator_from_conf(example_collator_conf)
     train_dataset = LmDataset(train_path, tokenizer, example_collator, hard_seq_len)
