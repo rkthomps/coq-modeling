@@ -1,37 +1,34 @@
 from __future__ import annotations
 from typing import Any, Callable, Optional
+from pathlib import Path
+import yaml
 import ipdb
 import functools
 
 import sys, os
-import requests
 import re
-import json
-import yaml
-import math
 
 from typeguard import typechecked
 from transformers import (
-    LlamaForCausalLM,
     AutoTokenizer,
-    CodeLlamaTokenizer,
+    PreTrainedTokenizer,
+    PreTrainedModel,
     BitsAndBytesConfig,
 )
 import torch
-import openai
 
 from util.train_utils import get_required_arg
 
 from tactic_gen.lm_example import (
     LmExample,
-    THM_SEP,
 )
-from tactic_gen.train_codellama import (
+from tactic_gen.train_decoder import (
     TRAINING_CONF_NAME,
     load_config,
     get_tokenizer,
+    get_model,
 )
-from tactic_gen.codellama_data import collate_example
+from tactic_gen.tactic_data import ExampleCollator, example_collator_from_conf
 from tactic_gen.fid_model import FiDT5
 from tactic_gen.fid_data import FidDataset
 from model_deployment.codellama_utils import (
@@ -150,90 +147,57 @@ class FidT5LocalWrapper:
         return cls.from_checkpoint(name)
 
 
-class CodeLLamaLocalWrapper:
-    ALIAS = "local"
+class DecoderLocalWrapper:
+    ALIAS = "decoder-local"
 
     def __init__(
         self,
-        model: LlamaForCausalLM,
-        tokenizer: CodeLlamaTokenizer,
-        stop_strings: list[str],
-        collate_fn: Callable[[LmExample], str],
-        batch_size: int = 2,
-    ) -> None:
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        collator: ExampleCollator,
+    ):
         self.model = model
         self.tokenizer = tokenizer
-        self.stop_strings = stop_strings
-        self.collate_fn = collate_fn
-        self.batch_size = batch_size
+        self.collator = collator
 
-    # TODO test built in huggingface beam decoding
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
-        collated_input = self.collate_fn(example)
-        input_ids = self.tokenizer(collated_input, return_tensors="pt")["input_ids"].to(
-            "cuda"
-        )
-
-        beam_width = n
-        n_recs = n
-        sample_result = do_beam_sample(
-            input_ids,
-            self.model,
-            self.tokenizer,
-            beam_width,
-            n_recs,
-            self.stop_strings,
-            batch_size=self.batch_size,
-        )
-        # sample_result = self.do_sample(input_ids, n)
-        return filter_recs(
-            sample_result.tactics,
-            sample_result.scores,
-            sample_result.num_tokens,
-            self.stop_strings,
-        )
-
-    def to_device(self, device: str) -> None:
-        self.model.to(device)
-
-    @staticmethod
-    def get_model_loc(checkpoint_loc: str) -> str:
-        return os.path.dirname(checkpoint_loc)
-
-    @classmethod
-    def from_checkpoint(cls, checkpoint_loc: str) -> CodeLLamaLocalWrapper:
-        model_loc = cls.get_model_loc(checkpoint_loc)
-        model_conf = load_config(os.path.join(model_loc, TRAINING_CONF_NAME))
-        quant_conf = BitsAndBytesConfig(
-            load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
-        )
-
-        model = LlamaForCausalLM.from_pretrained(
-            checkpoint_loc,
-            quantization_config=quant_conf,
-        )
-        tokenizer = get_tokenizer(model_conf)
-        tokenizer.add_eos_token = False
-        max_num_passages = model_conf["max_num_passages"]
-        max_tokens_per_passage = model_conf["max_tokens_per_passage"]
-        max_input_len = model_conf["max_input_len"]
-        max_seq_len = model_conf["max_seq_len"]
-
-        def collate_fn(input_example: LmExample) -> str:
-            collated_in, _ = collate_example(
-                tokenizer,
-                max_num_passages,
-                max_tokens_per_passage,
-                max_input_len,
-                max_seq_len,
-                input_example,
+        collated_input = self.collator.collate_input(self.tokenizer, example)
+        inputs = self.tokenizer(collated_input, return_tensors="pt")
+        with torch.no_grad():
+            out = self.model.generate(
+                inputs["input_ids"],
+                max_new_tokens=self.collator.out_tokens,
+                do_sample=True,
+                num_return_sequences=n,
+                temperature=1,
             )
-            return collated_in
-
-        return cls(model, tokenizer, [], collate_fn)
+        input_num_tokens = inputs["input_ids"].shape[1]
+        tactics = self.tokenizer.batch_decode(
+            out[:, input_num_tokens:], skip_special_tokens=True
+        )
+        scores = [1.0] * len(tactics)
+        tokenized_out = self.tokenizer(tactics)["input_ids"]
+        lengths = [len(t) for t in tokenized_out]
+        return ModelResult(tactics, scores, lengths)
 
     @classmethod
-    def from_conf(cls, json_data: Any) -> ModelWrapper:
+    def get_training_conf(cls, checkpoint_loc: Path) -> Any:
+        training_conf_loc = checkpoint_loc.parent / TRAINING_CONF_NAME
+        with training_conf_loc.open("r") as f:
+            training_conf = yaml.safe_load(f)
+        return training_conf
+
+    @classmethod
+    def from_checkpoint(cls, checkpoint_loc: Path) -> DecoderLocalWrapper:
+        training_conf = cls.get_training_conf(checkpoint_loc)
+        example_collator_conf = training_conf["example_collator"]
+        example_collator = example_collator_from_conf(example_collator_conf)
+        tokenizer = get_tokenizer(training_conf, add_eos=False)
+        model = get_model(str(checkpoint_loc.resolve()))
+        return cls(model, tokenizer, example_collator)
+
+    @classmethod
+    def from_conf(cls, json_data: Any) -> DecoderLocalWrapper:
         name = json_data["checkpoint_loc"]
         return cls.from_checkpoint(name)
 
@@ -243,7 +207,7 @@ class StubWrapper:
         return ModelResult([], [], [])
 
 
-ModelWrapper = CodeLLamaLocalWrapper | FidT5LocalWrapper | StubWrapper
+ModelWrapper = DecoderLocalWrapper | FidT5LocalWrapper | StubWrapper
 
 
 class WrapperNotFoundError(Exception):
@@ -253,8 +217,8 @@ class WrapperNotFoundError(Exception):
 def wrapper_from_conf(conf: Any) -> ModelWrapper:
     attempted_alias = conf["alias"]
     match attempted_alias:
-        case CodeLLamaLocalWrapper.ALIAS:
-            return CodeLLamaLocalWrapper.from_conf(conf)
+        case DecoderLocalWrapper.ALIAS:
+            return DecoderLocalWrapper.from_conf(conf)
         case FidT5LocalWrapper.ALIAS:
             return FidT5LocalWrapper.from_conf(conf)
         case _:

@@ -66,8 +66,7 @@ def get_lora_conf(conf: dict[str, Any]) -> LoraConfig:
     return peft_config
 
 
-def get_model(conf: dict[str, Any]) -> PreTrainedModel:
-    model_name = get_required_arg("model_name", conf)
+def get_model(model_name: str) -> PreTrainedModel:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -125,12 +124,15 @@ def get_datasets(
     return train_dataset, val_dataset
 
 
-def get_tokenizer(conf: dict[str, Any]) -> PreTrainedTokenizer:
+def get_tokenizer(conf: dict[str, Any], add_eos=True) -> PreTrainedTokenizer:
     model_name = get_required_arg("model_name", conf)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.padding_side = "right"
     tokenizer.truncation_side = "left"
-    tokenizer.add_eos_token = True
+    if add_eos:
+        tokenizer.add_eos_token = True
+    else:
+        tokenizer.add_eos_token = False
     assert tokenizer.pad_token_id != tokenizer.eos_token_id
     if model_name.startswith("codellama") or model_name.startswith(
         "openai-community/gpt"
@@ -163,7 +165,8 @@ def get_trainer(
     tokenizer = get_tokenizer(conf)
 
     print("\n\nRetrieving Model...")
-    raw_model = get_model(conf)
+    model_name = get_required_arg("model_name", conf)
+    raw_model = get_model(model_name)
     lora_config = get_lora_conf(conf)
     model = get_peft_model(raw_model, lora_config)
 

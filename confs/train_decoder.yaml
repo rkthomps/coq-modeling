@@ -6,7 +6,7 @@ model_name: deepseek-ai/deepseek-coder-1.3b-instruct
 output_dir: models/deepseek-proof-prem-final
 
 # Training Args
-hard_seq_len: 1024
+hard_seq_len: 4096
 per_device_train_batch_size: 4
 learning_rate: 1.0e-3
 num_train_epochs: 2
@@ -22,11 +22,11 @@ peft_lora_alpha: 16
 
 example_collator:
   alias: proof-premise
-  state_tokens: 243 
-  script_tokens: 243 
-  proof_tokens: 243 
-  premise_tokens: 243 
-  out_tokens: 32 
+  state_tokens: 1024 
+  script_tokens: 512
+  proof_tokens: 1024 
+  premise_tokens: 512 
+  out_tokens: 128 
 
 
 # Evaluation Args

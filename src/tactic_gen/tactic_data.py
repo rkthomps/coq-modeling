@@ -24,6 +24,51 @@ _logger = get_basic_logger(__name__)
 RESPONSE_TEMPLATE = "[TACTIC]"
 NEWLINE_RESPONSE_TEMPLATE = f"\n{RESPONSE_TEMPLATE}\n"
 
+__test_lm_json = {
+    "proof_script": "Theorem rev_app : forall x l, rev l ++ [x] = rev (x::l).\nProof.\n  intros.",
+    "proof_state": "x: X\nl: list X\n\nrev l ++ [x] = rev (x :: l)",
+    "next_steps": ["\n  simpl.", " reflexivity.", "\nQed."],
+    "proofs": [
+        "Theorem rev_app_distr : forall l l' : list X, rev (l ++ l') = rev l' ++ rev l.\nProof.\n  intros.\n  induction l. destruct l'.\n    simpl. reflexivity.\n    simpl. rewrite app_nil_r. reflexivity.\n    simpl. rewrite IHl. rewrite app_assoc. reflexivity.\nQed.",
+        "Theorem app_nil_r : forall l : list X, l ++ [] = l.\nProof.\n  intros.\n  induction l.\n    simpl. reflexivity.\n    simpl. rewrite IHl. reflexivity.\nQed.",
+        "Theorem app_assoc : forall l m n : list X, l ++ m ++ n = (l ++ m) ++ n.\nProof.\n  intros.\n  induction l. destruct m. destruct n.\n    simpl. reflexivity.\n    simpl. reflexivity.\n    simpl. reflexivity.\n    simpl. rewrite IHl. reflexivity.\nQed.",
+        "Theorem app_length : forall l l' : list X, length l + length l' = length (l ++ l').\nProof.\n  intros.\n  induction l. destruct l'.\n    simpl. reflexivity.\n    simpl. reflexivity.\n    simpl. rewrite IHl. reflexivity.\nQed.",
+    ],
+    "premises": [
+        "Theorem rev_app_distr : forall l l' : list X, rev (l ++ l') = rev l' ++ rev l.",
+        "Theorem app_nil_r : forall l : list X, l ++ [] = l.",
+        "Theorem app_assoc : forall l m n : list X, l ++ m ++ n = (l ++ m) ++ n.",
+        "Theorem app_length : forall l l' : list X, length l + length l' = length (l ++ l').",
+    ],
+}
+
+TEST_LM_EXAMPLE = LmExample.from_json(__test_lm_json)
+
+
+def whole_number_allocate(
+    tokenizer: PreTrainedTokenizer,
+    ss: list[str],
+    allowance: int,
+) -> list[str]:
+    cur_allowance = allowance
+    allowed_passages: list[str] = []
+    for s in ss:
+        s_toks = tokenizer.tokenize(s)
+        cur_allowance -= len(s_toks)
+        if cur_allowance < 0:
+            break
+        allowed_passages.append(s)
+    return allowed_passages
+
+
+def allocate_and_fmt(
+    tokenizer: PreTrainedTokenizer, ss: Optional[list[str]], allowance: int
+) -> str:
+    if ss is None:
+        return ""
+    allowed_passages = whole_number_allocate(tokenizer, ss, allowance)
+    return "\n".join(allowed_passages[::-1])
+
 
 @dataclass
 class BasicCollator:
@@ -35,15 +80,12 @@ class BasicCollator:
     STATE_SEP = "\n[STATE]\n"
     SCRIPT_SEP = "\n[SCRIPT]\n"
 
-    def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+    def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
         state_str, _ = allocate_tokens(
             tokenizer, example.proof_state, self.state_tokens
         )
         script_str, _ = allocate_tokens(
             tokenizer, example.proof_script, self.script_tokens
-        )
-        out_str, _ = allocate_tokens(
-            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
         )
         combined_str = (
             self.STATE_SEP
@@ -51,8 +93,15 @@ class BasicCollator:
             + self.SCRIPT_SEP
             + script_str
             + NEWLINE_RESPONSE_TEMPLATE
-            + out_str
         )
+        return combined_str
+
+    def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        input_str = self.collate_input(tokenizer, example)
+        out_str, _ = allocate_tokens(
+            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
+        )
+        combined_str = input_str + out_str
         return combined_str
 
     @classmethod
@@ -124,6 +173,16 @@ class ProofPremiseNameCollator:
         (premise_name,) = name.groups()
         return premise_name
 
+    def get_premise_names(self, example: LmExample) -> list[str]:
+        if example.premises is None:
+            return []
+        names: list[str] = []
+        for p in example.premises:
+            p_name = self.get_name(p)
+            if p_name is not None:
+                names.append(p_name)
+        return names
+
     def get_premise_str(self, example: LmExample) -> str:
         if example.premises is None:
             reversed_premise_names = []
@@ -136,21 +195,17 @@ class ProofPremiseNameCollator:
                     reversed_premise_names.append(p_name)
         return "\n".join(reversed_premise_names)
 
-    def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
-        all_premises_names_str = self.get_premise_str(example)
-        all_proofs_str = self.get_proof_str(example)
-        premise_str, _ = allocate_tokens(
-            tokenizer, all_premises_names_str, self.premise_tokens
+    def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        proof_str = allocate_and_fmt(tokenizer, example.proofs, self.proof_tokens)
+        premise_str = allocate_and_fmt(
+            tokenizer, self.get_premise_names(example), self.premise_tokens
         )
-        proof_str, _ = allocate_tokens(tokenizer, all_proofs_str, self.proof_tokens)
+
         state_str, _ = allocate_tokens(
             tokenizer, example.proof_state, self.state_tokens
         )
         script_str, _ = allocate_tokens(
             tokenizer, example.proof_script, self.script_tokens
-        )
-        out_str, _ = allocate_tokens(
-            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
         )
         combined_str = (
             self.PREMISE_SEP
@@ -162,8 +217,15 @@ class ProofPremiseNameCollator:
             + self.SCRIPT_SEP
             + script_str
             + NEWLINE_RESPONSE_TEMPLATE
-            + out_str
         )
+        return combined_str
+
+    def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        out_str, _ = allocate_tokens(
+            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
+        )
+        input_str = self.collate_input(tokenizer, example)
+        combined_str = input_str + out_str
         return combined_str
 
     @classmethod
@@ -205,21 +267,14 @@ class ProofPremiseCollator:
             reversed_premises = example.premises[::-1]
         return "\n".join(reversed_premises)
 
-    def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
-        all_premises_str = self.get_premise_str(example)
-        all_proofs_str = self.get_proof_str(example)
-        premise_str, _ = allocate_tokens(
-            tokenizer, all_premises_str, self.premise_tokens
-        )
-        proof_str, _ = allocate_tokens(tokenizer, all_proofs_str, self.proof_tokens)
+    def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        proof_str = allocate_and_fmt(tokenizer, example.proofs, self.proof_tokens)
+        premise_str = allocate_and_fmt(tokenizer, example.premises, self.premise_tokens)
         state_str, _ = allocate_tokens(
             tokenizer, example.proof_state, self.state_tokens
         )
         script_str, _ = allocate_tokens(
             tokenizer, example.proof_script, self.script_tokens
-        )
-        out_str, _ = allocate_tokens(
-            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
         )
         combined_str = (
             self.PREMISE_SEP
@@ -231,8 +286,15 @@ class ProofPremiseCollator:
             + self.SCRIPT_SEP
             + script_str
             + NEWLINE_RESPONSE_TEMPLATE
-            + out_str
         )
+        return combined_str
+
+    def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        input_str = self.collate_input(tokenizer, example)
+        out_str, _ = allocate_tokens(
+            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
+        )
+        combined_str = input_str + out_str
         return combined_str
 
     @classmethod
@@ -248,8 +310,8 @@ class ProofPremiseCollator:
 
 ExampleCollator = (
     BasicCollator
-    | PremiseCollator
-    | ProofCollator
+    # | PremiseCollator
+    # | ProofCollator
     | ProofPremiseCollator
     | ProofPremiseNameCollator
 )
