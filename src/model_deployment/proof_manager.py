@@ -3,12 +3,9 @@ from typing import Any, Optional
 from types import TracebackType
 
 import os
-import shutil
 from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass
-import ipdb
-import time
 
 
 from util.util import get_fresh_path
@@ -207,6 +204,7 @@ class ProofManager:
         )
 
     def get_initial_context(self) -> Optional[DatasetFile]:
+        # TODO ADD PREFIX TO THIS DSET FILE
         initial_proof_result = self.check_proof("", self.proof_info.proof_term)
         assert initial_proof_result.new_proof is not None
         return DatasetFile(self.file_context, [initial_proof_result.new_proof])

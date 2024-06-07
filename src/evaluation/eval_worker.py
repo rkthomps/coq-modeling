@@ -9,22 +9,32 @@ from data_management.splits import DataSplit, FileInfo
 from data_management.sentence_db import SentenceDB
 from evaluation.slurm_eval import ProofMap
 from evaluation.evaluate import EvalConf
-from model_deployment.mcts_searcher import MCTSConf 
+from model_deployment.mcts_searcher import MCTSConf
 from model_deployment.classical_searcher import ClassicalSearchConf
-from model_deployment.prove import LocationInfo, RunProofConf, run_proof, summary_from_result, SearchSummary, MCTSSummary, Summary
-from model_deployment.tactic_gen_client import tactic_gen_client_from_conf 
+from model_deployment.prove import (
+    LocationInfo,
+    RunProofConf,
+    run_proof,
+    summary_from_result,
+    ClassicalSummary,
+    MCTSSummary,
+    Summary,
+)
+from model_deployment.tactic_gen_client import tactic_gen_client_from_conf
 from util.constants import CLEAN_CONFIG
 from util.util import get_basic_logger
 from util.file_queue import FileQueue, EmptyFileQueueError
 
 _logger = get_basic_logger(__name__)
 
+
 def get_orig_summary(file: Path, theorem: str, eval_conf: EvalConf) -> Summary:
     match eval_conf.search_conf:
         case MCTSConf():
             return MCTSSummary.from_search_result(file, theorem, None)
         case ClassicalSearchConf():
-            return SearchSummary.from_search_result(file, theorem, None)
+            return ClassicalSummary.from_search_result(file, theorem, None)
+
 
 def run_and_save_proof(run_conf: RunProofConf):
     _logger.info(f"running proof of {theorem_name} from {file}")
@@ -33,6 +43,7 @@ def run_and_save_proof(run_conf: RunProofConf):
     summary.pretty_print()
     summary.save(eval_conf.save_loc)
     _logger.info(summary.pretty_print())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -52,7 +63,6 @@ if __name__ == "__main__":
     data_split = DataSplit.load(eval_conf.data_split_loc)
     q = FileQueue[tuple[FileInfo, int]](queue_loc)
 
-
     while True:
         try:
             file_info, idx = q.get()
@@ -62,10 +72,18 @@ if __name__ == "__main__":
         proof_dp = file_info.get_dp(eval_conf.data_loc, sentence_db)
 
         location_info = LocationInfo(
-            eval_conf.data_loc, file_info, eval_conf.split, proof_dp, idx, sentence_db, data_split
+            eval_conf.data_loc,
+            file_info,
+            eval_conf.split,
+            proof_dp,
+            idx,
+            sentence_db,
+            data_split,
         )
         tactic_client = tactic_gen_client_from_conf(eval_conf.tactic_conf)
-        run_conf = RunProofConf(location_info, eval_conf.search_conf, tactic_client, False, False)
+        run_conf = RunProofConf(
+            location_info, eval_conf.search_conf, tactic_client, False, False
+        )
 
         file = eval_conf.data_loc / location_info.file_info.file
         try:
@@ -77,7 +95,9 @@ if __name__ == "__main__":
                 + str(run_conf.location_info.dp_proof_idx)
             )
         except ValueError:
-            _logger.info(f"Could not get name of theorem for: {run_conf.location_info.dataset_file.proofs[run_conf.location_info.dp_proof_idx]}")
+            _logger.info(
+                f"Could not get name of theorem for: {run_conf.location_info.dataset_file.proofs[run_conf.location_info.dp_proof_idx]}"
+            )
             continue
 
         orig_summary = get_orig_summary(file, theorem_name, eval_conf)
