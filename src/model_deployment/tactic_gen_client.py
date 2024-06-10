@@ -15,7 +15,6 @@ from openai import OpenAI
 
 from tactic_gen.lm_example import (
     LmExample,
-    GPTFormatter,
     FormatterConf,
     formatter_conf_from_yaml,
 )
@@ -54,13 +53,13 @@ class FidTacticGenConf:
 
 
 @dataclass
-class CodellamaTacticGenConf:
-    ALIAS = "codellama"
+class DecoderTacticGenConf:
+    ALIAS = "decoder"
     checkpoint_loc: Path
     formatter_confs: Optional[list[FormatterConf]]
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> CodellamaTacticGenConf:
+    def from_yaml(cls, yaml_data: Any) -> DecoderTacticGenConf:
         formatter_confs = None
         if "formatter" in yaml_data:
             formatter_confs = [
@@ -115,7 +114,8 @@ class OpenAiCientConf:
 
 
 class OpenAiClient:
-    def __init__(self, model_name: str, formatter: GPTFormatter):
+    # TODO include system message in this object. Not fomratter
+    def __init__(self, model_name: str, formatter: LmFormatter):
         self.model_name = model_name
         self.client = OpenAI(organization=os.environ["OPENAI_ORG_KEY"])
         self.formatter = formatter
@@ -142,7 +142,6 @@ class OpenAiClient:
     @classmethod
     def from_conf(cls, conf: OpenAiCientConf) -> OpenAiClient:
         formatter = formatter_from_conf(conf.formatter_conf)
-        assert isinstance(formatter, GPTFormatter)
         return cls(conf.model_name, formatter)
 
 
@@ -203,10 +202,7 @@ def tactic_conf_update_ips(conf: TacticGenConf, port_map: dict[int, tuple[str, i
 
 
 TacticGenConf = (
-    LocalTacticGenClientConf
-    | FidTacticGenConf
-    | CodellamaTacticGenConf
-    | OpenAiCientConf
+    LocalTacticGenClientConf | FidTacticGenConf | DecoderTacticGenConf | OpenAiCientConf
 )
 
 
@@ -225,8 +221,8 @@ def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:
     match attempted_alias:
         case LocalTacticGenClientConf.ALIAS:
             return LocalTacticGenClientConf.from_yaml(yaml_data)
-        case CodellamaTacticGenConf.ALIAS:
-            return CodellamaTacticGenConf.from_yaml(yaml_data)
+        case DecoderTacticGenConf.ALIAS:
+            return DecoderTacticGenConf.from_yaml(yaml_data)
         case FidTacticGenConf.ALIAS:
             return FidTacticGenConf.from_yaml(yaml_data)
         case OpenAiCientConf.ALIAS:

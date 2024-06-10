@@ -18,14 +18,18 @@ from data_management.sentence_db import SentenceDB
 from data_management.splits import Split, DataSplit, FileInfo, split2str, str2split
 from model_deployment.prove import (
     MCTSSummary,
-    SearchSummary,
+    ClassicalSummary,
+    StraightLineSummary,
     summary_from_result,
+    pretty_print_summary,
+    save_summary,
     run_proof,
     RunProofConf,
     LocationInfo,
 )
 from model_deployment.mcts_searcher import MCTSConf
 from model_deployment.classical_searcher import ClassicalSearchConf
+from model_deployment.straight_line_searcher import StraightLineSearcherConf
 from model_deployment.searcher import (
     SearcherConf,
     Searcher,
@@ -167,12 +171,12 @@ def eval_proof(eval_conf: EvalProofConf, save_dir: Path):
         + str(run_conf.location_info.dp_proof_idx)
     )
     summary = summary_from_result(file, theorem_name, result)
-    summary.pretty_print()
-    summary.save(save_dir)
+    pretty_print_summary(summary)
+    save_summary(summary, save_dir)
 
 
-def load_results(save_dir: Path) -> list[SearchSummary]:
-    summaries: list[SearchSummary] = []
+def load_results(save_dir: Path) -> list[ClassicalSummary]:
+    summaries: list[ClassicalSummary] = []
     for f in os.listdir(save_dir):
         with (save_dir / f).open("rb") as fin:
             summary = pickle.load(fin)
@@ -224,11 +228,15 @@ if __name__ == "__main__":
                             file, theorem_name, None
                         )
                     case ClassicalSearchConf():
-                        summary = SearchSummary.from_search_result(
+                        summary = ClassicalSummary.from_search_result(
                             file, theorem_name, None
                         )
-                summary.pretty_print()
-                summary.save(conf.save_loc)
+                    case StraightLineSearcherConf():
+                        summary = StraightLineSummary.from_search_result(
+                            file, theorem_name, None
+                        )
+                pretty_print_summary(summary)
+                save_summary(summary, conf.save_loc)
 
     results = load_results(conf.save_loc)
     results.sort()

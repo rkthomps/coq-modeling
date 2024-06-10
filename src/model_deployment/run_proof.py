@@ -11,6 +11,10 @@ from data_management.dataset_file import Term, DatasetFile
 from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
 from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
 from model_deployment.prove import run_proof, RunProofConf, LocationInfo
+from model_deployment.straight_line_searcher import (
+    StraightLineSuccess,
+    StraightLineFailure,
+)
 from model_deployment.searcher import (
     SearcherConf,
     searcher_conf_from_yaml,
@@ -18,6 +22,7 @@ from model_deployment.searcher import (
 
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
+    tactic_conf_update_ips,
     tactic_gen_conf_from_yaml,
     tactic_gen_client_from_conf,
 )
@@ -87,6 +92,9 @@ class TestProofConf:
     print_proofs: bool
     print_trees: bool
 
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
+        tactic_conf_update_ips(self.tactic_conf, port_map)
+
     def to_run_conf(self) -> RunProofConf:
         return RunProofConf(
             self.theorem_location_info.to_location_info(),
@@ -126,11 +134,13 @@ if __name__ == "__main__":
         match result:
             case ClassicalSuccess():
                 print("".join(result.qed_node.combined_proof_steps))
-                print("depth", result.search_tree.root.get_deepest_node())
             case ClassicalFailure():
-                print("last expand", result.search_tree.root.get_last_node_expanded())
                 print("failed")
             case MCTSSuccess():
                 print(result.successful_proof.proof_text_to_string())
             case MCTSFailure():
+                print("failed")
+            case StraightLineSuccess():
+                print(result.successful_proof.proof_text_to_string())
+            case StraightLineFailure():
                 print("failed")

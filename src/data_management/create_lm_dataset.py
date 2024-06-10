@@ -20,6 +20,7 @@ from tactic_gen.lm_example import (
     FormatterConf,
     formatter_from_conf,
     formatter_conf_from_yaml,
+    close_lm_formatter,
 )
 from data_management.splits import (
     FileInfo,
@@ -90,7 +91,10 @@ def examples_to_queue(
     q: Queue[Optional[LmExample]],
 ) -> None:
     sentence_db = SentenceDB.load(sentence_db_loc)
-    dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
+    try:
+        dp_obj = file_info.get_dp(example_sample.data_loc, sentence_db)
+    except FileNotFoundError:
+        return
     lm_formatters = [formatter_from_conf(c) for c in lm_formatter_confs]
     match selected_steps:
         case AllSteps():
@@ -127,6 +131,7 @@ def examples_to_queue(
                         cutoff_idx=None,
                     )
                     q.put(example)
+    [close_lm_formatter(f) for f in lm_formatters]
     sentence_db.close()
 
 

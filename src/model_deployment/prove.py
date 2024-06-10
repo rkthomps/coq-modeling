@@ -14,11 +14,16 @@ from data_management.dataset_file import DatasetFile, Term
 from model_deployment.fast_client import FastLspClient, ClientWrapper
 from model_deployment.proof_manager import ProofInfo, ProofManager
 from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
+from model_deployment.straight_line_searcher import (
+    StraightLineSuccess,
+    StraightLineFailure,
+)
 from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
 from model_deployment.searcher import (
     SearcherConf,
     SuccessfulSearch,
     FailedSearch,
+    SearchResult,
     searcher_from_conf,
 )
 from model_deployment.tactic_gen_client import TacticGenClient
@@ -104,13 +109,6 @@ class MCTSSummary:
     search_time: float | None
     model_time: float | None
 
-    def save(self, save_dir: Path) -> None:
-        save_loc = save_dir / str(self.file / (self.theorem + ".pkl")).replace(
-            os.path.sep, "-"
-        )
-        with save_loc.open("wb") as fout:
-            fout.write(pickle.dumps(self))
-
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
         headers = [
             "file",
@@ -126,18 +124,6 @@ class MCTSSummary:
             "search_time": self.search_time,
             "model_time": self.model_time,
         }
-
-    def pretty_print(self):
-        if self.search_time is None:
-            nice_str = "{:20s}{:20s} FAILURE BY ERROR.".format(
-                str(self.file), self.theorem
-            )
-        else:
-            success_str = "SUCCESS" if self.success else "FAILURE"
-            nice_str = "{:20s}{:20s}{:10s} after {:3.2f} seconds.".format(
-                str(self.file), self.theorem, success_str, self.search_time
-            )
-        print(nice_str)
 
     def __lt__(self, other: MCTSSummary) -> bool:
         if self.file == other.file:
@@ -165,7 +151,7 @@ class MCTSSummary:
 
 
 @dataclass
-class SearchSummary:
+class ClassicalSummary:
     file: Path
     theorem: str
     success: bool
@@ -177,13 +163,6 @@ class SearchSummary:
     model_time: float | None
     num_tactic_errors: int | None
     num_nodes_pruned: int | None
-
-    def save(self, save_dir: Path) -> None:
-        save_loc = save_dir / str(self.file / (self.theorem + ".pkl")).replace(
-            os.path.sep, "-"
-        )
-        with save_loc.open("wb") as fout:
-            fout.write(pickle.dumps(self))
 
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
         headers = [
@@ -211,19 +190,7 @@ class SearchSummary:
             "num_nodes_pruned": self.num_nodes_pruned,
         }
 
-    def pretty_print(self):
-        if self.search_time is None:
-            nice_str = "{:20s}{:20s} FAILURE BY ERROR.".format(
-                str(self.file), self.theorem
-            )
-        else:
-            success_str = "SUCCESS" if self.success else "FAILURE"
-            nice_str = "{:20s}{:20s}{:10s} after {:3.2f} seconds.".format(
-                str(self.file), self.theorem, success_str, self.search_time
-            )
-        print(nice_str)
-
-    def __lt__(self, other: SearchSummary) -> bool:
+    def __lt__(self, other: ClassicalSummary) -> bool:
         if self.file == other.file:
             return self.theorem < other.theorem
         return self.file < other.file
@@ -234,7 +201,7 @@ class SearchSummary:
         file: Path,
         theorem: str,
         result: ClassicalSuccess | ClassicalFailure | None,
-    ) -> SearchSummary:
+    ) -> ClassicalSummary:
         if result is None:
             return cls(
                 file, theorem, False, None, None, None, None, None, None, None, None
@@ -250,7 +217,7 @@ class SearchSummary:
                 assert path_to_qed[-2].expanded is not None
                 expand_num = path_to_qed[-2].expanded
                 search_time = result.total_search_time / 1e9
-                return SearchSummary(
+                return ClassicalSummary(
                     file,
                     theorem,
                     True,
@@ -266,7 +233,7 @@ class SearchSummary:
             case ClassicalFailure():
                 expand_num = result.search_tree.root.get_last_node_expanded()
                 search_time = result.total_search_time / 1e9
-                return SearchSummary(
+                return ClassicalSummary(
                     file,
                     theorem,
                     False,
@@ -281,16 +248,105 @@ class SearchSummary:
                 )
 
 
-Summary = MCTSSummary | SearchSummary
+@dataclass
+class StraightLineSummary:
+    file: Path
+    theorem: str
+    success: bool
+    proof: str | None
+    attempts: list[str] | None
+    search_time: float | None
+    model_time: float | None
+
+    def __lt__(self, other: ClassicalSummary) -> bool:
+        if self.file == other.file:
+            return self.theorem < other.theorem
+        return self.file < other.file
+
+    def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
+        headers = [
+            "file",
+            "theorem",
+            "success",
+            "search_time",
+            "model_time",
+            "num_attempts",
+        ]
+        return headers, {
+            "file": str(self.file),
+            "theorem": self.theorem,
+            "success": self.success,
+            "search_time": self.search_time,
+            "model_time": self.model_time,
+            "num_attempts": None if self.attempts is None else len(self.attempts),
+        }
+
+    @classmethod
+    def from_search_result(
+        cls,
+        file: Path,
+        theorem: str,
+        search_result: StraightLineSuccess | StraightLineFailure | None,
+    ):
+        if search_result is None:
+            return cls(file, theorem, False, None, None, None, None)
+        match search_result:
+            case StraightLineSuccess():
+                proof_text = search_result.successful_proof.proof_text_to_string()
+                return cls(
+                    file,
+                    theorem,
+                    True,
+                    proof_text,
+                    search_result.attempted_proofs,
+                    search_result.time,
+                    search_result.model_time,
+                )
+            case StraightLineFailure():
+                return cls(
+                    file,
+                    theorem,
+                    False,
+                    None,
+                    search_result.attempted_proofs,
+                    search_result.time,
+                    search_result.model_time,
+                )
+
+
+def save_summary(summary: Summary, save_dir: Path):
+    save_loc = save_dir / str(summary.file / (summary.theorem + ".pkl")).replace(
+        os.path.sep, "-"
+    )
+    with save_loc.open("wb") as fout:
+        fout.write(pickle.dumps(summary))
+
+
+def pretty_print_summary(summary: Summary):
+    if summary.search_time is None:
+        nice_str = "{:20s}{:20s} FAILURE BY ERROR.".format(
+            str(summary.file), summary.theorem
+        )
+    else:
+        success_str = "SUCCESS" if summary.success else "FAILURE"
+        nice_str = "{:20s}{:20s}{:10s} after {:3.2f} seconds.".format(
+            str(summary.file), summary.theorem, success_str, summary.search_time
+        )
+    print(nice_str)
+
+
+Summary = MCTSSummary | ClassicalSummary | StraightLineSummary
 
 
 def summary_from_result(
     file: Path,
     theorem: str,
-    result: ClassicalSuccess | ClassicalFailure | MCTSSuccess | MCTSFailure,
+    result: SearchResult,
 ) -> Summary:
     match result:
         case ClassicalSuccess() | ClassicalFailure():
-            return SearchSummary.from_search_result(file, theorem, result)
+            return ClassicalSummary.from_search_result(file, theorem, result)
         case MCTSSuccess() | MCTSFailure():
             return MCTSSummary.from_search_result(file, theorem, result)
+        case StraightLineSuccess() | StraightLineFailure():
+            return StraightLineSummary.from_search_result(file, theorem, result)

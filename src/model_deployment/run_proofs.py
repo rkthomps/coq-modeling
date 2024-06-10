@@ -18,7 +18,15 @@ from model_deployment.run_proof import (
     TheoremLocationInfo,
 )
 
-from model_deployment.prove import RunProofConf, LocationInfo, Summary, run_proof, summary_from_result
+from model_deployment.prove import (
+    RunProofConf,
+    LocationInfo,
+    Summary,
+    run_proof,
+    summary_from_result,
+    pretty_print_summary,
+    save_summary,
+)
 
 from model_deployment.searcher import (
     SearcherConf,
@@ -86,7 +94,6 @@ class TestProofsConf:
         )
 
 
-
 def run_test(test_proof: TestProofConf, save_dir: Path):
     run_conf = test_proof.to_run_conf()
     result = run_proof(run_conf)
@@ -95,8 +102,8 @@ def run_test(test_proof: TestProofConf, save_dir: Path):
     )
     theorem = test_proof.theorem_location_info.theorem_name
     summary = summary_from_result(file, theorem, result)
-    summary.pretty_print()
-    summary.save(save_dir)
+    pretty_print_summary(summary)
+    save_summary(summary, save_dir)
 
 
 def load_results(save_dir: Path) -> list[Summary]:

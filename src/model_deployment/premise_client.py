@@ -10,7 +10,13 @@ import math
 import requests
 from dataclasses import dataclass
 
-from data_management.dataset_file import Goal, DatasetFile, DPCache
+from data_management.dataset_file import (
+    Goal,
+    DatasetFile,
+    DPCache,
+    get_ids_from_sentence,
+    get_ids_from_goal,
+)
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import FocusedStep, Proof, Sentence
 from premise_selection.premise_formatter import (
@@ -20,6 +26,11 @@ from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
 )
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
+from proof_retrieval.tfidf import tf_idf, compute_idfs
+from proof_retrieval.proof_retriever import (
+    TextProofRetriever,
+    TextProofRetrieverConf,
+)
 from coqpyt.coq.structs import TermType
 
 from util.util import get_basic_logger, FlexibleUrl
@@ -125,21 +136,6 @@ class SelectModelClientConf:
 
 
 @dataclass
-class TextProofRetrieverConf:
-    max_examples: int
-    data_loc: Path
-    sentence_db_loc: Path
-
-    @classmethod
-    def from_yaml(cls, yaml_data: Any) -> TextProofRetrieverConf:
-        return cls(
-            yaml_data["max_examples"],
-            Path(yaml_data["data_loc"]),
-            Path(yaml_data["sentence_db_loc"]),
-        )
-
-
-@dataclass
 class TFIdfProofClientConf:
     ALIAS = "tfidf-proof"
     context_format_alias: str
@@ -158,8 +154,6 @@ class TFIdfProofClientConf:
             yaml_data["nucleus_size"],
         )
 
-
-ID_FORM = re.compile(r"[^\[\]\{\}\(\):=,\s]+")
 
 SelectClientConf = (
     SelectModelClientConf
@@ -188,29 +182,6 @@ def select_conf_from_yaml(yaml_data: Any) -> SelectClientConf:
             return LookupClientConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Unknown Configuration")
-
-
-def get_ids_from_goal(goal: Goal) -> tuple[list[str], list[str]]:
-    goal_search_str = goal.goal
-    hyp_search_str = ""
-    h_ids: set[str] = set()
-    for h in goal.hyps:
-        h_ty = h.split(":")
-        if len(h_ty) == 1:
-            hyp_search_str += " " + h_ty[0]
-        else:
-            h_ids |= set(h_ty[0].split(", "))
-            hyp_search_str += " " + "".join(h_ty[1:])
-    hyp_found_ids = re.findall(ID_FORM, hyp_search_str)
-    filtered_hyp_ids = [f for f in hyp_found_ids if f not in h_ids]
-    goal_found_ids = re.findall(ID_FORM, goal_search_str)
-    filtered_goal_ids = [f for f in goal_found_ids if f not in h_ids]
-    return filtered_hyp_ids, filtered_goal_ids
-
-
-def get_ids_from_sentence(s: Sentence) -> list[str]:
-    sentence_ids = re.findall(ID_FORM, s.text)
-    return sentence_ids
 
 
 class SelectPremiseClient:
@@ -308,6 +279,9 @@ class SelectPremiseClient:
         for idx in arg_sorted_premise_scores:
             yield premises[idx]
 
+    def close(self):
+        self.sentence_db.close()
+
     @classmethod
     def from_conf(cls, conf: SelectModelClientConf) -> SelectPremiseClient:
         return cls(
@@ -315,178 +289,6 @@ class SelectPremiseClient:
             CONTEXT_ALIASES[conf.context_format_alias],
             PREMISE_ALIASES[conf.premise_format_alias],
             PremiseFilter.from_conf(conf.premise_filter_conf),
-            SentenceDB.load(conf.sentence_db_loc),
-        )
-
-
-def clean_token(s: str) -> str:
-    s = s.lstrip("(,:{")
-    s = s.rstrip("),:}")
-    return s
-
-
-@functools.lru_cache(50000)
-def tokenize(s: str) -> list[str]:
-    whitespace_split = s.split()
-    clean_tokens: list[str] = []
-    for t in whitespace_split:
-        clean_t = clean_token(t)
-        if 0 < len(clean_t):
-            clean_tokens.append(clean_t)
-    return clean_tokens
-
-
-def compute_idfs(corpus: list[list[str]]) -> dict[str, float]:
-    if 0 == len(corpus):
-        return {}
-    assert 0 < len(corpus)
-    doc_freqs: dict[str, int] = {}
-    for doc in corpus:
-        for word in set(doc):
-            if word not in doc_freqs:
-                doc_freqs[word] = 0
-            doc_freqs[word] += 1
-
-    idfs: dict[str, float] = {}
-    for k, v in doc_freqs.items():
-        idfs[k] = math.log(len(corpus) / v)
-    return idfs
-
-
-def doc_to_hashable(doc: list[str]) -> str:
-    return "<DOCSEP>".join(doc)
-
-
-def doc_from_hashable(s: str) -> list[str]:
-    return s.split("<DOCSEP>")
-
-
-@functools.lru_cache(10000)
-def compute_doc_tf(doc_str: str) -> dict[str, float]:
-    doc = doc_from_hashable(doc_str)
-    # doc = tokenize(premise)
-    if 0 == len(doc):
-        return {}
-    assert 0 < len(doc)
-    term_freqs: dict[str, int] = {}
-    for word in doc:
-        if word not in term_freqs:
-            term_freqs[word] = 0
-        term_freqs[word] += 1
-
-    tfs: dict[str, float] = {}
-    for k, v in term_freqs.items():
-        tfs[k] = v / len(doc)
-    return tfs
-
-
-def compute_query_tf(query: list[str]) -> dict[str, float]:
-    if 0 == len(query):
-        return {}
-    assert 0 < len(query)
-    term_freqs: dict[str, int] = {}
-    max_term_freq = 0
-    for word in query:
-        if word not in term_freqs:
-            term_freqs[word] = 0
-        term_freqs[word] += 1
-        if max_term_freq < term_freqs[word]:
-            max_term_freq = term_freqs[word]
-
-    tfs: dict[str, float] = {}
-    for k, v in term_freqs.items():
-        tfs[k] = 0.5 + 0.5 * (v / max_term_freq)
-    return tfs
-
-
-def tf_idf(
-    query: list[str], docs: list[list[str]], idfs: Optional[dict[str, float]] = None
-) -> list[float]:
-    if idfs is None:
-        idfs = compute_idfs(docs)
-    query_tfs = compute_query_tf(query)
-    doc_tfs = [compute_doc_tf(doc_to_hashable(d)) for d in docs]
-    similarities: list[float] = []
-    for doc_tf_dict in doc_tfs:
-        dot_prod = 0
-        for term, query_tf in query_tfs.items():
-            if term not in doc_tf_dict:
-                continue
-            if term not in idfs:
-                continue
-            query_tf_idf = query_tf * idfs[term]
-            doc_tf_idf = doc_tf_dict[term] * idfs[term]
-            dot_prod += query_tf_idf * doc_tf_idf
-        similarities.append(dot_prod)
-    return similarities
-
-
-class TextProofRetriever:
-    def __init__(
-        self, max_examples: int, data_loc: Path, sentence_db: SentenceDB
-    ) -> None:
-        self.max_examples = max_examples
-        self.data_loc = data_loc
-        self.sentence_db = sentence_db
-        self.dp_cache = DPCache()
-
-    def get_available_proofs(
-        self, key_proof: Proof, dp_obj: DatasetFile
-    ) -> list[Proof]:
-        available_proofs: list[Proof] = []
-        for proof in dp_obj.proofs:
-            if proof == key_proof:
-                break
-            available_proofs.append(proof)
-
-        for dep in dp_obj.dependencies:
-            dep_obj = self.dp_cache.get_dp(dep, self.data_loc, self.sentence_db)
-            for proof in dep_obj.proofs:
-                available_proofs.append(proof)
-        return available_proofs
-
-    def get_goal_ids(self, goals: list[Goal]) -> list[str]:
-        ids: list[str] = []
-        for g in goals:
-            hyp_ids, goal_ids = get_ids_from_goal(g)
-            ids.extend(hyp_ids)
-            ids.extend(goal_ids)
-        return ids
-
-    def get_similar_proofs(
-        self, key_step: FocusedStep, key_proof: Proof, dp_obj: DatasetFile
-    ) -> list[Proof]:
-        if len(key_step.goals) == 0:
-            return []
-        query_ids = self.get_goal_ids(key_step.goals)
-        available_proofs = self.get_available_proofs(key_proof, dp_obj)
-        reference_proofs: list[Proof] = []
-        docs: list[list[str]] = []
-        for ref_proof in available_proofs:
-            for step in ref_proof.steps:
-                reference_proofs.append(ref_proof)
-                docs.append(self.get_goal_ids(step.goals))
-        assert len(docs) == len(reference_proofs)
-        scores = tf_idf(query_ids, docs)
-        arg_sorted_scores = sorted(range(len(scores)), key=lambda idx: -1 * scores[idx])
-        similar_proofs: list[Proof] = []
-        for proof_idx in arg_sorted_scores:
-            if self.max_examples <= len(similar_proofs):
-                continue
-            similar_proof = reference_proofs[proof_idx]
-            if similar_proof in similar_proofs:
-                continue
-            similar_proofs.append(similar_proof)
-        return similar_proofs
-
-    def close(self):
-        self.sentence_db.close()
-
-    @classmethod
-    def from_conf(cls, conf: TextProofRetrieverConf) -> TextProofRetriever:
-        return cls(
-            conf.max_examples,
-            conf.data_loc,
             SentenceDB.load(conf.sentence_db_loc),
         )
 
@@ -561,6 +363,9 @@ class TFIdfProofClient:
         )
         for idx in arg_sorted_premise_scores:
             yield premises[idx]
+
+    def close(self):
+        self.proof_retriever.close()
 
     @classmethod
     def from_conf(cls, conf: TFIdfProofClientConf):
@@ -816,51 +621,3 @@ def select_client_from_conf(conf: SelectClientConf) -> SelectClient:
             return BM25OkapiClient.from_conf(conf)
         case LookupClientConf():
             return LookupClient.from_conf(conf)
-
-
-def get_dependency_examples(
-    proof_idx: int,
-    dset_file: DatasetFile,
-    data_loc: Path,
-    sentence_db: SentenceDB,
-    premise_filter: PremiseFilter,
-) -> tuple[list[Sentence], list[FocusedStep], list[Proof]]:
-    """To test online learning during premise selection."""
-    dep_proofs: list[tuple[Proof, DatasetFile, set[Sentence], set[Sentence]]] = []
-    for i, proof in enumerate(dset_file.proofs):
-        if proof_idx <= i:
-            break
-        dep_proofs.append(
-            (
-                proof,
-                dset_file,
-                set(dset_file.out_of_file_avail_premises),
-                set(dset_file.in_file_avail_premises),
-            )
-        )
-
-    for dep_name in dset_file.dependencies:
-        dep = dp_cache.get_dp(dep_name, data_loc, sentence_db)
-        for proof in dep.proofs:
-            dep_proofs.append(
-                (
-                    proof,
-                    dep,
-                    set(dep.out_of_file_avail_premises),
-                    set(dep.in_file_avail_premises),
-                )
-            )
-
-    learning_premises: list[Sentence] = []
-    learning_steps: list[FocusedStep] = []
-    learning_proofs: list[Proof] = []
-    for proof, dset_file, inf, oof in dep_proofs:
-        for step in proof.steps:
-            pos_prems = premise_filter.get_pos_filtered_premises(
-                step, proof, dset_file, inf, oof
-            )
-            for p in pos_prems:
-                learning_premises.append(p)
-                learning_steps.append(step)
-                learning_proofs.append(proof)
-    return learning_premises, learning_steps, learning_proofs

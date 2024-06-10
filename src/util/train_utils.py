@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 from yaml import load, Loader
-from transformers import TrainingArguments
+from transformers import TrainingArguments, PreTrainedTokenizer 
 
 
 from util.constants import (
@@ -20,6 +20,15 @@ from util.constants import (
     TRAINING_CONF_NAME,
 )
 
+def allocate_tokens(
+    tokenizer: PreTrainedTokenizer, s: str, allowance: int, truncate_front: bool = True
+) -> tuple[str, int]:
+    tokens = tokenizer.encode(s)
+    if truncate_front:
+        to_add = tokens[(-1 * allowance) :]
+    else:
+        to_add = tokens[:allowance]
+    return tokenizer.decode(to_add, skip_special_tokens=True), len(to_add)
 
 def load_config(path: str) -> dict[str, Any]:
     with open(path, "r") as fin:

@@ -43,6 +43,32 @@ def data_shape_expected(raw_data_loc: str) -> bool:
     return True
 
 
+ID_FORM = re.compile(r"[^\[\]\{\}\(\):=,\s]+")
+
+
+def get_ids_from_goal(goal: Goal) -> tuple[list[str], list[str]]:
+    goal_search_str = goal.goal
+    hyp_search_str = ""
+    h_ids: set[str] = set()
+    for h in goal.hyps:
+        h_ty = h.split(":")
+        if len(h_ty) == 1:
+            hyp_search_str += " " + h_ty[0]
+        else:
+            h_ids |= set(h_ty[0].split(", "))
+            hyp_search_str += " " + "".join(h_ty[1:])
+    hyp_found_ids = re.findall(ID_FORM, hyp_search_str)
+    filtered_hyp_ids = [f for f in hyp_found_ids if f not in h_ids]
+    goal_found_ids = re.findall(ID_FORM, goal_search_str)
+    filtered_goal_ids = [f for f in goal_found_ids if f not in h_ids]
+    return filtered_hyp_ids, filtered_goal_ids
+
+
+def get_ids_from_sentence(s: Sentence) -> list[str]:
+    sentence_ids = re.findall(ID_FORM, s.text)
+    return sentence_ids
+
+
 class Sentence:
     bad_sentence_endings: set[str] = set()
 
@@ -343,7 +369,7 @@ class Proof:
     def __init__(self, theorem: Term, steps: list[FocusedStep]) -> None:
         self.theorem = theorem
         self.steps = steps
-    
+
     def is_proof_independent(self) -> bool:
         if 0 == len(self.steps):
             return True
@@ -499,11 +525,17 @@ class DatasetFile:
     def __get_dp_dependencies(self) -> list[str]:
         dependencies: list[str] = []  # formatted as dp with / replaced with -
         for premise in self.file_context.avail_premises:
-            repo_match = re.match(r"repos/(.*?\.v)", premise.file_path)
+            repo_match = re.search(r"repos/(.*?\.v)", premise.file_path)
             if repo_match:
                 (dp_unnorm_name,) = repo_match.groups()
                 dp_norm_name = dp_unnorm_name.replace("/", "-")
-                dependencies.append(dp_norm_name)
+                if (
+                    dp_unnorm_name in self.file_context.file
+                    or self.file_context.file in dp_unnorm_name
+                ):
+                    continue
+                if dp_norm_name not in dependencies:
+                    dependencies.append(dp_norm_name)
         return dependencies
 
     @classmethod
@@ -643,7 +675,7 @@ class DatasetFile:
 
 
 class DPCache:
-    def __init__(self, cache_size: int = 128):
+    def __init__(self, cache_size: int = 512):
         self.__cached_dps: dict[str, DatasetFile] = {}
         self.__cached_keys: list[str] = []
         self.__cache_size = cache_size
