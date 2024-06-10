@@ -65,8 +65,8 @@ thm_info:
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: lit_insert_in
 
-  test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
-  theorem_name: pos_test_exact
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: pos_test_exact
 
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: valid_pos_eq
@@ -156,13 +156,19 @@ thm_info:
 #   timeout: 120
 #   print_proofs: True
 
+# search:
+#   alias: classical
+#   node_score_alias: token-sum-score 
+#   max_branch: 4
+#   max_expansions: 500
+#   depth_limit: 30
+#   timeout: 120
+
 search:
-  alias: classical
-  node_score_alias: token-sum-score 
-  max_branch: 4
-  max_expansions: 500
-  depth_limit: 30
-  timeout: 120
+  alias: straight_line
+  timeout: 60
+  print_proofs: True
+
   # initial_proof: "\n
   # intros m n H.\n
   # unfold div, pdiv.\n
@@ -238,9 +244,13 @@ search:
 #   alias: fid
 #   checkpoint_loc: models/t5-fid-small-basic-final/checkpoint-110500
 
+# tactic_gen:
+#   alias: decoder 
+#   checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-15000 
+
 tactic_gen:
-  alias: codellama
-  checkpoint_loc: models/codellama-7b-whole-proof-ret/checkpoint-8500
+  alias: decoder 
+  checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-16500
 
 print_proofs: True
 print_trees: True 

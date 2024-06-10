@@ -22,6 +22,7 @@ from model_deployment.searcher import (
 
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
+    tactic_conf_update_ips,
     tactic_gen_conf_from_yaml,
     tactic_gen_client_from_conf,
 )
@@ -90,6 +91,9 @@ class TestProofConf:
     tactic_conf: TacticGenConf
     print_proofs: bool
     print_trees: bool
+
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
+        tactic_conf_update_ips(self.tactic_conf, port_map)
 
     def to_run_conf(self) -> RunProofConf:
         return RunProofConf(

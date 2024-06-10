@@ -53,13 +53,13 @@ class FidTacticGenConf:
 
 
 @dataclass
-class CodellamaTacticGenConf:
-    ALIAS = "codellama"
+class DecoderTacticGenConf:
+    ALIAS = "decoder"
     checkpoint_loc: Path
     formatter_confs: Optional[list[FormatterConf]]
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> CodellamaTacticGenConf:
+    def from_yaml(cls, yaml_data: Any) -> DecoderTacticGenConf:
         formatter_confs = None
         if "formatter" in yaml_data:
             formatter_confs = [
@@ -202,10 +202,7 @@ def tactic_conf_update_ips(conf: TacticGenConf, port_map: dict[int, tuple[str, i
 
 
 TacticGenConf = (
-    LocalTacticGenClientConf
-    | FidTacticGenConf
-    | CodellamaTacticGenConf
-    | OpenAiCientConf
+    LocalTacticGenClientConf | FidTacticGenConf | DecoderTacticGenConf | OpenAiCientConf
 )
 
 
@@ -224,8 +221,8 @@ def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:
     match attempted_alias:
         case LocalTacticGenClientConf.ALIAS:
             return LocalTacticGenClientConf.from_yaml(yaml_data)
-        case CodellamaTacticGenConf.ALIAS:
-            return CodellamaTacticGenConf.from_yaml(yaml_data)
+        case DecoderTacticGenConf.ALIAS:
+            return DecoderTacticGenConf.from_yaml(yaml_data)
         case FidTacticGenConf.ALIAS:
             return FidTacticGenConf.from_yaml(yaml_data)
         case OpenAiCientConf.ALIAS:

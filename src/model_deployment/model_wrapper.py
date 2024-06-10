@@ -199,7 +199,7 @@ class DecoderLocalWrapper:
     @classmethod
     def from_conf(cls, json_data: Any) -> DecoderLocalWrapper:
         name = json_data["checkpoint_loc"]
-        return cls.from_checkpoint(name)
+        return cls.from_checkpoint(Path(name))
 
 
 class StubWrapper:

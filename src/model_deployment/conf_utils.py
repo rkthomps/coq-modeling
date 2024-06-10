@@ -34,7 +34,7 @@ from model_deployment.premise_client import SelectModelClientConf, SelectModelCo
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
     FidTacticGenConf,
-    CodellamaTacticGenConf,
+    DecoderTacticGenConf,
     LocalTacticGenClientConf,
 )
 from model_deployment.observe_premise_selection import PremiseObserveConf
@@ -316,16 +316,16 @@ def lm_dataset_conf_to_client_conf(
     return new_dataset_conf, next_server_num, formatter_commands
 
 
-def get_tactic_server_alias(conf: FidTacticGenConf | CodellamaTacticGenConf) -> str:
+def get_tactic_server_alias(conf: FidTacticGenConf | DecoderTacticGenConf) -> str:
     match conf:
         case FidTacticGenConf():
             return "fid-local"
-        case CodellamaTacticGenConf():
-            return "local"
+        case DecoderTacticGenConf():
+            return "decoder-local"
 
 
 def get_tactic_gen_command(
-    conf: FidTacticGenConf | CodellamaTacticGenConf, start_server_num: int
+    conf: FidTacticGenConf | DecoderTacticGenConf, start_server_num: int
 ) -> tuple[FlexibleUrl, int, StartTacticModelCommand]:
     command = StartTacticModelCommand(
         get_tactic_server_alias(conf), conf.checkpoint_loc, start_server_num
@@ -338,7 +338,7 @@ def tactic_gen_to_client_conf(
     start_server_num: int,
 ) -> tuple[TacticGenConf, int, list[StartModelCommand]]:
     match conf:
-        case FidTacticGenConf() | CodellamaTacticGenConf():
+        case FidTacticGenConf() | DecoderTacticGenConf():
             assert conf.checkpoint_loc.exists()
             if conf.formatter_confs is None:
                 assert 0 < len(conf.checkpoint_loc.parents)
@@ -372,6 +372,8 @@ def tactic_gen_to_client_conf(
 def update_ips(conf: TopLevelConf, port_map: dict[int, tuple[str, int]]):
     match conf:
         case EvalConf():
+            conf.update_ips(port_map)
+        case TestProofConf():
             conf.update_ips(port_map)
         case PremiseEvalConf():
             premise_conf_update_ips(conf.premise_conf, port_map)

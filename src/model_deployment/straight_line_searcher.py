@@ -128,6 +128,7 @@ class StraightLineSearcher:
     def search_step(self, start_time: float) -> tuple[Optional[Proof], str]:
         cur_proof_result = self.initial_check_result
         cur_time = time.time() - start_time
+        last_proof_script = ""
         while (
             cur_proof_result.tactic_result == TacticResult.VALID
             and cur_time < self.timeout
@@ -154,16 +155,15 @@ class StraightLineSearcher:
                 cur_proof_result.new_proof.theorem,
                 False,
             )
+            last_proof_script = cur_proof_script + next_tactic
             cur_proof_result = proof_check_result
             cur_time = time.time() - start_time
 
         match cur_proof_result.tactic_result:
             case TacticResult.VALID:
-                return None, "".join(cur_proof_result.attempted_steps)
+                return None, last_proof_script
             case TacticResult.INVALID:
-                return None, "".join(cur_proof_result.attempted_steps)
+                return None, last_proof_script
             case TacticResult.COMPLETE:
                 assert cur_proof_result.new_proof is not None
-                return cur_proof_result.new_proof, "".join(
-                    cur_proof_result.attempted_steps
-                )
+                return cur_proof_result.new_proof, last_proof_script

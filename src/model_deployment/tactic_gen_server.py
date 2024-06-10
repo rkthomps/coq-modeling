@@ -62,4 +62,4 @@ if __name__ == "__main__":
     with port_map_loc.open("a") as fout:
         fout.write(f"{id}\t{ip}\t{port}\n")
 
-    run_simple(id, port, application)
+    run_simple(ip, port, application)
