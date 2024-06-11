@@ -88,15 +88,15 @@ if __name__ == "__main__":
         file = eval_conf.data_loc / location_info.file_info.file
         try:
             theorem_name = (
-                run_conf.location_info.dataset_file.proofs[
-                    run_conf.location_info.dp_proof_idx
+                run_conf.loc.dataset_file.proofs[
+                    run_conf.loc.dp_proof_idx
                 ].get_theorem_name()
                 + "-"
-                + str(run_conf.location_info.dp_proof_idx)
+                + str(run_conf.loc.dp_proof_idx)
             )
         except ValueError:
             _logger.info(
-                f"Could not get name of theorem for: {run_conf.location_info.dataset_file.proofs[run_conf.location_info.dp_proof_idx]}"
+                f"Could not get name of theorem for: {run_conf.loc.dataset_file.proofs[run_conf.loc.dp_proof_idx]}"
             )
             continue
 

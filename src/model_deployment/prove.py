@@ -44,7 +44,7 @@ class LocationInfo:
 
 @dataclass
 class RunProofConf:
-    location_info: LocationInfo
+    loc: LocationInfo
     search_conf: SearcherConf
     tactic_gen: TacticGenClient
     print_proofs: bool
@@ -79,17 +79,18 @@ def get_proof_info(
 
 def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
     proof_info = get_proof_info(
-        conf.location_info.data_loc,
-        conf.location_info.file_info,
-        conf.location_info.dataset_file.proofs[conf.location_info.dp_proof_idx].theorem,
+        conf.loc.data_loc,
+        conf.loc.file_info,
+        conf.loc.dataset_file.proofs[conf.loc.dp_proof_idx].theorem,
     )
     with ProofManager(
-        conf.location_info.dataset_file.file_context,
+        conf.loc.dataset_file.file_context,
+        conf.loc.dataset_file.proofs[: conf.loc.dp_proof_idx],
         proof_info,
-        conf.location_info.file_info,
-        conf.location_info.sentence_db,
-        conf.location_info.split,
-        conf.location_info.data_loc,
+        conf.loc.file_info,
+        conf.loc.sentence_db,
+        conf.loc.split,
+        conf.loc.data_loc,
     ) as proof_manager:
         tree_manager = searcher_from_conf(
             conf.search_conf, conf.tactic_gen, proof_manager

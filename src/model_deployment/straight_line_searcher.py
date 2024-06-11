@@ -105,6 +105,12 @@ class StraightLineSearcher:
             conf.initial_proof,
         )
 
+    def build_dset_file(self, new_proof: Proof) -> DatasetFile:
+        return DatasetFile(
+            self.proof_manager.file_context,
+            self.proof_manager.same_file_proofs + [new_proof],
+        )
+
     def search(self, **kwargs) -> StraightLineSuccess | StraightLineFailure:
         start_time = time.time()
         attempts: list[str] = []
@@ -134,9 +140,7 @@ class StraightLineSearcher:
             and cur_time < self.timeout
         ):
             assert cur_proof_result.new_proof is not None
-            cur_dset_file = DatasetFile(
-                self.initial_dset_file.file_context, [cur_proof_result.new_proof]
-            )
+            cur_dset_file = self.build_dset_file(cur_proof_result.new_proof)
             admitted_step = cur_dset_file.proofs[-1].steps[-1]
             cur_proof_script = cur_dset_file.proofs[-1].proof_prefix_to_string(
                 admitted_step, include_theorem=False

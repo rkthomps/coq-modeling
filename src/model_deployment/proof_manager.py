@@ -92,12 +92,14 @@ class ProofManager:
     def __init__(
         self,
         file_context: FileContext,
+        same_file_proofs: list[Proof],
         proof_info: ProofInfo,
         file_info: FileInfo,
         sentence_db: SentenceDB,
         split: Split,
         data_loc: Path,
     ) -> None:
+        self.same_file_proofs = same_file_proofs
         self.file_context = file_context
         self.proof_info = proof_info
         self.file_info = file_info

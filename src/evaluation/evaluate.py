@@ -164,11 +164,11 @@ def eval_proof(eval_conf: EvalProofConf, save_dir: Path):
     result = run_proof(run_conf)
     file = eval_conf.data_loc / eval_conf.file_info.file
     theorem_name = (
-        run_conf.location_info.dataset_file.proofs[
-            run_conf.location_info.dp_proof_idx
+        run_conf.loc.dataset_file.proofs[
+            run_conf.loc.dp_proof_idx
         ].get_theorem_name()
         + "-"
-        + str(run_conf.location_info.dp_proof_idx)
+        + str(run_conf.loc.dp_proof_idx)
     )
     summary = summary_from_result(file, theorem_name, result)
     pretty_print_summary(summary)
@@ -216,11 +216,11 @@ if __name__ == "__main__":
                 run_conf = eval_proof_conf.to_run_conf()
                 file = eval_proof_conf.data_loc / eval_proof_conf.file_info.file
                 theorem_name = (
-                    run_conf.location_info.dataset_file.proofs[
-                        run_conf.location_info.dp_proof_idx
+                    run_conf.loc.dataset_file.proofs[
+                        run_conf.loc.dp_proof_idx
                     ].get_theorem_name()
                     + "-"
-                    + str(run_conf.location_info.dp_proof_idx)
+                    + str(run_conf.loc.dp_proof_idx)
                 )
                 match conf.search_conf:
                     case MCTSConf():
