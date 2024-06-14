@@ -72,8 +72,8 @@ def allocate_and_fmt(
 
 @dataclass
 class BasicCollator:
-    state_tokens: int
     script_tokens: int
+    state_tokens: int
     out_tokens: int
 
     ALIAS = "basic"
@@ -107,12 +107,13 @@ class BasicCollator:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> BasicCollator:
         return cls(
-            yaml_data["state_tokens"],
             yaml_data["script_tokens"],
+            yaml_data["state_tokens"],
             yaml_data["out_tokens"],
         )
 
 
+@dataclass
 class PremiseCollator:
     ALIAS = "premise"
     script_tokens: int
@@ -120,14 +121,49 @@ class PremiseCollator:
     premise_tokens: int
     out_tokens: int
 
+    STATE_SEP = "\n[STATE]\n"
+    SCRIPT_SEP = "\n[SCRIPT]\n"
+    PREMISE_SEP = "\n[PREMISES]\n"
+
+    def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        premise_str = allocate_and_fmt(tokenizer, example.premises, self.premise_tokens)
+        state_str, _ = allocate_tokens(
+            tokenizer, example.proof_state, self.state_tokens
+        )
+        script_str, _ = allocate_tokens(
+            tokenizer, example.proof_script, self.script_tokens
+        )
+        combined_str = (
+            self.PREMISE_SEP
+            + premise_str
+            + self.STATE_SEP
+            + state_str
+            + self.SCRIPT_SEP
+            + script_str
+            + NEWLINE_RESPONSE_TEMPLATE
+        )
+        return combined_str
+
     def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
-        pass
+        input_str = self.collate_input(tokenizer, example)
+        out_str, _ = allocate_tokens(
+            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
+        )
+        combined_str = input_str + out_str
+        return combined_str
+
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseCollator:
-        pass
+        return cls(
+            yaml_data["script_tokens"],
+            yaml_data["state_tokens"],
+            yaml_data["premise_tokens"],
+            yaml_data["out_tokens",]
+        )
 
 
+@dataclass
 class ProofCollator:
     ALIAS = "proof"
     script_tokens: int
@@ -135,12 +171,46 @@ class ProofCollator:
     proof_tokens: int
     out_tokens: int
 
+    STATE_SEP = "\n[STATE]\n"
+    SCRIPT_SEP = "\n[SCRIPT]\n"
+    PROOF_SEP = "\n[PROOFS]\n"
+
+    def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        proof_str = allocate_and_fmt(tokenizer, example.proofs, self.proof_tokens)
+        state_str, _ = allocate_tokens(
+            tokenizer, example.proof_state, self.state_tokens
+        )
+        script_str, _ = allocate_tokens(
+            tokenizer, example.proof_script, self.script_tokens
+        )
+        combined_str = (
+            self.PROOF_SEP
+            + proof_str
+            + self.STATE_SEP
+            + state_str
+            + self.SCRIPT_SEP
+            + script_str
+            + NEWLINE_RESPONSE_TEMPLATE
+        )
+        return combined_str
+
     def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
-        pass
+        input_str = self.collate_input(tokenizer, example)
+        out_str, _ = allocate_tokens(
+            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
+        )
+        combined_str = input_str + out_str
+        return combined_str
+
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofCollator:
-        pass
+        return cls(
+            yaml_data["script_tokens"],
+            yaml_data["state_tokens"],
+            yaml_data["proof_tokens"],
+            yaml_data["out_tokens"],
+        )
 
 
 @dataclass
@@ -231,8 +301,8 @@ class ProofPremiseNameCollator:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofPremiseNameCollator:
         return cls(
-            yaml_data["state_tokens"],
             yaml_data["script_tokens"],
+            yaml_data["state_tokens"],
             yaml_data["proof_tokens"],
             yaml_data["premise_tokens"],
             yaml_data["out_tokens"],
@@ -252,20 +322,6 @@ class ProofPremiseCollator:
     SCRIPT_SEP = "\n[SCRIPT]\n"
     PROOF_SEP = "\n[PROOFS]\n"
     PREMISE_SEP = "\n[PREMISES]\n"
-
-    def get_proof_str(self, example: LmExample) -> str:
-        if example.proofs is None:
-            reversed_proofs = []
-        else:
-            reversed_proofs = example.proofs[::-1]
-        return "\n".join(reversed_proofs)
-
-    def get_premise_str(self, example: LmExample) -> str:
-        if example.premises is None:
-            reversed_premises = []
-        else:
-            reversed_premises = example.premises[::-1]
-        return "\n".join(reversed_premises)
 
     def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
         proof_str = allocate_and_fmt(tokenizer, example.proofs, self.proof_tokens)
@@ -300,8 +356,8 @@ class ProofPremiseCollator:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofPremiseCollator:
         return cls(
-            yaml_data["state_tokens"],
             yaml_data["script_tokens"],
+            yaml_data["state_tokens"],
             yaml_data["proof_tokens"],
             yaml_data["premise_tokens"],
             yaml_data["out_tokens"],
@@ -310,8 +366,8 @@ class ProofPremiseCollator:
 
 ExampleCollator = (
     BasicCollator
-    # | PremiseCollator
-    # | ProofCollator
+    | PremiseCollator
+    | ProofCollator
     | ProofPremiseCollator
     | ProofPremiseNameCollator
 )
@@ -322,10 +378,10 @@ def example_collator_from_conf(conf: Any) -> ExampleCollator:
     match attempted_alias:
         case BasicCollator.ALIAS:
             return BasicCollator.from_yaml(conf)
-        # case PremiseCollator.ALIAS:
-        #     pass
-        # case ProofCollator.ALIAS:
-        #     pass
+        case PremiseCollator.ALIAS:
+            return PremiseCollator.from_yaml(conf)
+        case ProofCollator.ALIAS:
+            return ProofCollator.from_yaml(conf)
         case ProofPremiseCollator.ALIAS:
             return ProofPremiseCollator.from_yaml(conf)
         case ProofPremiseNameCollator.ALIAS:
