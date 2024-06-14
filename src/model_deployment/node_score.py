@@ -2,8 +2,6 @@ from __future__ import annotations
 from typing import Any
 import math
 
-from typeguard import typechecked
-
 
 class NodeScore:
     def __init__(self) -> None:

@@ -1,9 +1,7 @@
 from __future__ import annotations
 from typing import Any
-from typeguard import typechecked
 
 
-@typechecked
 class RerankExample:
     def __init__(self, premise: str, context: str, label: bool) -> None:
         self.premise = premise

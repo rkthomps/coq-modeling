@@ -7,17 +7,22 @@ import multiprocessing as mp
 
 from data_management.splits import DataSplit, FileInfo
 from data_management.sentence_db import SentenceDB
-from evaluation.slurm_eval import ProofMap
 from evaluation.evaluate import EvalConf
+from evaluation.eval_utils import ProofMap
+
 from model_deployment.mcts_searcher import MCTSConf
 from model_deployment.classical_searcher import ClassicalSearchConf
+from model_deployment.straight_line_searcher import StraightLineSearcherConf
 from model_deployment.prove import (
     LocationInfo,
     RunProofConf,
     run_proof,
     summary_from_result,
+    save_summary,
+    pretty_print_summary,
     ClassicalSummary,
     MCTSSummary,
+    StraightLineSummary,
     Summary,
 )
 from model_deployment.tactic_gen_client import tactic_gen_client_from_conf
@@ -34,15 +39,16 @@ def get_orig_summary(file: Path, theorem: str, eval_conf: EvalConf) -> Summary:
             return MCTSSummary.from_search_result(file, theorem, None)
         case ClassicalSearchConf():
             return ClassicalSummary.from_search_result(file, theorem, None)
+        case StraightLineSearcherConf():
+            return StraightLineSummary.from_search_result(file, theorem, None)
 
 
 def run_and_save_proof(run_conf: RunProofConf):
     _logger.info(f"running proof of {theorem_name} from {file}")
     result = run_proof(run_conf)
     summary = summary_from_result(file, theorem_name, result)
-    summary.pretty_print()
-    summary.save(eval_conf.save_loc)
-    _logger.info(summary.pretty_print())
+    _logger.info(pretty_print_summary(summary))
+    save_summary(summary, eval_conf.save_loc)
 
 
 if __name__ == "__main__":
@@ -101,7 +107,7 @@ if __name__ == "__main__":
             continue
 
         orig_summary = get_orig_summary(file, theorem_name, eval_conf)
-        orig_summary.save(eval_conf.save_loc)
+        save_summary(orig_summary, eval_conf.save_loc)
 
         _logger.info(f"running proof of {theorem_name} from {file}")
         worker_process = mp.Process(target=run_and_save_proof, args=(run_conf,))

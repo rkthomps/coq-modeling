@@ -54,8 +54,8 @@ thm_info:
   # theorem_name: equiv_of_fn
 
   # # Positions on the board are antisymmetric
-  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
-  # theorem_name: pos_test_anti_sym
+  test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  theorem_name: pos_test_anti_sym
 
   # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/hrel.v
   # theorem_name: comp_eql
@@ -248,9 +248,13 @@ search:
 #   alias: decoder 
 #   checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-15000 
 
+# tactic_gen:
+#   alias: decoder 
+#   checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-16500
+
 tactic_gen:
   alias: decoder 
-  checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-16500
+  checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-17500
 
 print_proofs: True
 print_trees: True 

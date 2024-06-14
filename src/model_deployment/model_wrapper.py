@@ -8,7 +8,6 @@ import functools
 import sys, os
 import re
 
-from typeguard import typechecked
 from transformers import (
     AutoTokenizer,
     PreTrainedTokenizer,
@@ -162,6 +161,8 @@ class DecoderLocalWrapper:
 
     def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
         collated_input = self.collator.collate_input(self.tokenizer, example)
+        # print(example.proofs)
+        print("Collated: ", collated_input)
         inputs = self.tokenizer(collated_input, return_tensors="pt")
         with torch.no_grad():
             out = self.model.generate(

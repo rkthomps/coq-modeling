@@ -8,7 +8,6 @@ import csv
 
 
 from tqdm import tqdm
-from typeguard import typechecked
 
 from data_management.dataset_file import DatasetFile, FocusedStep, data_shape_expected
 from data_management.splits import DataSplit, Split
@@ -23,7 +22,6 @@ from tactic_gen.step_parser import (
 STEP_DELIM = " <++> "
 
 
-@typechecked
 class TacticPairEncoding:
     def __init__(self, vocab: dict[str, int]) -> None:
         assert type(vocab) == dict

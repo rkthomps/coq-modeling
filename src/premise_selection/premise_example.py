@@ -2,10 +2,6 @@ from __future__ import annotations
 from typing import Optional, Type, Any
 import random
 import pdb
-
-from typeguard import typechecked
-
-
 from data_management.splits import Split
 from data_management.dataset_file import FocusedStep, Proof, DatasetFile
 from premise_selection.premise_formatter import (
@@ -17,7 +13,6 @@ from premise_selection.premise_formatter import (
 from premise_selection.premise_filter import PremiseFilter
 
 
-@typechecked
 class ReRankExample:
     def __init__(self, premise: str, context: str, label: bool) -> None:
         self.premise = premise
@@ -30,17 +25,15 @@ class ReRankExample:
             "context": self.context,
             "label": self.label,
         }
-    
+
     @classmethod
     def from_json(cls, json_data: Any) -> ReRankExample:
         premise = json_data["premise"]
         context = json_data["context"]
         label = json_data["label"]
         return cls(premise, context, label)
-    
 
 
-@typechecked
 class PremiseTrainingExample:
     def __init__(
         self,

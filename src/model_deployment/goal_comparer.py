@@ -5,9 +5,6 @@ from typing import Any, Optional
 import functools
 import ipdb
 import re
-import edist
-
-from typeguard import typechecked
 
 from model_deployment.search_tree import SearchNode
 from model_deployment.fast_client import ClientWrapper

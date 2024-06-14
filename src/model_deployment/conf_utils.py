@@ -42,9 +42,9 @@ from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
 from model_deployment.run_whole_proofs import TestWholeProofsConf
-from evaluation.evaluate import EvalConf
+from evaluation.eval_utils import EvalConf
 from util.util import get_basic_logger
-from util.util import FlexibleUrl
+from util.util import FlexibleUrl, get_flexible_url
 from util.constants import (
     PREMISE_DATA_CONF_NAME,
     RERANK_DATA_CONF_NAME,
@@ -152,32 +152,6 @@ def get_ip():
     finally:
         s.close()
     return ip
-
-
-def clear_port_map():
-    port_map_loc = Path(PORT_MAP_LOC)
-    if os.path.exists(port_map_loc):
-        os.remove(PORT_MAP_LOC)
-    with port_map_loc.open("w") as _:
-        pass
-
-
-def read_port_map() -> dict[int, tuple[str, int]]:
-    port_map_loc = Path(PORT_MAP_LOC)
-    port_map: dict[int, tuple[str, int]] = {}
-    with port_map_loc.open("r") as fin:
-        for line in fin:
-            lineitems = line.strip().split("\t")
-            assert len(lineitems) == 3
-            id = int(lineitems[0])
-            ip = lineitems[1]
-            port = int(lineitems[2])
-            port_map[id] = (ip, port)
-    return port_map
-
-
-def get_flexible_url(id: int, ip_addr: str, port: Optional[int] = None) -> FlexibleUrl:
-    return FlexibleUrl(id, "http", ip_addr, port)
 
 
 def get_select_command(

@@ -9,6 +9,7 @@ import datetime
 from dataclasses import dataclass
 
 from coqpyt.coq.base_file import CoqFile
+from util.constants import PORT_MAP_LOC
 
 
 @dataclass
@@ -29,6 +30,32 @@ class FlexibleUrl:
         if "port" in yaml_data:
             port = yaml_data["port"]
         return cls(yaml_data["id"], yaml_data["protocol"], yaml_data["ip"], port)
+
+
+def clear_port_map():
+    port_map_loc = Path(PORT_MAP_LOC)
+    if os.path.exists(port_map_loc):
+        os.remove(PORT_MAP_LOC)
+    with port_map_loc.open("w") as _:
+        pass
+
+
+def read_port_map() -> dict[int, tuple[str, int]]:
+    port_map_loc = Path(PORT_MAP_LOC)
+    port_map: dict[int, tuple[str, int]] = {}
+    with port_map_loc.open("r") as fin:
+        for line in fin:
+            lineitems = line.strip().split("\t")
+            assert len(lineitems) == 3
+            id = int(lineitems[0])
+            ip = lineitems[1]
+            port = int(lineitems[2])
+            port_map[id] = (ip, port)
+    return port_map
+
+
+def get_flexible_url(id: int, ip_addr: str, port: Optional[int] = None) -> FlexibleUrl:
+    return FlexibleUrl(id, "http", ip_addr, port)
 
 
 def get_fresh_path(dirname: Path, fresh_base: str) -> Path:
@@ -72,11 +99,11 @@ _logger = get_basic_logger(__name__)
 
 
 def get_simple_steps(proof_text: str) -> list[str]:
-    tmp_path = get_fresh_path(".", "tmp.v")
+    tmp_path = get_fresh_path(Path("."), "tmp.v")
     try:
         with open(tmp_path, "w") as fout:
             fout.write(proof_text)
-        with CoqFile(tmp_path) as coq_file:
+        with CoqFile(str(tmp_path.resolve())) as coq_file:
             return [s.text for s in coq_file.steps]
     finally:
         os.remove(tmp_path)

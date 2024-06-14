@@ -10,7 +10,6 @@ import time
 from multiprocessing import Pool, Manager
 from queue import Queue
 
-from typeguard import typechecked
 from tqdm import tqdm
 
 from coqpyt.coq.structs import TermType
@@ -39,7 +38,6 @@ class Origin(enum.Enum):
     LOCAL_OUT_OF_FILE = 4
 
 
-@typechecked
 class PremTypeKey:
     def __init__(self, term_type: TermType, origin: Origin) -> None:
         assert type(term_type) == TermType
@@ -71,7 +69,6 @@ class PremTypeKey:
         return cls(term_type, origin)
 
 
-@typechecked
 class PremTypeTable:
     def __init__(self, type_freqs: dict[PremTypeKey, int]) -> None:
         self.type_freqs = type_freqs
@@ -122,7 +119,6 @@ class PremTypeTable:
         return cls(type_counts)
 
 
-@typechecked
 class PremTableAggregator:
     def __init__(self, table_counts: PremTypeTable, num_tables: int) -> None:
         self.table_counts = table_counts
@@ -183,7 +179,6 @@ class PremTableAggregator:
         return cls(table_counts, num_tables)
 
 
-@typechecked
 class PosPremiseAggregator(PremTableAggregator):
     def __init__(
         self,

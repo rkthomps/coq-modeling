@@ -6,8 +6,6 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 from pathlib import Path
 
-from typeguard import typechecked
-
 from data_management.splits import (
     Split,
     split_file_path,

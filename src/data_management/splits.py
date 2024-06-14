@@ -24,7 +24,6 @@ from pathlib import Path
 import ipdb
 import argparse
 
-from typeguard import typechecked
 import git
 from tqdm import tqdm
 

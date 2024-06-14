@@ -9,9 +9,11 @@ from model_deployment.run_proofs import load_results
 def count_num_correct(summaries: list[Summary]) -> int:
     num_correct = 0
     for summary in summaries:
+        summary.print_detailed_summary()
         if summary.success:
             num_correct += 1
     return num_correct
+
 
 def create_csv(results_loc: Path, summaries: list[Summary]):
     sorted_summaries = sorted(summaries)
@@ -38,6 +40,6 @@ if __name__ == "__main__":
     num_correct = count_num_correct(summaries)
     num_attempted = len(summaries)
     results_loc = eval_loc / "results.csv"
-    print(f"Num Correct {num_correct}; Num Attempted {num_attempted}; Saved to {results_loc}.")
-
-
+    print(
+        f"Num Correct {num_correct}; Num Attempted {num_attempted}; Saved to {results_loc}."
+    )

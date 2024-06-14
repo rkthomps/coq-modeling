@@ -15,8 +15,6 @@ import torch.nn.functional as F
 from torch import nn
 from yaml import load, Loader
 
-from typeguard import typechecked
-
 from transformers import OPTModel, GPT2Tokenizer, PreTrainedModel, PretrainedConfig
 from premise_selection.training_types import PremiseBatch
 from premise_selection.datamodule import tokenize_strings

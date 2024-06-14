@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typeguard import typechecked
 from typing import Optional, Any
 import traceback
 import datetime
@@ -100,7 +99,6 @@ def norm_levenshtein_dist(proof1: Proof, proof2: Proof) -> float:
         return 1
 
 
-@typechecked
 class StrippedProof:
     def __init__(
         self,
@@ -197,7 +195,6 @@ class SimilarProofCandidate:
         return other.score <= self.score
 
 
-@typechecked
 class SortedProofs:
     def __init__(self, ordered_proofs: list[StrippedProof]) -> None:
         self.ordered_proofs = ordered_proofs

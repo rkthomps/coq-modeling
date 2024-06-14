@@ -110,6 +110,14 @@ class MCTSSummary:
     search_time: float | None
     model_time: float | None
 
+    def print_detailed_summary(self):
+        print("File:", self.file)
+        print("Theorem:", self.theorem)
+        print("Success:", self.success)
+        if self.success:
+            assert self.proof is not None
+            print("Proof:", self.proof)
+
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
         headers = [
             "file",
@@ -164,6 +172,14 @@ class ClassicalSummary:
     model_time: float | None
     num_tactic_errors: int | None
     num_nodes_pruned: int | None
+
+    def print_detailed_summary(self):
+        print("File:", self.file)
+        print("Theorem:", self.theorem)
+        print("Success:", self.success)
+        if self.success:
+            assert self.proof is not None
+            print("Proof:", self.proof)
 
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
         headers = [
@@ -263,6 +279,21 @@ class StraightLineSummary:
         if self.file == other.file:
             return self.theorem < other.theorem
         return self.file < other.file
+
+    def print_detailed_summary(self):
+        print("File:", self.file)
+        print("Theorem:", self.theorem)
+        print("Success:", self.success)
+        if self.success:
+            assert self.proof is not None
+            print("Proof:", self.proof)
+
+        if self.attempts is not None:
+            print("ATTEMPTS:")
+            for attempt in self.attempts:
+                print(attempt)
+        else:
+            print("No Attempts")
 
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
         headers = [
