@@ -152,14 +152,13 @@ class PremiseCollator:
         combined_str = input_str + out_str
         return combined_str
 
-
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseCollator:
         return cls(
             yaml_data["script_tokens"],
             yaml_data["state_tokens"],
             yaml_data["premise_tokens"],
-            yaml_data["out_tokens",]
+            yaml_data["out_tokens"],
         )
 
 
@@ -201,7 +200,6 @@ class ProofCollator:
         )
         combined_str = input_str + out_str
         return combined_str
-
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofCollator:

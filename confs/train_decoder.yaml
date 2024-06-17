@@ -13,20 +13,38 @@ num_train_epochs: 2
 peft_lora_r: 64
 peft_lora_alpha: 16
 
-# Data Format 
+# Basic
 # example_collator:
 #   alias: basic
 #   state_tokens: 500 
 #   script_tokens: 300 
 #   out_tokens: 32 
 
+# Proofs And Premises
+# example_collator:
+#   alias: proof-premise
+#   state_tokens: 1024 
+#   script_tokens: 512
+#   proof_tokens: 1024 
+#   premise_tokens: 512 
+#   out_tokens: 128 
+
+# Premises only
+# example_collator:
+#   alias: premise
+#   state_tokens: 1024 
+#   script_tokens: 512
+#   premise_tokens: 1536 
+#   out_tokens: 128 
+
+# Proof only
 example_collator:
-  alias: proof-premise
+  alias: proof
   state_tokens: 1024 
   script_tokens: 512
-  proof_tokens: 1024 
-  premise_tokens: 512 
+  proof_tokens: 1536
   out_tokens: 128 
+
 
 
 # Evaluation Args
