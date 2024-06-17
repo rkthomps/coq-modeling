@@ -523,6 +523,29 @@ class DataSplit:
     @classmethod
     def void_split(cls) -> DataSplit:
         return cls([], [], [])
+    
+
+    @classmethod
+    def create_random_file_split(cls, data_loc: Path, sentence_db: SentenceDB, train_pct: float=0.8) -> DataSplit:
+        thm_map = ThmMap(sentence_db) 
+        project_list = cls.__create_project_list(data_loc, thm_map)
+        project_files = [file for proj in project_list for file in proj.files]
+        random.seed(RANDOM_SEED)
+        random.shuffle(project_files)
+        num_train_files = math.ceil(train_pct * len(project_files))
+        train_files = project_files[:num_train_files]
+        val_files: list[FileInfo] = []
+        test_files: list[FileInfo] = []
+        for i, file in enumerate(project_files[num_train_files:]):
+            if i % 2 == 0:
+                val_files.append(file)
+            else:
+                test_files.append(file)
+        print("Num train files", len(train_files))
+        print("Num val files", len(val_files))
+        print("Num test files", len(test_files))
+        return cls([Project("train", train_files)], [Project("val", val_files)], [Project("test", test_files)])
+
 
     @classmethod
     def create(
@@ -604,10 +627,11 @@ if __name__ == "__main__":
     parser.add_argument("data_loc", help="Directory above 'repos' and 'data_points'.")
     parser.add_argument("sentence_db", help="Path to sentence database.")
     parser.add_argument("save_loc", help="Location to save the split.")
-    parser.add_argument(
-        "eval_projects_config",
-        help="yaml file containing which projects should be saved for validation and testing.",
-    )
+
+    # parser.add_argument(
+    #     "eval_projects_config",
+    #     help="yaml file containing which projects should be saved for validation and testing.",
+    # )
 
     # parser.add_argument(
     #     "--time_sorted",
@@ -617,14 +641,18 @@ if __name__ == "__main__":
     # )
     # data_split = DataSplit.create(args.data_loc, args.time_sorted)
 
+
+    # Creating the "final split"
+    # with open(args.eval_projects_config, "r") as fin:
+    #     eval_config = yaml.load(fin, Loader=yaml.Loader)
+    # eval_projects = EvalProjects.from_conf(eval_config)
+    # data_split = DataSplit.create_from_list(args.data_loc, sentence_db, eval_projects)
+
     args = parser.parse_args(sys.argv[1:])
     if os.path.exists(args.save_loc):
         raise ValueError(f"{args.save_loc} exists.")
 
-    sentence_db = SentenceDB.load(args.sentence_db)
-    with open(args.eval_projects_config, "r") as fin:
-        eval_config = yaml.load(fin, Loader=yaml.Loader)
+    sentence_db = SentenceDB.load(Path(args.sentence_db))
 
-    eval_projects = EvalProjects.from_conf(eval_config)
-    data_split = DataSplit.create_from_list(args.data_loc, sentence_db, eval_projects)
+    data_split = DataSplit.create_random_file_split(Path(args.data_loc), sentence_db)
     data_split.save(args.save_loc)
