@@ -6,7 +6,7 @@ from pathlib import Path
 ALLOW_LIST = [
     re.compile(r"_CoqProject"),
     re.compile(r"Makefile"),
-    re.compile(r".*?\.v"),
+    re.compile(r".*?\.v$"),
 ]
 
 
