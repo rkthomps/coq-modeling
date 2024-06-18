@@ -3,7 +3,11 @@ import re
 import argparse
 from pathlib import Path
 
-ALLOW_LIST = [re.compile(r"_CoqProject"), re.compile(r"Makefile"), re.compile(r"*.v")]
+ALLOW_LIST = [
+    re.compile(r"_CoqProject"),
+    re.compile(r"Makefile"),
+    re.compile(r".*?\.v"),
+]
 
 
 def scrub_repos(repos_loc: Path) -> None:
