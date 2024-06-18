@@ -1,18 +1,11 @@
 from __future__ import annotations
 from typing import Any, Union
 
-from typeguard import typechecked
 
-
-@typechecked
 class TrainLog:
     def __init__(
         self, epoch: float, learning_rate: float, loss: float, step: int
     ) -> None:
-        assert type(epoch) == float
-        assert type(learning_rate) == float
-        assert type(loss) == float
-        assert type(step) == int
         self.epoch = epoch
         self.learning_rate = learning_rate
         self.loss = loss
