@@ -47,12 +47,16 @@ def make_executable(p: Path):
 
 
 def start_servers_and_update_conf(
-    eval_conf: EvalConf, timeout: str, n_gpu: int, eval_conf_loc: str
+    eval_conf: EvalConf,
+    timeout: str,
+    n_gpu_nodes: int,
+    n_devices_per_node: int,
+    eval_conf_loc: str,
 ):
     server_commands: Optional[list[StartModelCommand]] = None
     clean_eval_confs: list[TopLevelConf] = []
     next_server_num = 0
-    for _ in range(n_gpu):
+    for _ in range(n_gpu_nodes * n_devices_per_node):
         clean_eval_conf, next_server_num, commands = to_client_conf(
             eval_conf, next_server_num
         )
@@ -82,8 +86,10 @@ def start_servers_and_update_conf(
         "#!/bin/bash\n"
         f"#SBATCH -p gpu-preempt\n"
         f"#SBATCH -t {timeout}\n"
-        f"#SBATCH --ntasks={n_gpu}\n"
-        f"#SBATCH --gres=gpu:{n_gpu}\n"
+        f"#SBATCH --nodes={n_gpu_nodes}\n"
+        f"#SBATCH --ntasks={n_gpu_nodes * n_devices_per_node}\n"
+        f"#SBATCH --gres=gpu:{n_devices_per_node}\n"
+        f"#SBATCH --constraint=2080ti"
         f"#SBATCH --mem=16G\n"
         f"#SBATCH -o slurm-serve-%j.out\n"
         f"srun -l --gres=gpu:1 {RUN_MODELS_LOC}\n"
@@ -147,7 +153,8 @@ def initialize_and_fill_queue(queue_loc: Path, eval_conf: EvalConf):
 def run(
     eval_conf: EvalConf,
     timeout: str,
-    n_gpu: int,
+    n_gpu_nodes: int,
+    n_devices_per_node: int,
     n_workers: int,
     n_threads_per_worker: int,
 ):
@@ -170,7 +177,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("conf_loc", help="Location of eval configuration")
     parser.add_argument("timeout", help="Timeout for evaluation")
-    parser.add_argument("n_gpus", type=int, help="Number of gpus to use.")
+    parser.add_argument("n_gpu_nodes", type=int, help="Number of gpus nodes to use.")
+    parser.add_argument(
+        "n_devices_per_node",
+        type=int,
+        help="Number of devices required on each gpu node.",
+    )
     parser.add_argument("n_workers", type=int, help="Number of workers to use.")
     parser.add_argument(
         "n_threads_per_worker", type=int, help="Number of threads per worker."
@@ -179,13 +191,15 @@ if __name__ == "__main__":
 
     conf_loc = Path(args.conf_loc)
     timeout = args.timeout
-    n_gpus = args.n_gpus
+    n_gpu_nodes = args.n_gpu_nodes
+    n_devices_per_node = args.n_devices_per_node
     n_workers = args.n_workers
     n_threads_per_worker = args.n_threads_per_worker
 
     assert conf_loc.exists()
     assert isinstance(timeout, str)
-    assert isinstance(n_gpus, int)
+    assert isinstance(n_gpu_nodes, int)
+    assert isinstance(n_devices_per_node, int)
     assert isinstance(n_workers, int)
     assert isinstance(n_threads_per_worker, int)
 
