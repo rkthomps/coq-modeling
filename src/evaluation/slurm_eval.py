@@ -196,6 +196,6 @@ if __name__ == "__main__":
     if eval_conf.save_loc.exists():
         raise FileExistsError(f"{eval_conf.save_loc}")
     os.makedirs(eval_conf.save_loc)
-    shutil.copy(conf_loc, eval_conf.save_loc / conf.yaml)
+    shutil.copy(conf_loc, eval_conf.save_loc / "conf.yaml")
 
     run(eval_conf, timeout, n_gpus, n_workers, n_threads_per_worker)
