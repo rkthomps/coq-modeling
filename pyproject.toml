@@ -16,6 +16,7 @@ dependencies = [
     "sentencepiece",
     "protobuf",
     "matplotlib",
+    "matplotlib-venn",
     "accelerate",
     "bitsandbytes",
     "scipy",

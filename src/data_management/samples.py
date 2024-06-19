@@ -48,7 +48,7 @@ SelectedSteps = AllSteps | CertainSteps
 class CompleteSample:
     ALIAS = "CompleteSample"
 
-    def __init__(self, data_split: DataSplit, split: Split, data_loc: Path) -> None:
+    def __init__(self, data_split: DataSplit, split: Split, data_loc: str) -> None:
         self.data_split = data_split
         self.split = split
         self.data_loc = data_loc
@@ -81,7 +81,7 @@ class CompleteSample:
 
     @classmethod
     def create(cls, conf: Any) -> CompleteSample:
-        data_split = DataSplit.load(conf["data_split_loc"])
+        data_split = DataSplit.load(Path(conf["data_split_loc"]))
         split = str2split(conf["split"])
         data_loc = conf["data_loc"]
         return cls.__create(data_split, split, data_loc)
@@ -176,9 +176,9 @@ class RandomSample:
 
     @classmethod
     def create(cls, conf: Any) -> RandomSample:
-        data_split = DataSplit.load(conf["data_split_loc"])
+        data_split = DataSplit.load(Path(conf["data_split_loc"]))
         split = str2split(conf["split"])
-        data_loc = conf["data_loc"]
+        data_loc = Path(conf["data_loc"])
         sample_prop = conf["sample_prop"]
         seed = conf["seed"]
         return cls.__create(data_split, split, data_loc, sample_prop, seed)
@@ -262,5 +262,5 @@ if __name__ == "__main__":
     )
     parser.add_argument("save_loc", help="Where to save the sampler.")
     args = parser.parse_args(sys.argv[1:])
-    conf = __load_config(args.sampler_config)
+    conf = __load_config(Path(args.sampler_config))
     save_sample(create(conf), args.save_loc)

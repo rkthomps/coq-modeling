@@ -1,12 +1,12 @@
 n_procs: 8
-# train_sample_loc: samples/rnd-complete/train.json
-# val_sample_loc: samples/rnd-complete/val.json
-# test_sample_loc: samples/rnd-complete/test.json
-train_sample_loc: samples/final/train.json
-val_sample_loc: samples/final/val.json
-test_sample_loc: samples/final/test.json
+train_sample_loc: samples/rnd/train.json
+val_sample_loc: samples/rnd/val.json
+test_sample_loc: samples/rnd/test.json
+# train_sample_loc: samples/final/train.json
+# val_sample_loc: samples/final/val.json
+# test_sample_loc: samples/final/test.json
 sentence_db_loc: sentences.db
-output_dataset_loc: data/general-final-nstep
+output_dataset_loc: data/general-random-nstep
 
 lm_formatters:
   - alias: general 

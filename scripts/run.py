@@ -17,8 +17,6 @@ from model_deployment.conf_utils import (
     get_ip,
     update_ips,
     get_flexible_url,
-    read_port_map,
-    clear_port_map,
 )
 
 from model_deployment.observe_premise_selection import PremiseObserveConf
@@ -34,6 +32,7 @@ from data_management.create_rerank_dataset import RerankDatasetConf
 from data_management.create_premise_dataset import SelectDataConfig
 
 from util.constants import SERVER_LOC, CLEAN_CONFIG, PORT_MAP_LOC
+from util.util import clear_port_map, read_port_map
 
 
 @dataclass
@@ -45,7 +44,6 @@ class Command:
 COMMANDS = {
     "prove": Command(TestProofConf, Path("src/model_deployment/run_proof.py")),
     "run-dev": Command(TestProofsConf, Path("src/model_deployment/run_proofs.py")),
-    "eval": Command(EvalConf, Path("src/evaluation/evaluate.py")),
     "prove-whole": Command(
         TestWholeProofConf, Path("src/model_deployment/run_whole_proof.py")
     ),

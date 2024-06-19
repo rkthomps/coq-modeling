@@ -1,7 +1,7 @@
 n_procs: 8
 split: val
 
-save_loc: ./eval-results/deepseek-basic-500-10min
+save_loc: ./eval-results/deepseek-prem-500
 data_loc: raw-data/coq-dataset
 sentence_db_loc: sentences.db
 data_split_loc: splits/final-split.json
@@ -77,14 +77,17 @@ max_eval_proofs: 500
 #       alias: one
 
 
+tactic_gen:
+  alias: decoder 
+  checkpoint_loc: models/deepseek-prem-final/checkpoint-45000
 
 # tactic_gen:
 #   alias: decoder 
-#   checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-17500
+#   checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-52000
 
-tactic_gen:
-  alias: decoder 
-  checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-16500
+# tactic_gen:
+#   alias: decoder 
+#   checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-48000
 
         # - THEOREM
         # - LEMMA
