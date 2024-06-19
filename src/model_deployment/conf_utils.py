@@ -87,6 +87,15 @@ class StartTacticModelCommand:
             f"{self.id}",
         ]
 
+    def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
+        return [
+            "python3",
+            f"{self.TACTIC_GEN_SERVER_SCRIPT}",
+            self.alias,
+            f"{self.checkpoint_loc}",
+            f"$(expr ${env_var_name} \\* {commands_per_task} + {self.id})",
+        ]
+
 
 @dataclass
 class StartSelectModelCommand:
@@ -112,6 +121,23 @@ class StartSelectModelCommand:
             f"{self.id}",
         ]
 
+    def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
+        if self.vector_db_loc is None:
+            return [
+                "python3",
+                f"{self.SELECT_SERVER_SCRIPT}",
+                f"{self.checkpoint_loc}",
+                f"$(expr ${env_var_name} \\* {commands_per_task} + {self.id})",
+            ]
+        return [
+            "python3",
+            f"{self.SELECT_SERVER_SCRIPT}",
+            "--vector_db_loc",
+            f"{self.vector_db_loc}",
+            f"{self.checkpoint_loc}",
+            f"$(expr ${env_var_name} \\* {commands_per_task} + {self.id})",
+        ]
+
 
 @dataclass
 class StartRerankModelCommand:
@@ -125,6 +151,14 @@ class StartRerankModelCommand:
             f"{self.RERANK_SERVER_SCRIPT}",
             f"{self.checkpoint_loc}",
             f"{self.id}",
+        ]
+
+    def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
+        return [
+            "python3",
+            f"{self.RERANK_SERVER_SCRIPT}",
+            f"{self.checkpoint_loc}",
+            f'"expr ${env_var_name} * {commands_per_task} + {self.id}"',
         ]
 
 

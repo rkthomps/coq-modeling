@@ -347,7 +347,7 @@ class ClassicalSearcher:
         all_next_num_tokens: list[int] = []
         for example in examples:
             result = self.tactic_client.get_recs(
-                example, recs_per_example, current_proof
+                example, recs_per_example, current_proof, beam=True
             )
             all_next_tactics.extend(result.next_tactic_list)
             all_next_scores.extend(result.score_list)
@@ -382,10 +382,6 @@ class ClassicalSearcher:
             # print(current_proof)
             print("proof object:")
             print(leaf_subtree.proof.proof_text_to_string(include_theorem=False))
-            for example in examples:
-                if example.passages is not None:
-                    print("Passages:\n:" + "\n".join(example.passages))
-                print("Example:\n" + example.input)
         leaf_subtree.set_model_input(examples)
         start_time = time.time()
         result = self.get_all_recs(examples, current_proof)
@@ -446,9 +442,10 @@ class ClassicalSearcher:
 
                 case TacticResult.VALID:
                     assert proof_check_result.current_goals is not None
-                    goal_score = self.goal_scorer.score_goals(
-                        proof_check_result.current_goals
-                    )
+                    # goal_score = self.goal_scorer.score_goals(
+                    #     proof_check_result.current_goals
+                    # )
+                    goal_score = 1
                     node_score = self.score_type.from_unit_score(
                         score, num_tokens, goal_score, self.max_branch
                     )

@@ -68,7 +68,10 @@ def start_servers_and_update_conf(
 
     clear_port_map()
     with RUN_MODELS_LOC.open("w") as fout:
-        commands = [" ".join(c.to_list()) for c in server_commands]
+        commands = [
+            " ".join(c.to_list_slurm("SLURM_PROCID", len(server_commands)))
+            for c in server_commands
+        ]
         run_model_file = (
             "#!/bin/bash\n" + "source venv/bin/activate\n" + "\n".join(commands)
         )

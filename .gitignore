@@ -64,6 +64,8 @@ src/evaluation/confs/**
 !src/evaluation/confs/eval.yaml
 safe_val.txt
 shared-thms.json
+conf.*
+queue-*
 
 # scripts
 clean_search.sh

@@ -77,7 +77,9 @@ class FidT5LocalWrapper:
             seq_biases = {(0,): 0.0}
         return seq_biases
 
-    def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
+    def get_recs(
+        self, example: LmExample, n: int, current_proof: str, beam: bool
+    ) -> ModelResult:
         seq_bias = self.get_sequence_biases(current_proof)
         # print(seq_bias)
         input_batch = self.local_dset.collate([example])
@@ -159,9 +161,47 @@ class DecoderLocalWrapper:
         self.tokenizer = tokenizer
         self.collator = collator
 
-    def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
+    def get_beam_recs(
+        self, example: LmExample, n: int, current_proof: str
+    ) -> ModelResult:
         collated_input = self.collator.collate_input(self.tokenizer, example)
-        # print(example.proofs)
+        print("Collated: ", collated_input)
+        inputs = self.tokenizer(collated_input, return_tensors="pt")
+        with torch.no_grad():
+            if n == 1:
+                outputs = self.model.generate(
+                    inputs["input_ids"],
+                    max_new_tokens=128,
+                    return_dict_in_generate=True,
+                    output_scores=True,
+                )
+                scores = [1]
+            else:
+                outputs = self.model.generate(
+                    inputs["input_ids"],
+                    max_new_tokens=128,
+                    return_dict_in_generate=True,
+                    output_scores=True,
+                    num_beams=n,
+                    length_penalty=0,
+                    num_return_sequences=n,
+                )
+                scores = outputs.sequences_scores.tolist()
+        input_num_tokens = inputs["input_ids"].shape[1]
+        tactics = self.tokenizer.batch_decode(
+            outputs.sequences[:, input_num_tokens:], skip_special_tokens=True
+        )
+        not_pad_or_eos = ~(
+            (outputs.sequences == self.tokenizer.pad_token_id)
+            + (outputs.sequences == self.tokenizer.eos_token_id)
+        )
+        num_tokens = torch.where(not_pad_or_eos, 1, 0).sum(axis=1).tolist()
+        return filter_recs(tactics, scores, num_tokens, [])
+
+    def get_rand_recs(
+        self, example: LmExample, n: int, current_proof: str
+    ) -> ModelResult:
+        collated_input = self.collator.collate_input(self.tokenizer, example)
         print("Collated: ", collated_input)
         inputs = self.tokenizer(collated_input, return_tensors="pt")
         with torch.no_grad():
@@ -180,6 +220,14 @@ class DecoderLocalWrapper:
         tokenized_out = self.tokenizer(tactics)["input_ids"]
         lengths = [len(t) for t in tokenized_out]
         return ModelResult(tactics, scores, lengths)
+
+    def get_recs(
+        self, example: LmExample, n: int, current_proof: str, beam: bool
+    ) -> ModelResult:
+        if beam:
+            return self.get_beam_recs(example, n, current_proof)
+        else:
+            return self.get_rand_recs(example, n, current_proof)
 
     @classmethod
     def get_training_conf(cls, checkpoint_loc: Path) -> Any:

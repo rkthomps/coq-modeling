@@ -54,16 +54,16 @@ thm_info:
   # theorem_name: equiv_of_fn
 
   # # Positions on the board are antisymmetric
-  test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
-  theorem_name: pos_test_anti_sym
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: pos_test_anti_sym
 
   # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/hrel.v
   # theorem_name: comp_eql
 
   # # # If some literal l1 is in the list resulting from inserting another literal l2
   # # # into a clause, then the literals must be equal, or l1 must have been in the original clause
-  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
-  # theorem_name: lit_insert_in
+  test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  theorem_name: lit_insert_in
 
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: pos_test_exact
@@ -156,18 +156,18 @@ thm_info:
 #   timeout: 120
 #   print_proofs: True
 
-# search:
-#   alias: classical
-#   node_score_alias: token-sum-score 
-#   max_branch: 4
-#   max_expansions: 500
-#   depth_limit: 30
-#   timeout: 120
-
 search:
-  alias: straight_line
-  timeout: 60
-  print_proofs: True
+  alias: classical
+  node_score_alias: token-sum-score 
+  max_branch: 4
+  max_expansions: 500
+  depth_limit: 30
+  timeout: 120
+
+# search:
+#   alias: straight_line
+#   timeout: 60
+#   print_proofs: True
 
   # initial_proof: "\n
   # intros m n H.\n
@@ -254,7 +254,7 @@ search:
 
 tactic_gen:
   alias: decoder 
-  checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-17500
+  checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-52000
 
 print_proofs: True
 print_trees: True 

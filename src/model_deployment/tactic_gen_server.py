@@ -25,9 +25,9 @@ wrapper: ModelWrapper = StubWrapper()
 
 
 @dispatcher.add_method
-def get_recs(example_json: Any, n: int, current_proof: str) -> ModelResult:
+def get_recs(example_json: Any, n: int, current_proof: str, beam: bool) -> ModelResult:
     example = LmExample.from_json(example_json)
-    return wrapper.get_recs(example, n, current_proof).to_json()
+    return wrapper.get_recs(example, n, current_proof, beam).to_json()
 
 
 @Request.application

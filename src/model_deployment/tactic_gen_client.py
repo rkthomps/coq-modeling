@@ -121,7 +121,9 @@ class OpenAiClient:
         self.formatter = formatter
         self.formatters = [formatter]
 
-    def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
+    def get_recs(
+        self, example: LmExample, n: int, current_proof: str, **kwargs: Any
+    ) -> ModelResult:
         completion = self.client.chat.completions.create(
             model=self.model_name,
             messages=[
@@ -156,11 +158,13 @@ class LocalTacticGenClient:
         # self.session.mount("http://", HTTPAdapter(max_retries=retries))
         self.urls = urls
 
-    def get_recs(self, example: LmExample, n: int, current_proof: str) -> ModelResult:
+    def get_recs(
+        self, example: LmExample, n: int, current_proof: str, beam: bool = False
+    ) -> ModelResult:
         request_id = hash(example)
         request_data = {
             "method": "get_recs",
-            "params": [example.to_json(), n, current_proof],
+            "params": [example.to_json(), n, current_proof, beam],
             "jsonrpc": "2.0",
             "id": request_id,
         }
