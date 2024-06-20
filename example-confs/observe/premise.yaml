@@ -1,0 +1,76 @@
+data_loc: raw-data/coq-dataset
+data_split_loc: splits/final-split.json
+sentence_db_loc: sentences.db
+
+test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+theorem_name: prestrict_get_default
+step_idx: 2
+print_num: 30
+
+premise:
+  alias: rerank
+  checkpoint_loc: models/rerank-proof/checkpoint-3500 
+  rerank_num: 128
+
+# premise:
+#   #alias: tfidf-proof
+#   alias: tfidf
+#   context_format_alias: basic
+#   premise_format_alias: basic
+
+#   text_proof_retriever:
+#     max_examples: 20
+#     data_loc: raw-data/coq-dataset
+#     sentence_db_loc: sentences.db
+  
+#   nucleus_size: 10
+
+#   premise_filter:
+#     coq_excludes:
+#     - THEOREM
+#     - LEMMA
+#     - DEFINITION
+#     - NOTATION
+#     - INDUCTIVE
+#     - COINDUCTIVE
+#     - RECORD
+#     - CLASS
+#     - INSTANCE
+#     - FIXPOINT
+#     - COFIXPOINT
+#     - SCHEME
+#     - VARIANT
+#     - FACT
+#     - REMARK
+#     - COROLLARY
+#     - PROPOSITION
+#     - PROPERTY
+#     - OBLIGATION
+#     - TACTIC
+#     - RELATION
+#     - SETOID
+#     - FUNCTION
+#     - DERIVE
+#     - OTHER
+
+#     non_coq_excludes:
+#     - DEFINITION
+#     - NOTATION
+#     - INDUCTIVE
+#     - COINDUCTIVE
+#     - RECORD
+#     - CLASS
+#     - INSTANCE
+#     - FIXPOINT
+#     - COFIXPOINT
+#     - SCHEME
+#     - VARIANT
+#     - OBLIGATION
+#     - TACTIC
+#     - RELATION
+#     - SETOID
+#     - FUNCTION
+#     - DERIVE
+#     - OTHER
+
+#     general_excludes: []

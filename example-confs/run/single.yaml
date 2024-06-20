@@ -1,0 +1,260 @@
+
+thm_info:
+
+  # Whole proof analysis
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/general_Q.v
+  # theorem_name: Qsgn_29
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/general_Q.v
+  # theorem_name: Qpositive_c_0
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/general_Q.v
+  # theorem_name: Qpositive_c_0
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/general_Q.v
+  # theorem_name: Qneq_stepl
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Zaux.v
+  # theorem_name: pred_absolu 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Zaux.v
+  # theorem_name: Zsgn_22 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/homographic_correctness.v
+  # theorem_name: spec_Qhomographic_Qpositive_to_Q_Zopp_2 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_denumerable.v
+  # theorem_name: Z_to_nat_to_Z_i
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/dvdring.v 
+  # theorem_name: lcmr_mulr
+
+  # Failure after 0 seconds
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/fpmod.v
+  # theorem_name: eqmorMr
+
+  #The height of the board is positive
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: h_pos
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/fpmod.v
+  # theorem_name: mulmorDl
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/theory/dvdring.v
+  # theorem_name: gcdr0 
+
+  # The width of the board is positive
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: w_pos
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: prestrict_get_default
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/core/equiv.v
+  # theorem_name: equiv_of_fn
+
+  # # Positions on the board are antisymmetric
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: pos_test_anti_sym
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/hrel.v
+  # theorem_name: comp_eql
+
+  # # # If some literal l1 is in the list resulting from inserting another literal l2
+  # # # into a clause, then the literals must be equal, or l1 must have been in the original clause
+  test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  theorem_name: lit_insert_in
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: pos_test_exact
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: valid_pos_eq
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: next_pos
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: valid_pos_next
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: get_nil
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: get_next
+
+  ## Anything choose 0 is 1
+  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
+  # theorem_name: binomial_def1
+    
+  # n choose m with n < m is 0
+  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
+  # theorem_name: binomial_def2
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Gcd.v
+  # theorem_name: is_gcd_O'
+
+  # ## n choose n is 1 
+  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
+  # theorem_name: binomial_def3
+
+  # ## Pascals identity 
+  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
+  # theorem_name: binomial_def4
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Div.v
+  # theorem_name: div_le
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_denumerable.v
+  # theorem_name: is_denumerable_transitive
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_denumerable.v
+  # theorem_name: is_denumerable_transitive
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Q_ordered_field_properties.v
+  # theorem_name: Qinv_resp_nonzero_Qdiv
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-coqeal/refinements/rational.v
+  # theorem_name: RratE
+    
+  # ## Contropositive of monotononicity
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/sqrt2.v 
+  # theorem_name: monotonic_inverse
+    
+  ## Weird equality (3 * p - 4 * q) * (3 * p - 4 * q) = 2 * ((3 * q - 2 * p) * (3 * q - 2 * p)).
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/sqrt2.v 
+  # theorem_name: new_equality 
+    
+  # ## If the absolute value of the difference is 0, then the ints are the same
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/Qabs.v 
+  # theorem_name: Qabs_Qminus_Zero_eq
+
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/core/equiv.v
+  # theorem_name: equiv_of_fn
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/core/open_confluence.v
+  # theorem_name: remove_edgesK 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/core/transfer.v
+  # theorem_name: oiso2_oarc 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-graph-theory/theories/planar/hcycle.v
+  # theorem_name: last_memE 
+
+  # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/homographic_correctness.v
+  # theorem_name: spec_Qhomographic_Qpositive_to_Q_Zopp_2
+
+  data_loc: raw-data/coq-dataset
+  sentence_db_loc: sentences.db
+  data_split_loc: splits/final-split.json
+
+# search:
+#   alias: mcts
+#   max_branch: 32
+#   depth_limit: 20
+#   timeout: 120
+#   print_proofs: True
+
+search:
+  alias: classical
+  node_score_alias: token-sum-score 
+  max_branch: 4
+  max_expansions: 500
+  depth_limit: 30
+  timeout: 120
+
+# search:
+#   alias: straight_line
+#   timeout: 60
+#   print_proofs: True
+
+  # initial_proof: "\n
+  # intros m n H.\n
+  # unfold div, pdiv.\n
+  # remember (pdiv_aux m n m) as p.\n
+  # destruct p as (d, r).\n
+  # remember (ominus m n) as m_sub_n.\n
+  # destruct m_sub_n. "  
+
+# tactic_gen:
+#   alias: client
+#   socket_paths: [servers/0]
+#   # formatters:
+#   #   - alias: basic
+#   #     n_step_sampler: 
+#   #       alias: one
+
+#   formatters:
+#   - alias: whole-proof-ret 
+#     proof_bank_loc: proof-goals
+#     data_loc: raw-data/coq-dataset
+#     sentence_db_loc: sentences.db
+#     n_step_sampler:
+#       alias: one
+
+# formatter:
+#   alias: proof
+#   proof_bank_loc: proof-goals
+#   n_step_sampler:
+#     alias: one
+
+#   formatter:
+#     alias: premise
+#     premise_conf:
+#       alias: tfidf
+#       context_format_alias: basic
+#       premise_format_alias: basic
+#       premise_filter:
+#         coq_excludes: []    
+#         non_coq_excludes: []
+#         general_excludes: []
+#     n_step_sampler:
+#       alias: one
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-premise-final/checkpoint-92000
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-proof-ret-final/checkpoint-107500
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-base-tpe2k-final/checkpoint-130000
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-whole-proof-ret/checkpoint-110500
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-base-basic-final/checkpoint-110500
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-1024-proof-ret-8/checkpoint-127500 
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/codet5-fid-small-1024/checkpoint-113500
+
+# tactic_gen:
+#   alias: fid
+#   checkpoint_loc: models/t5-fid-small-basic-final/checkpoint-110500
+
+# tactic_gen:
+#   alias: decoder 
+#   checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-15000 
+
+# tactic_gen:
+#   alias: decoder 
+#   checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-16500
+
+tactic_gen:
+  alias: decoder 
+  checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-52000
+
+print_proofs: True
+print_trees: True 
