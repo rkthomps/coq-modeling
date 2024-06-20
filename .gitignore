@@ -1,81 +1,24 @@
 # Data and model locations
-raw-data
-data
-data-small
-models
-models-small
-preprocessing
-premise-eval
-results
-evals
-reports
-distances
-analysis
-banks
-proof-goals
-proof-goals.tar.gz
-step-evals
-eval_examples
-unimath-step-eval
-vector-dbs
+raw-data/
+data/
+models/
+evaluations/
+reports/
 
 # Slurm
-slurm*.out
-jobs/run-models.sh 
-jobs/run-proofs*
-jobs/run-gpus.sh
-
-
-# Sentence database
-sentences.db
+slurm/*
+!slurm/example-jobs
 
 # Temporary
-port-map
-test_size.py
-err.txt
-.cm-search
+tmp/
 
-# Examples
-examples
-failed-examples
-investigate
-
-# Config files
-# - Creating premise and tactic datasets 
-conf.pkl
-
-# - Training premise dataset
-src/premise_selection/confs/**
-!src/premise_selection/confs/premise_train_basic.yaml
-
-# - Training tactic dataset
-src/tactic_gen/confs/**
-!src/tactic_gen/confs/codellama_basic.yaml
-
-# - Eval
-evals-before-*
-evals-small
-evals-bad-imports
-eval-results
-dev-results
-dev-results.csv
-build-coq
-src/evaluation/confs/**
-!src/evaluation/confs/eval.yaml
-safe_val.txt
-shared-thms.json
-conf.*
-queue-*
-
-# scripts
-clean_search.sh
-refresh_evals.sh
-
+# Config Files
+confs/
 
 # Python files
-venv
+venv/
 *.egg-info
-build
+build/
 __pycache__
 .DS_STORE
 .hypothesis
@@ -87,14 +30,3 @@ __pycache__
 
 # IDE files
 .vscode
-
-# Proof search files
-.proof-search
-proof-tree.json
-*goal_aux.v
-
-# Profiling
-snap.pkl
-
-# Temporary/Throw-away python scripts
-src/throw_away
