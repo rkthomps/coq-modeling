@@ -162,7 +162,9 @@ def run(
     eval_conf_loc = CLEAN_CONFIG + "-" + time_str
     eval_queue_loc = Path(QUEUE_LOC + "-" + time_str)
     initialize_and_fill_queue(eval_queue_loc, eval_conf)
-    start_servers_and_update_conf(eval_conf, timeout, n_gpu, eval_conf_loc)
+    start_servers_and_update_conf(
+        eval_conf, timeout, n_gpu_nodes, n_devices_per_node, eval_conf_loc
+    )
     start_provers(
         eval_conf,
         timeout,
@@ -212,4 +214,11 @@ if __name__ == "__main__":
     os.makedirs(eval_conf.save_loc)
     shutil.copy(conf_loc, eval_conf.save_loc / "conf.yaml")
 
-    run(eval_conf, timeout, n_gpus, n_workers, n_threads_per_worker)
+    run(
+        eval_conf,
+        timeout,
+        n_gpu_nodes,
+        n_devices_per_node,
+        n_workers,
+        n_threads_per_worker,
+    )
