@@ -5,17 +5,24 @@ from typing import Any, Optional, Generator
 import os
 import json
 import time
+import pickle
 import random
 import requests
 from tqdm import tqdm
 from pathlib import Path
 from dataclasses import dataclass
+from hashlib import sha256
 
 from data_management.sentence_db import SentenceDB
 from data_management.splits import FileInfo, DataSplit, Split, str2split, split2str
 
 from model_deployment.prove import LocationInfo, RunProofConf
 from model_deployment.searcher import SearcherConf, searcher_conf_from_yaml
+from model_deployment.rerank_client import (
+    PremiseClient,
+    PremiseConf,
+    premise_conf_from_yaml,
+)
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
     tactic_conf_update_ips,
@@ -36,13 +43,30 @@ QUEUE_LOC = TMP_LOC / "queue"
 
 
 def initialize_and_fill_queue(queue_loc: Path, eval_conf: EvalConf):
-    proof_map = create_eval_proof_map(eval_conf)
+    proof_map = create_eval_proof_map(
+        eval_conf.split,
+        eval_conf.data_split_loc,
+        eval_conf.sentence_db_loc,
+        eval_conf.data_loc,
+    )
     q = FileQueue[tuple[FileInfo, int]](queue_loc)
     q.initialize()
     if eval_conf.max_eval_proofs is not None:
         q.put_all(proof_map.proofs[: eval_conf.max_eval_proofs])
     else:
         q.put_all(proof_map.proofs)
+
+
+def initialize_and_fill_queue_premise(queue_loc: Path, eval_conf: PremiseEvalConf):
+    proof_map = create_eval_proof_map(
+        eval_conf.split,
+        eval_conf.data_split_loc,
+        eval_conf.sentence_db_loc,
+        eval_conf.data_loc,
+    )
+    q = FileQueue[tuple[FileInfo, int]](queue_loc)
+    q.initialize()
+    q.put_all(proof_map.proofs)
 
 
 @dataclass
@@ -206,22 +230,71 @@ class EvalProofConf:
         )
 
 
-def create_eval_proof_map(eval_conf: EvalConf) -> ProofMap:
-    if eval_conf.split == Split.TRAIN:
+@dataclass
+class PremiseStepResult:
+    step_idx: int
+    num_premises: int
+    hits_on: list[int]
+
+
+@dataclass
+class PremiseProofResult:
+    file: str
+    proof_idx: int
+    step_results: list[PremiseStepResult]
+
+    def save(self, path: Path):
+        save_name = f"{self.file}-{self.proof_idx}.pkl"
+        with (path / save_name).open("wb") as fout:
+            pickle.dump(self, fout)
+
+
+@dataclass
+class PremiseEvalConf:
+    split: Split
+    save_loc: Path
+    data_loc: Path
+    sentence_db_loc: Path
+    data_split_loc: Path
+    premise_conf: PremiseConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> PremiseEvalConf:
+        return cls(
+            str2split(yaml_data["split"]),
+            Path(yaml_data["save_loc"]),
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            Path(yaml_data["data_split_loc"]),
+            premise_conf_from_yaml(yaml_data),
+        )
+
+
+def __get_data_split_hash(data_split_loc: Path) -> str:
+    with data_split_loc.open("r") as fin:
+        m = sha256()
+        m.update(str.encode(fin.read()))
+        encoding = m.hexdigest()
+    return encoding
+
+
+def create_eval_proof_map(
+    split: Split, data_split_loc: Path, sentence_db_loc: Path, data_loc: Path
+) -> ProofMap:
+    if split == Split.TRAIN:
         raise ValueError("Evaluation on training set not supported.")
 
     os.makedirs(PROOF_MAP_LOC, exist_ok=True)
-    proof_map_loc = PROOF_MAP_LOC / split2str(eval_conf.split)
+    split_encoding = __get_data_split_hash(data_split_loc)
+    proof_map_loc = PROOF_MAP_LOC / f"{split_encoding}-{split2str(split)}"
     if proof_map_loc.exists():
         print(f"Using proof map located at {proof_map_loc}")
         return ProofMap.load(proof_map_loc)
 
     _logger.info(f"Creating proof map.")
-    data_split = DataSplit.load(eval_conf.data_split_loc)
-    sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
-    proof_map = ProofMap.create(
-        data_split, eval_conf.split, eval_conf.data_loc, sentence_db
-    )
+    data_split = DataSplit.load(data_split_loc)
+    sentence_db = SentenceDB.load(sentence_db_loc)
+    proof_map = ProofMap.create(data_split, split, data_loc, sentence_db)
     proof_map.save(proof_map_loc)
     return proof_map
 
@@ -235,7 +308,9 @@ def wait_for_servers(next_server_num: int) -> dict[int, tuple[str, int]]:
     total_time_slept = 0
     while len(cur_port_map) < next_server_num:
         if 1 < total_time_slept and total_time_slept % 10 == 0:
-            _logger.info(f"Port map of length {len(cur_port_map)} not complete after {total_time_slept}.")
+            _logger.info(
+                f"Port map of length {len(cur_port_map)} not complete after {total_time_slept}."
+            )
         time.sleep(1)
         total_time_slept += 1
         cur_port_map = read_port_map()

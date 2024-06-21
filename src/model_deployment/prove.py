@@ -59,6 +59,7 @@ def get_proof_info(
     data_loc: Path,
     file_info: FileInfo,
     term: Term,
+    occurance: int,
 ) -> ProofInfo:
     file_loc = (data_loc / file_info.file).resolve()
     workspace_loc = (data_loc / file_info.workspace).resolve()
@@ -71,17 +72,26 @@ def get_proof_info(
     steps = client_wrapper.write_and_get_steps(file_contents)
     client.shutdown()
     client.exit()
+    num_seen = 0
     for i, step in enumerate(steps):
         if normalize(term.term.text) in normalize(step.text):
-            return ProofInfo(term, steps[: (i + 1)], i)
+            if num_seen == occurance:
+                return ProofInfo(term, steps[: (i + 1)], i)
+            num_seen += 1
     raise ValueError(f"Could not find step defining theorem {term.term.text}")
 
 
 def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
+    target_theorem = conf.loc.dataset_file.proofs[conf.loc.dp_proof_idx].theorem
+    occurance = 0
+    for proof in conf.loc.dataset_file.proofs[: conf.loc.dp_proof_idx]:
+        if normalize(target_theorem.term.text) == normalize(proof.theorem.term.text):
+            occurance += 1
     proof_info = get_proof_info(
         conf.loc.data_loc,
         conf.loc.file_info,
         conf.loc.dataset_file.proofs[conf.loc.dp_proof_idx].theorem,
+        occurance,
     )
     with ProofManager(
         conf.loc.dataset_file.file_context,

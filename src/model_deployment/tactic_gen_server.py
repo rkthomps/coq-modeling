@@ -1,13 +1,17 @@
 from typing import Any
 import sys, os
+import time
 import argparse
 from pathlib import Path
 from werkzeug.wrappers import Request, Response
 
 from werkzeug.serving import run_simple
 from util.constants import SERVER_LOC, PORT_MAP_LOC
+from util.util import get_basic_logger
 
 import logging
+
+_logger = get_basic_logger(__name__)
 
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.DEBUG)
@@ -27,7 +31,11 @@ wrapper: ModelWrapper = StubWrapper()
 @dispatcher.add_method
 def get_recs(example_json: Any, n: int, current_proof: str, beam: bool) -> ModelResult:
     example = LmExample.from_json(example_json)
-    return wrapper.get_recs(example, n, current_proof, beam).to_json()
+    start = time.time()
+    result = wrapper.get_recs(example, n, current_proof, beam).to_json()
+    end = time.time()
+    _logger.info(f"Raw model time: {end - start}")
+    return result
 
 
 @Request.application

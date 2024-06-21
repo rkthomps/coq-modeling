@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Generator
 
 import functools
 from pathlib import Path
@@ -20,6 +21,7 @@ class SuccessfulSummary:
     file: Path
     theorem_name: str
     search_time: float
+    model_time: float
     attempts: int
 
 
@@ -36,6 +38,7 @@ class EvalData:
         for r in self.results:
             if r.success:
                 assert r.search_time is not None
+                assert r.model_time is not None
                 match r:
                     case ClassicalSummary():
                         assert r.search_steps is not None
@@ -48,9 +51,15 @@ class EvalData:
                         num_attempts = len(r.attempts)
 
                 successes.append(
-                    SuccessfulSummary(r.file, r.theorem, r.search_time, num_attempts)
+                    SuccessfulSummary(r.file, r.theorem, r.search_time, r.model_time, num_attempts)
                 )
         return successes
+
+    def get_model_time_points(self) -> list[PlotPoint]:
+        successes = self.get_successful_searches()
+        successes.sort(key=lambda x: x.model_time)
+        return [PlotPoint(s.model_time, i + 1) for i, s in enumerate(successes)]
+
 
     def get_time_points(self) -> list[PlotPoint]:
         successes = self.get_successful_searches()
@@ -61,6 +70,17 @@ class EvalData:
         successes = self.get_successful_searches()
         successes.sort(key=lambda x: x.attempts)
         return [PlotPoint(s.attempts, i + 1) for i, s in enumerate(successes)]
+    
+    def filter_to_proofs(self, proofs: set[ProofPair]) -> EvalData:
+        new_results = [r for r in self.results if ProofPair(str(r.file), r.theorem) in proofs]
+        return EvalData(self.alias, new_results)
+    
+    def get_error_fraction(self) -> float:
+        num_errors = 0
+        for r in self.results:
+            if r.search_time is None:
+                num_errors += 1
+        return num_errors / len(self.results)
 
 
 @dataclass
@@ -119,19 +139,18 @@ def get_two_eval_subsets(
     )
 
 
+def get_eval(evals: list[EvalData], alias: str) -> EvalData:
+    eval_list = [e for e in evals if e.alias == alias]
+    assert len(eval_list) == 1
+    return eval_list[0]
+
 def get_three_eval_subets(
     evals: list[EvalData], eval1_alias: str, eval2_alias: str, eval3_alias
 ) -> ThreeEvalSubsets:
-    eval1_list = [e for e in evals if e.alias == eval1_alias]
-    assert len(eval1_list) == 1
-    eval2_list = [e for e in evals if e.alias == eval2_alias]
-    assert len(eval2_list) == 1
-    eval3_list = [e for e in evals if e.alias == eval3_alias]
-    assert len(eval3_list) == 1
+    e1 = get_eval(evals, eval1_alias) 
+    e2 = get_eval(evals, eval2_alias) 
+    e3 = get_eval(evals, eval3_alias) 
 
-    e1 = eval1_list[0]
-    e2 = eval2_list[0]
-    e3 = eval3_list[0]
     e1_successes = set(
         [ProofPair(str(s.file), s.theorem_name) for s in e1.get_successful_searches()]
     )
@@ -141,6 +160,7 @@ def get_three_eval_subets(
     e3_successes = set(
         [ProofPair(str(s.file), s.theorem_name) for s in e3.get_successful_searches()]
     )
+
     return ThreeEvalSubsets(
         e1_successes - e2_successes - e3_successes,
         e2_successes - e1_successes - e3_successes,
@@ -178,3 +198,25 @@ def find_mutual_proofs(evals: list[EvalData]) -> set[ProofPair]:
     for e in evals[1:]:
         inter_proof_set &= e.get_proof_set()
     return inter_proof_set
+
+def results_to_proof_map(results: list[Summary]) -> dict[ProofPair, Summary]:
+    result_map: dict[ProofPair, Summary] = {}
+    for r in results:
+        key = ProofPair(str(r.file), r.theorem)
+        if key in result_map:
+            raise ValueError("Expected a unique set of proofs.")
+        result_map[key] = r
+    return result_map
+
+
+def a_beats_b_generator(es: list[EvalData], e1_alias: str, e2_alias: str) -> Generator[tuple[ProofPair, Summary, Summary], None, None]:
+    e1 = get_eval(es, e1_alias)
+    e2 = get_eval(es, e2_alias)
+    e2_map = results_to_proof_map(e2.results)
+    for r in e1.results:
+        if not r.success:
+            continue
+        key = ProofPair(str(r.file), r.theorem)
+        e2_result = e2_map[key]
+        if not e2_result.success:
+            yield key, r, e2_result

@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any, Optional
 import os
+import time
 
 import requests
 import random
@@ -170,7 +171,10 @@ class LocalTacticGenClient:
         }
 
         chosen_url = random.choice(self.urls)
+
+        start = time.time()
         response = self.session.post(chosen_url, json=request_data).json()
+        end = time.time()
         if request_id != request_id:
             _logger.error("ID MISMATCH IN REQUESTS")
         assert response["id"] == request_id

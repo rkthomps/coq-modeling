@@ -42,6 +42,7 @@ class TheoremLocationInfo:
     data_loc: Path
     sentence_db_loc: Path
     data_split_loc: Path
+    occurance: int=0
 
     def get_file_from_split(
         self,
@@ -57,11 +58,13 @@ class TheoremLocationInfo:
         )
 
     def get_dp_idx(self, dp: DatasetFile) -> int:
-        _logger.warning("TODO DO THEOREM NAME MATCHING RIGHT")
+        num_found = 0
         for i, proof in enumerate(dp.proofs):
-            if self.theorem_name in proof.theorem.term.text:
-                return i
-        raise ValueError(f"{self.theorem_name} not found in {self.test_file}")
+            if self.theorem_name == proof.get_theorem_name():
+                if num_found == self.occurance:
+                    return i
+                num_found += 1
+        raise ValueError(f"Occurance {self.occurance} of {self.theorem_name} not found in {self.test_file}")
 
     def to_location_info(self) -> LocationInfo:
         data_split = DataSplit.load(self.data_split_loc)
@@ -75,12 +78,16 @@ class TheoremLocationInfo:
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> TheoremLocationInfo:
+        if "occurance" in yaml_data:
+            occurance = yaml_data["occurance"]
+        else:
+            occurance = 0
         return cls(
             yaml_data["theorem_name"],
             Path(yaml_data["test_file"]),
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
-            Path(yaml_data["data_split_loc"]),
+            Path(yaml_data["data_split_loc"]), occurance
         )
 
 

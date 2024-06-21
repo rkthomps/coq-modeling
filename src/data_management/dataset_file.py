@@ -19,9 +19,9 @@ from coqpyt.coq.structs import TermType
 
 from util.constants import DATA_POINTS_NAME
 
-# from util.util import get_basic_logger
+from util.util import get_basic_logger
 
-# _logger = get_basic_logger(__name__)
+_logger = get_basic_logger(__name__)
 
 
 STEPS_NAME = "steps.jsonl"
@@ -390,7 +390,8 @@ class Proof:
             if name_match is not None:
                 (name,) = name_match.groups()
                 return name
-        raise ValueError("Could not find name for theorem: ", self.theorem.term.text)
+        _logger.warning("Could not find name for theorem: ", self.theorem.term.text)
+        return "Anon"
 
     def proof_prefix_to_string(
         self,
