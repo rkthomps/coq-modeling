@@ -20,13 +20,13 @@ from model_deployment.conf_utils import (
     StartModelCommand,
 )
 from evaluation.eval_utils import (
-    create_eval_proof_map,
+    initialize_and_fill_queue,
     wait_for_servers,
     EvalConf,
 )
 from data_management.splits import FileInfo
 
-from util.constants import CLEAN_CONFIG, TMP_LOC
+from util.constants import CLEAN_CONFIG, TMP_LOC, QUEUE_NAME
 from util.util import get_basic_logger, clear_port_map
 from util.file_queue import FileQueue
 
@@ -36,8 +36,6 @@ TACTIC_SERVER_LOC = Path("./src/model_deployment/tactic_gen_server.py")
 RUN_MODELS_LOC = Path("./slurm/jobs/run-models.sh")
 GPU_SBATCH_LOC = Path("./slurm/jobs/run-gpus.sh")
 PROOF_SBATCH_LOC = Path("./slurm/jobs/run-proofs.sh")
-
-QUEUE_NAME = "queue"
 
 
 def make_executable(p: Path):
@@ -138,13 +136,6 @@ def start_provers(
 
     # Start proof workers
     subprocess.run(["sbatch", f"{PROOF_SBATCH_LOC}"])
-
-
-def initialize_and_fill_queue(queue_loc: Path, eval_conf: EvalConf):
-    proof_map = create_eval_proof_map(eval_conf)
-    q = FileQueue[tuple[FileInfo, int]](queue_loc)
-    q.initialize()
-    q.put_all(proof_map.proofs)
 
 
 def run(

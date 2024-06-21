@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 
 from util.util import get_fresh_path
+from util.constants import TMP_LOC, SEARCH_DIR_NAME
 from data_management import dataset_file
 from data_management.splits import DataSplit
 from data_management.sentence_db import SentenceDB
@@ -87,7 +88,7 @@ class ProofInfo:
 
 class ProofManager:
     TIMEOUT = 60
-    SEARCH_DIR = Path("./.cm-search")
+    SEARCH_DIR = TMP_LOC / SEARCH_DIR_NAME 
 
     def __init__(
         self,

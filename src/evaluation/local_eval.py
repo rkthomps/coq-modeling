@@ -21,16 +21,14 @@ from model_deployment.conf_utils import (
     StartModelCommand,
 )
 from evaluation.eval_utils import (
-    create_eval_proof_map,
+    initialize_and_fill_queue,
     wait_for_servers,
     EvalConf,
-    QUEUE_LOC,
 )
 from data_management.splits import FileInfo
 
-from util.constants import CLEAN_CONFIG
+from util.constants import CLEAN_CONFIG, QUEUE_NAME, TMP_LOC
 from util.util import get_basic_logger, clear_port_map
-from util.file_queue import FileQueue
 
 _logger = get_basic_logger(__name__)
 
@@ -41,7 +39,7 @@ PROOF_SBATCH_LOC = Path("./jobs/run-proofs.sh")
 
 
 def start_servers_and_update_conf(
-    eval_conf: EvalConf, device_list: list[int], eval_conf_loc: str
+    eval_conf: EvalConf, device_list: list[int], eval_conf_loc: Path 
 ) -> list[Popen[bytes]]:
     server_commands: list[StartModelCommand] = []
     devices: list[int] = []
@@ -81,7 +79,7 @@ def start_servers_and_update_conf(
 
 def start_provers(
     n_workers: int,
-    eval_conf_loc: str,
+    eval_conf_loc: Path,
     eval_queue_loc: Path,
 ) -> list[Popen[bytes]]:
     worker_procs: list[Popen[bytes]] = []
@@ -97,15 +95,6 @@ def start_provers(
     return worker_procs
 
 
-def initialize_and_fill_queue(queue_loc: Path, eval_conf: EvalConf):
-    proof_map = create_eval_proof_map(eval_conf)
-    q = FileQueue[tuple[FileInfo, int]](queue_loc)
-    q.initialize()
-    if eval_conf.max_eval_proofs is not None:
-        q.put_all(proof_map.proofs[: eval_conf.max_eval_proofs])
-    else:
-        q.put_all(proof_map.proofs)
-
 
 def run(
     eval_conf: EvalConf,
@@ -113,8 +102,8 @@ def run(
     device_list: list[int],
 ):
     time_str = datetime.now().strftime("%m%d%H%M%S")
-    eval_conf_loc = CLEAN_CONFIG + "-" + time_str
-    eval_queue_loc = Path(QUEUE_LOC + "-" + time_str)
+    eval_conf_loc = TMP_LOC / (CLEAN_CONFIG + "-" + time_str)
+    eval_queue_loc = TMP_LOC / (QUEUE_NAME + "-" + time_str)
     initialize_and_fill_queue(eval_queue_loc, eval_conf)
     server_proces = start_servers_and_update_conf(eval_conf, device_list, eval_conf_loc)
     prover_procs = start_provers(

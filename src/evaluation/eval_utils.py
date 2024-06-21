@@ -24,6 +24,7 @@ from model_deployment.tactic_gen_client import (
     merge_tactic_confs,
 )
 
+from util.file_queue import FileQueue
 from util.util import get_basic_logger, read_port_map, get_flexible_url
 from util.constants import TMP_LOC, DATA_LOC
 
@@ -32,6 +33,16 @@ _logger = get_basic_logger(__name__)
 
 PROOF_MAP_LOC = DATA_LOC / "proof_maps"
 QUEUE_LOC = TMP_LOC / "queue"
+
+
+def initialize_and_fill_queue(queue_loc: Path, eval_conf: EvalConf):
+    proof_map = create_eval_proof_map(eval_conf)
+    q = FileQueue[tuple[FileInfo, int]](queue_loc)
+    q.initialize()
+    if eval_conf.max_eval_proofs is not None:
+        q.put_all(proof_map.proofs[: eval_conf.max_eval_proofs])
+    else:
+        q.put_all(proof_map.proofs)
 
 
 @dataclass

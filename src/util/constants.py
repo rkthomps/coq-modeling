@@ -17,7 +17,9 @@ GOAL_DATA_CONF_NAME = "goal-data-conf.yaml"
 PREMISE_DATA_CONF_NAME = "premise-data-config.yaml"
 RERANK_DATA_CONF_NAME = "rerank-data-config.yaml"
 
+SEARCH_DIR_NAME = ".cm-search"
 
 CLEAN_CONFIG = "conf.pkl"
 SERVER_LOC = "./servers"
 PORT_MAP_LOC = TMP_LOC / "port-map"
+QUEUE_NAME = "queue"
