@@ -3,6 +3,7 @@
 from pathlib import Path
 
 TMP_LOC = Path("tmp")
+DATA_LOC = Path("data")
 
 REPOS_NAME = "repos"
 DATA_POINTS_NAME = "data_points"

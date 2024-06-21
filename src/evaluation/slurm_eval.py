@@ -26,18 +26,18 @@ from evaluation.eval_utils import (
 )
 from data_management.splits import FileInfo
 
-from util.constants import CLEAN_CONFIG
+from util.constants import CLEAN_CONFIG, TMP_LOC
 from util.util import get_basic_logger, clear_port_map
 from util.file_queue import FileQueue
 
 _logger = get_basic_logger(__name__)
 
-RUN_MODELS_LOC = Path("./jobs/run-models.sh")
 TACTIC_SERVER_LOC = Path("./src/model_deployment/tactic_gen_server.py")
-GPU_SBATCH_LOC = Path("./jobs/run-gpus.sh")
-PROOF_SBATCH_LOC = Path("./jobs/run-proofs.sh")
+RUN_MODELS_LOC = Path("./slurm/jobs/run-models.sh")
+GPU_SBATCH_LOC = Path("./slurm/jobs/run-gpus.sh")
+PROOF_SBATCH_LOC = Path("./slurm/jobs/run-proofs.sh")
 
-QUEUE_LOC = "./queue"
+QUEUE_NAME = "queue"
 
 
 def make_executable(p: Path):
@@ -51,7 +51,7 @@ def start_servers_and_update_conf(
     timeout: str,
     n_gpu_nodes: int,
     n_devices_per_node: int,
-    eval_conf_loc: str,
+    eval_conf_loc: Path,
 ):
     server_commands: Optional[list[StartModelCommand]] = None
     clean_eval_confs: list[TopLevelConf] = []
@@ -88,11 +88,11 @@ def start_servers_and_update_conf(
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --nodes={n_gpu_nodes}\n"
         f"#SBATCH --ntasks={n_gpu_nodes * n_devices_per_node}\n"
-        f"#SBATCH --gres=gpu:{n_devices_per_node}\n"
-        f"#SBATCH --constraint=2080ti"
-        f"#SBATCH --mem=16G\n"
-        f"#SBATCH -o slurm-serve-%j.out\n"
-        f"srun -l --gres=gpu:1 {RUN_MODELS_LOC}\n"
+        f"#SBATCH --gpus-per-task=1\n"
+        f"#SBATCH --constraint=2080ti\n"
+        f"#SBATCH --mem-per-cpu=16G\n"
+        f"#SBATCH -o slurm/out/slurm-serve-%j.out\n"
+        f"srun -l {RUN_MODELS_LOC}\n"
     )
 
     with GPU_SBATCH_LOC.open("w") as fout:
@@ -117,12 +117,9 @@ def start_provers(
     timeout: str,
     n_workers: int,
     n_threads_per_worker: int,
-    eval_conf_loc: str,
+    eval_conf_loc: Path,
     eval_queue_loc: Path,
 ):
-    worker_out_loc = Path("slurm-out")
-    os.makedirs(worker_out_loc, exist_ok=True)
-
     proof_sbatch = (
         "#!/bin/bash\n"
         f"#SBATCH -p cpu-preempt\n"
@@ -130,8 +127,8 @@ def start_provers(
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --array=0-{n_workers - 1}\n"
         f"#SBATCH --mem=16G\n"
-        f"#SBATCH -o {worker_out_loc}/slurm-prove-%j.out\n"
-        f"sbcast sentences.db /tmp/sentences.db\n"
+        f"#SBATCH -o slurm/out/slurm-prove-%j.out\n"
+        f"sbcast {eval_conf.sentence_db_loc} /tmp/sentences.db\n"
         f"source venv/bin/activate\n"
         f"python3 src/evaluation/eval_worker.py {eval_conf_loc} {eval_queue_loc}\n"
     )
@@ -159,8 +156,8 @@ def run(
     n_threads_per_worker: int,
 ):
     time_str = datetime.now().strftime("%m%d%H%M%S")
-    eval_conf_loc = CLEAN_CONFIG + "-" + time_str
-    eval_queue_loc = Path(QUEUE_LOC + "-" + time_str)
+    eval_conf_loc = TMP_LOC / (CLEAN_CONFIG + "-" + time_str)
+    eval_queue_loc = TMP_LOC / (QUEUE_NAME + "-" + time_str)
     initialize_and_fill_queue(eval_queue_loc, eval_conf)
     start_servers_and_update_conf(
         eval_conf, timeout, n_gpu_nodes, n_devices_per_node, eval_conf_loc
@@ -190,6 +187,7 @@ if __name__ == "__main__":
         "n_threads_per_worker", type=int, help="Number of threads per worker."
     )
     args = parser.parse_args(sys.argv[1:])
+    os.makedirs(TMP_LOC, exist_ok=True)
 
     conf_loc = Path(args.conf_loc)
     timeout = args.timeout
@@ -206,11 +204,13 @@ if __name__ == "__main__":
     assert isinstance(n_threads_per_worker, int)
 
     with conf_loc.open("r") as fin:
-        conf = yaml.load(fin, Loader=yaml.Loader)
-
+        conf = yaml.load(fin, Loader=yaml.Loader) 
     eval_conf = EvalConf.from_yaml(conf)
     if eval_conf.save_loc.exists():
-        raise FileExistsError(f"{eval_conf.save_loc}")
+        answer = input(f"{eval_conf.save_loc} already exists. Overwrite? y/n: ")
+        if answer.lower() != "y":
+            raise FileExistsError(f"{eval_conf.save_loc}")
+        shutil.rmtree(eval_conf.save_loc)
     os.makedirs(eval_conf.save_loc)
     shutil.copy(conf_loc, eval_conf.save_loc / "conf.yaml")
 

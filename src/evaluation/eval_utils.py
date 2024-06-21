@@ -25,12 +25,13 @@ from model_deployment.tactic_gen_client import (
 )
 
 from util.util import get_basic_logger, read_port_map, get_flexible_url
+from util.constants import TMP_LOC, DATA_LOC
 
 _logger = get_basic_logger(__name__)
 
 
-PROOF_MAP_LOC = Path("./proof_maps")
-QUEUE_LOC = "./queue"
+PROOF_MAP_LOC = DATA_LOC / "proof_maps"
+QUEUE_LOC = TMP_LOC / "queue"
 
 
 @dataclass
@@ -220,9 +221,12 @@ def wait_for_servers(next_server_num: int) -> dict[int, tuple[str, int]]:
     urls: list[str] = []
 
     cur_port_map = read_port_map()
+    total_time_slept = 0
     while len(cur_port_map) < next_server_num:
-        _logger.info(f"Port map of length {len(cur_port_map)} not complete. Sleeping.")
+        if 1 < total_time_slept and total_time_slept % 10 == 0:
+            _logger.info(f"Port map of length {len(cur_port_map)} not complete after {total_time_slept}.")
         time.sleep(1)
+        total_time_slept += 1
         cur_port_map = read_port_map()
 
     for port_incr in range(next_server_num):

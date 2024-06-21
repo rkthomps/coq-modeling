@@ -9,7 +9,7 @@ import datetime
 from dataclasses import dataclass
 
 from coqpyt.coq.base_file import CoqFile
-from util.constants import PORT_MAP_LOC
+from util.constants import PORT_MAP_LOC, TMP_LOC
 
 
 @dataclass
@@ -34,6 +34,7 @@ class FlexibleUrl:
 
 def clear_port_map():
     port_map_loc = Path(PORT_MAP_LOC)
+    os.makedirs(TMP_LOC, exist_ok=True)
     if os.path.exists(port_map_loc):
         os.remove(PORT_MAP_LOC)
     with port_map_loc.open("w") as _:
