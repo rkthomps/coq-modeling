@@ -39,7 +39,7 @@ PROOF_SBATCH_LOC = Path("./jobs/run-proofs.sh")
 
 
 def start_servers_and_update_conf(
-    eval_conf: EvalConf, device_list: list[int], eval_conf_loc: Path 
+    eval_conf: EvalConf, device_list: list[int], eval_conf_loc: Path
 ) -> list[Popen[bytes]]:
     server_commands: list[StartModelCommand] = []
     devices: list[int] = []
@@ -93,7 +93,6 @@ def start_provers(
         worker_proc = Popen(worker_cmd)
         worker_procs.append(worker_proc)
     return worker_procs
-
 
 
 def run(

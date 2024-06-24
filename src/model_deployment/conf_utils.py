@@ -7,9 +7,11 @@ import socket
 import functools
 from dataclasses import dataclass
 
-from data_management.create_lm_dataset import LmDatasetConf
-from data_management.create_rerank_dataset import RerankDatasetConf
-from data_management.create_premise_dataset import SelectDataConfig
+from data_management.dataset_utils import (
+    LmDatasetConf,
+    SelectDatasetConf,
+    RerankDatasetConf,
+)
 from premise_selection.premise_filter import PremiseFilterConf
 from premise_selection.rerank_formatter import (
     RerankFormatterConf,
@@ -64,7 +66,7 @@ TopLevelConf = (
     | TestWholeProofConf
     | TestWholeProofsConf
     | EvalConf
-    | SelectDataConfig
+    | SelectDatasetConf
     | RerankDatasetConf
     | PremiseEvalConf
     | PremiseObserveConf
@@ -217,7 +219,7 @@ def premise_conf_to_client_conf(
             assert data_conf_loc.exists()
             with data_conf_loc.open("r") as fin:
                 yaml_data = yaml.load(fin, Loader=yaml.Loader)
-            data_conf = SelectDataConfig.from_yaml(yaml_data)
+            data_conf = SelectDatasetConf.from_yaml(yaml_data)
             filter_conf = PremiseFilterConf.from_yaml(yaml_data["premise_filter"])
             new_select_client = SelectModelClientConf(
                 [url],
@@ -313,10 +315,7 @@ def lm_dataset_conf_to_client_conf(
         lm_confs.append(formatter_conf)
         formatter_commands.extend(commands)
     new_dataset_conf = LmDatasetConf(
-        conf.n_procs,
-        conf.train_sample_loc,
-        conf.val_sample_loc,
-        conf.test_sample_loc,
+        conf.data_split_loc,
         conf.sentence_db_loc,
         conf.output_dataset_loc,
         lm_confs,
@@ -432,7 +431,7 @@ def to_client_conf(
                 tactic_client_conf,
             )
             return new_proofs_conf, next_server_num, commands
-        case SelectDataConfig():
+        case SelectDatasetConf():
             return conf, start_server_num, []
         case RerankDatasetConf():
             rerank_formatter_conf, next_server_num, commands = (
@@ -441,10 +440,7 @@ def to_client_conf(
                 )
             )
             reraank_data_conf = RerankDatasetConf(
-                conf.n_procs,
-                conf.train_sample_loc,
-                conf.val_sample_loc,
-                conf.test_sample_loc,
+                conf.data_split_loc,
                 conf.sentence_db_loc,
                 conf.output_dataset_loc,
                 rerank_formatter_conf,

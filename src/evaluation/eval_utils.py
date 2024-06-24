@@ -244,7 +244,9 @@ class PremiseProofResult:
     step_results: list[PremiseStepResult]
 
     def save(self, path: Path):
-        save_name = f"{self.file}-{self.proof_idx}.pkl"
+        save_file_name = str(self.file).replace("/", "-")
+        save_name = f"{save_file_name}-{self.proof_idx}.pkl"
+        _logger.info(f"Saving to {path / save_name}.")
         with (path / save_name).open("wb") as fout:
             pickle.dump(self, fout)
 
@@ -266,7 +268,7 @@ class PremiseEvalConf:
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["data_split_loc"]),
-            premise_conf_from_yaml(yaml_data),
+            premise_conf_from_yaml(yaml_data["premise"]),
         )
 
 

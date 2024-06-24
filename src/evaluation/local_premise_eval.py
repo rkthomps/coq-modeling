@@ -1,8 +1,10 @@
 import sys, os
 import shutil
+import pickle
 import argparse
 from pathlib import Path
 from datetime import datetime
+from subprocess import Popen
 
 import yaml
 from evaluation.eval_utils import PremiseEvalConf, initialize_and_fill_queue_premise
@@ -10,26 +12,43 @@ from evaluation.eval_utils import PremiseEvalConf, initialize_and_fill_queue_pre
 from util.constants import CLEAN_CONFIG, QUEUE_NAME, TMP_LOC
 
 
+def start_evaluators(
+    n_workers: int, eval_conf_loc: Path, eval_queue_loc: Path
+) -> list[Popen[bytes]]:
+    worker_procs: list[Popen[bytes]] = []
+    for _ in range(n_workers):
+        worker_cmd = [
+            "python3",
+            "src/evaluation/premise_eval_worker.py",
+            eval_conf_loc,
+            eval_queue_loc,
+        ]
+        worker_proc = Popen(worker_cmd)
+        worker_procs.append(worker_proc)
+    return worker_procs
+
+
 def run(
     eval_conf: PremiseEvalConf,
     n_workers: int,
     device_list: list[int],
 ):
-
     time_str = datetime.now().strftime("%m%d%H%M%S")
     eval_conf_loc = TMP_LOC / (CLEAN_CONFIG + "-" + time_str)
     eval_queue_loc = TMP_LOC / (QUEUE_NAME + "-" + time_str)
     initialize_and_fill_queue_premise(eval_queue_loc, eval_conf)
     # server_procs = start_servers_and_update_conf(eval_conf, device_list, eval_conf_loc)
-    prover_procs = start_provers(
+    with eval_conf_loc.open("wb") as fout:
+        pickle.dump(eval_conf, fout)
+    worker_procs = start_evaluators(
         n_workers,
         eval_conf_loc,
         eval_queue_loc,
     )
-    for p in prover_procs:
-        p.wait()
-    for p in server_proces:
-        p.kill()
+    for w in worker_procs:
+        w.wait()
+    for w in worker_procs:
+        w.kill()
 
 
 if __name__ == "__main__":
@@ -54,9 +73,12 @@ if __name__ == "__main__":
 
     eval_conf = PremiseEvalConf.from_yaml(conf)
     if eval_conf.save_loc.exists():
-        answer = input(f"{eval_conf.save_loc} already exists. Overwrite? y/n: ")
-        if answer.lower() != "y":
-            raise FileExistsError(f"{eval_conf.save_loc}")
-        shutil.rmtree(eval_conf.save_loc)
-        os.makedirs(eval_conf.save_loc)
-        shutil.copy(conf_loc, eval_conf.save_loc / "conf.yaml")
+        raise FileExistsError(f"{eval_conf.save_loc}")
+        # answer = input(f"{eval_conf.save_loc} already exists. Overwrite? y/n: ")
+        # if answer.lower() != "y":
+        #     raise FileExistsError(f"{eval_conf.save_loc}")
+        # shutil.rmtree(eval_conf.save_loc)
+
+    os.makedirs(eval_conf.save_loc)
+    shutil.copy(conf_loc, eval_conf.save_loc / "conf.yaml")
+    run(eval_conf, n_workers, device_list)

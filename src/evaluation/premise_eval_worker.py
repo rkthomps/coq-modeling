@@ -14,6 +14,9 @@ from model_deployment.rerank_client import (
 )
 from evaluation.eval_utils import PremiseEvalConf, PremiseProofResult, PremiseStepResult
 from util.file_queue import FileQueue, EmptyFileQueueError
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 def eval_step_premises(
@@ -25,7 +28,11 @@ def eval_step_premises(
         step, proof, proof_dp
     )
     if len(filter_result.pos_premises) == 0:
-        return PremiseStepResult(step_idx, 0, [])
+        return PremiseStepResult(
+            step_idx,
+            0,
+            [],
+        )
     ranked_premise_generator = premise_client.get_ranked_premise_generator(
         step, proof, proof_dp, filter_result.avail_premises
     )
@@ -38,7 +45,11 @@ def eval_step_premises(
             hits_on.append(i + 1)
             if len(premises_to_cover) == 0:
                 break
-    return PremiseStepResult(step_idx, num_pos_premises, hits_on)
+    return PremiseStepResult(
+        step_idx,
+        num_pos_premises,
+        hits_on,
+    )
 
 
 def eval_proof_premises(
@@ -64,8 +75,8 @@ if __name__ == "__main__":
     parser.add_argument("premise_eval_queue_loc")
 
     args = parser.parse_args(sys.argv[1:])
-    eval_pkl_conf_loc = Path(args.eval_pkl_conf_loc)
-    queue_loc = Path(args.queue_loc)
+    eval_pkl_conf_loc = Path(args.premise_eval_pkl_conf_loc)
+    queue_loc = Path(args.premise_eval_queue_loc)
     assert eval_pkl_conf_loc.exists()
     assert queue_loc.exists()
     q = FileQueue[tuple[FileInfo, int]](queue_loc)
@@ -78,6 +89,7 @@ if __name__ == "__main__":
     while True:
         try:
             file_info, idx = q.get()
+            _logger.info(f"Evaluating file: {file_info.file}, proof: {idx}")
         except EmptyFileQueueError:
             break
 
@@ -92,3 +104,5 @@ if __name__ == "__main__":
                 idx,
             ),
         )
+        worker_process.start()
+        worker_process.join()
