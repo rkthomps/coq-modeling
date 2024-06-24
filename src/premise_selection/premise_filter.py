@@ -20,6 +20,15 @@ class PremiseFilterConf:
     non_coq_excludes: list[str]
     general_excludes: list[str]
 
+    def __hash__(self) -> int:
+        return hash(
+            (
+                tuple(self.coq_excludes),
+                tuple(self.non_coq_excludes),
+                tuple(self.general_excludes),
+            )
+        )
+
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseFilterConf:
         return cls(

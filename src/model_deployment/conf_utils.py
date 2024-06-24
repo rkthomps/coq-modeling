@@ -1,6 +1,9 @@
 from typing import Any, Optional
+import time
 import os
 import socket
+import requests
+import subprocess
 from pathlib import Path
 import yaml
 import socket
@@ -45,7 +48,7 @@ from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
 from model_deployment.run_whole_proofs import TestWholeProofsConf
 from evaluation.eval_utils import EvalConf
-from util.util import get_basic_logger
+from util.util import get_basic_logger, read_port_map
 from util.util import FlexibleUrl, get_flexible_url
 from util.constants import (
     PREMISE_DATA_CONF_NAME,
@@ -53,7 +56,6 @@ from util.constants import (
     DATA_CONF_NAME,
     CLEAN_CONFIG,
     SERVER_LOC,
-    PORT_MAP_LOC,
 )
 
 _logger = get_basic_logger(__name__)
@@ -316,11 +318,52 @@ def lm_dataset_conf_to_client_conf(
         formatter_commands.extend(commands)
     new_dataset_conf = LmDatasetConf(
         conf.data_split_loc,
+        conf.data_loc,
         conf.sentence_db_loc,
         conf.output_dataset_loc,
         lm_confs,
     )
     return new_dataset_conf, next_server_num, formatter_commands
+
+
+def start_servers(commands: list[StartModelCommand]) -> list[subprocess.Popen[bytes]]:
+    procs: list[subprocess.Popen[bytes]] = []
+    for command in commands:
+        p = subprocess.Popen(command.to_list())
+        procs.append(p)
+    return procs
+
+
+def wait_for_servers(next_server_num: int) -> dict[int, tuple[str, int]]:
+    """Returns a map of port -> ip addr"""
+    session = requests.Session()
+    urls: list[str] = []
+
+    cur_port_map = read_port_map()
+    total_time_slept = 0
+    while len(cur_port_map) < next_server_num:
+        if 1 < total_time_slept and total_time_slept % 10 == 0:
+            _logger.info(
+                f"Port map of length {len(cur_port_map)} not complete after {total_time_slept}."
+            )
+        time.sleep(1)
+        total_time_slept += 1
+        cur_port_map = read_port_map()
+
+    for port_incr in range(next_server_num):
+        ip_addr, port = cur_port_map[port_incr]
+        url = get_flexible_url(port_incr, ip_addr, port).get_url()
+        urls.append(url)
+
+    _logger.info("Waiting for urls: " + str(urls))
+    for server_url in urls:
+        while True:
+            try:
+                session.get(server_url)
+                break
+            except requests.exceptions.RequestException:
+                continue
+    return cur_port_map
 
 
 def get_tactic_server_alias(conf: FidTacticGenConf | DecoderTacticGenConf) -> str:
@@ -441,6 +484,7 @@ def to_client_conf(
             )
             reraank_data_conf = RerankDatasetConf(
                 conf.data_split_loc,
+                conf.data_loc,
                 conf.sentence_db_loc,
                 conf.output_dataset_loc,
                 rerank_formatter_conf,

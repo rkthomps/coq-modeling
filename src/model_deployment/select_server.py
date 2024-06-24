@@ -5,7 +5,7 @@ from pathlib import Path
 
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
-from util.constants import SERVER_LOC, PORT_MAP_LOC
+from util.constants import SERVER_LOC
 
 import logging
 
@@ -19,6 +19,8 @@ from tactic_gen.lm_example import LmExample
 from data_management.dataset_file import Sentence
 from model_deployment.premise_model_wrapper import SelectWrapper
 from model_deployment.conf_utils import get_ip, get_free_port
+
+from util.util import get_port_map_loc
 
 wrapper: Optional[SelectWrapper] = None
 
@@ -57,9 +59,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("checkpoint_loc", help="Location of select model checkpoint.")
     parser.add_argument("--vector_db_loc", help="Location of vector database.")
-    parser.add_argument(
-        "port", type=int, help="Port on which to run the select server."
-    )
+    parser.add_argument("id", type=int, help="Id of the model.")
+    parser.add_argument("pid", type=int, help="Pid of the parent process.")
     args = parser.parse_args(sys.argv[1:])
 
     wrapper = SelectWrapper.from_checkpoint(args.checkpoint_loc, args.vector_db_loc)
@@ -68,7 +69,8 @@ if __name__ == "__main__":
     ip = get_ip()
     port = get_free_port()
     log.warning(f"SERVING AT {ip}; {port}")
-    port_map_loc = Path(PORT_MAP_LOC)
+
+    port_map_loc = get_port_map_loc(args.pid)
     assert port_map_loc.exists()
 
     with port_map_loc.open("a") as fout:

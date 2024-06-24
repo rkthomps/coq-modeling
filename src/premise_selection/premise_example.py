@@ -74,7 +74,6 @@ class PremiseTrainingExample:
         context_format: Type[ContextFormat],
         premise_format: Type[PremiseFormat],
         premise_filter: PremiseFilter,
-        split: Split,
     ) -> list[PremiseTrainingExample]:
         in_file_neg_prems: list[str] = []
         out_of_file_neg_prems: list[str] = []

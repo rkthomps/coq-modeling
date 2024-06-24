@@ -9,7 +9,7 @@ import datetime
 from dataclasses import dataclass
 
 from coqpyt.coq.base_file import CoqFile
-from util.constants import PORT_MAP_LOC, TMP_LOC
+from util.constants import PORT_MAP_NAME, TMP_LOC
 
 
 @dataclass
@@ -32,17 +32,22 @@ class FlexibleUrl:
         return cls(yaml_data["id"], yaml_data["protocol"], yaml_data["ip"], port)
 
 
+def get_port_map_loc(pid: int) -> Path:
+    port_map_loc = TMP_LOC / (PORT_MAP_NAME + f"-{pid}")
+    return port_map_loc
+
+
 def clear_port_map():
-    port_map_loc = Path(PORT_MAP_LOC)
+    port_map_loc = get_port_map_loc(os.getpid())
     os.makedirs(TMP_LOC, exist_ok=True)
     if os.path.exists(port_map_loc):
-        os.remove(PORT_MAP_LOC)
+        os.remove(port_map_loc)
     with port_map_loc.open("w") as _:
         pass
 
 
 def read_port_map() -> dict[int, tuple[str, int]]:
-    port_map_loc = Path(PORT_MAP_LOC)
+    port_map_loc = get_port_map_loc(os.getpid())
     port_map: dict[int, tuple[str, int]] = {}
     with port_map_loc.open("r") as fin:
         for line in fin:

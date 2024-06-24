@@ -9,7 +9,8 @@ from werkzeug.serving import run_simple
 import requests
 from jsonrpc import JSONRPCResponseManager, dispatcher
 
-from util.constants import SERVER_LOC, PORT_MAP_LOC
+from util.constants import SERVER_LOC
+from util.util import get_port_map_loc
 
 import logging
 
@@ -44,6 +45,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("checkpoint_loc", help="Location of select model checkpoint.")
     parser.add_argument("id", type=int, help="Model id (important for evaluation).")
+    parser.add_argument("pid", type=int, help="Id of the parent process.")
 
     args = parser.parse_args(sys.argv[1:])
 
@@ -53,7 +55,7 @@ if __name__ == "__main__":
     ip = get_ip()
     port = get_free_port()
     log.warning(f"SERVING AT {ip}; {port}")
-    port_map_loc = Path(PORT_MAP_LOC)
+    port_map_loc = get_port_map_loc(args.pid)
     assert port_map_loc.exists()
 
     with port_map_loc.open("a") as fout:

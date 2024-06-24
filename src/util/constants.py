@@ -1,5 +1,3 @@
-
-
 from pathlib import Path
 
 TMP_LOC = Path("tmp")
@@ -21,5 +19,5 @@ SEARCH_DIR_NAME = ".cm-search"
 
 CLEAN_CONFIG = "conf.pkl"
 SERVER_LOC = "./servers"
-PORT_MAP_LOC = TMP_LOC / "port-map"
+PORT_MAP_NAME = "port-map"
 QUEUE_NAME = "queue"

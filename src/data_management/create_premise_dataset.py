@@ -89,7 +89,6 @@ def get_examples_from_file(
                 contex_format_type,
                 premise_format_type,
                 filter,
-                split,
             )
             for example in step_examples:
                 q.put(example)

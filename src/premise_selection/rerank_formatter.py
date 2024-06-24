@@ -22,6 +22,9 @@ class BasicRerankFormatterConf:
     consider_num: int
     negatives_per_positive: int
 
+    def __hash__(self) -> int:
+        return hash(str(self))
+
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> BasicRerankFormatterConf:
         premise_conf = select_conf_from_yaml(yaml_data["select_conf"])
@@ -38,6 +41,9 @@ class ProofRerankFormatterConf:
     consider_num: int
     include_proofs_num: int
     negatives_per_positive: int
+
+    def __hash__(self) -> int:
+        return hash(str(self))
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofRerankFormatterConf:

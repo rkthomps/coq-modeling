@@ -5,7 +5,9 @@ from typing import Any
 from pathlib import Path
 from dataclasses import dataclass
 
-from tactic_gen.lm_example import FormatterConf, formatter_conf_from_yaml
+from premise_selection.premise_example import PremiseTrainingExample
+from tactic_gen.lm_example import FormatterConf, formatter_conf_from_yaml, LmExample
+from premise_selection.rerank_example import RerankExample
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
 from premise_selection.rerank_formatter import (
     RerankFormatter,
@@ -18,6 +20,7 @@ from premise_selection.rerank_formatter import (
 class LmDatasetConf:
     ALIAS = "tactic"
     data_split_loc: Path
+    data_loc: Path
     sentence_db_loc: Path
     output_dataset_loc: Path
     lm_formatter_confs: list[FormatterConf]
@@ -27,6 +30,7 @@ class LmDatasetConf:
         assert 0 < len(yaml_data["lm_formatters"])
         return cls(
             Path(yaml_data["data_split_loc"]),
+            Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["output_dataset_loc"]),
             [formatter_conf_from_yaml(f) for f in yaml_data["lm_formatters"]],
@@ -65,6 +69,7 @@ class SelectDatasetConf:
 class RerankDatasetConf:
     ALIAS = "rerank"
     data_split_loc: Path
+    data_loc: Path
     sentence_db_loc: Path
     output_dataset_loc: Path
     rerank_formatter_conf: RerankFormatterConf
@@ -73,14 +78,16 @@ class RerankDatasetConf:
     def from_yaml(cls, yaml_data: Any) -> RerankDatasetConf:
         return cls(
             Path(yaml_data["data_split_loc"]),
+            Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["output_dataset_loc"]),
             rerank_conf_from_yaml(yaml_data["rerank_formatter"]),
         )
 
 
-
 DatasetConf = LmDatasetConf | SelectDatasetConf | RerankDatasetConf
+DatasetExample = LmExample | PremiseTrainingExample | RerankExample
+
 
 def data_conf_from_yaml(yaml_data: Any) -> DatasetConf:
     attempted_alias = yaml_data["alias"]

@@ -92,6 +92,9 @@ class GeneralFormatterConf:
     num_premises: Optional[int]
     num_proofs: Optional[int]
 
+    def __hash__(self) -> int:
+        return hash(str(self))
+
     def merge(self, other: GeneralFormatterConf) -> GeneralFormatterConf:
         if self.premise_client_conf is None:
             return GeneralFormatterConf(
