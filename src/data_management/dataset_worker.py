@@ -1,5 +1,6 @@
 from typing import Optional
 import sys, os
+import yaml
 import argparse
 from pathlib import Path
 import functools
@@ -40,6 +41,7 @@ from model_deployment.conf_utils import (
 
 from util.file_queue import FileQueue, EmptyFileQueueError
 from util.constants import TMP_LOC, PORT_MAP_NAME
+from util.util import clear_port_map
 
 
 @functools.cache
@@ -127,7 +129,7 @@ def examples_from_file(
 def write_examples(
     examples: list[DatasetExample], file_info: FileInfo, dataset_conf: DatasetConf
 ) -> None:
-    out_loc = dataset_conf.output_dataset_loc / (file_info.file + ".jsonl")
+    out_loc = dataset_conf.output_dataset_loc / (file_info.dp_name + ".jsonl")
     json_examples = [e.to_json() for e in examples]
     assert not out_loc.exists()
     with jsonlines.open(out_loc, "w") as fout:
@@ -153,7 +155,11 @@ if __name__ == "__main__":
     assert dataset_conf_loc.exists()
     assert queue_loc.exists()
 
-    dataset_conf = data_conf_from_yaml(dataset_conf_loc)
+    with dataset_conf_loc.open("r") as fin:
+        yaml_conf = yaml.safe_load(fin)
+
+    dataset_conf = data_conf_from_yaml(yaml_conf)
+    clear_port_map()
     dataset_client_conf, num_servers, server_commands = to_client_conf(dataset_conf, 0)
     server_procs = start_servers(server_commands)
     port_map = wait_for_servers(num_servers)

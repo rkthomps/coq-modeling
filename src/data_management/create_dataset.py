@@ -17,6 +17,7 @@ WORKER_SBATCH_LOC = Path("./slurm/jobs/data-worker.sh")
 
 def fill_queue(queue_loc: Path, data_conf: DatasetConf) -> None:
     q = FileQueue(queue_loc)
+    q.initialize()
     data_split = DataSplit.load(data_conf.data_split_loc)
     all_files = (
         data_split.get_file_list(Split.TRAIN)

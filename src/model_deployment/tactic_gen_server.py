@@ -33,7 +33,6 @@ def get_recs(example_json: Any, n: int, current_proof: str, beam: bool) -> Model
     start = time.time()
     result = wrapper.get_recs(example, n, current_proof, beam).to_json()
     end = time.time()
-    _logger.info(f"Raw model time: {end - start}")
     return result
 
 
