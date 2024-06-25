@@ -1,21 +1,20 @@
 from typing import Any, Optional
 
+import random
+import json
 import jsonlines
-from transformers import AutoTokenizer, GPT2Tokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizer
 from torch.utils.data import Dataset, DataLoader
 import torch
 from pathlib import Path
 
-from data_management.splits import (
-    Split,
-    split_file_path,
-)
+from data_management.jsonl_utils import ExampleDB
 from premise_selection.premise_example import PremiseTrainingExample
 from premise_selection.training_types import PremiseBatch
 
 
 def tokenize_strings(
-    tokenizer: GPT2Tokenizer, strings: list[str], max_seq_len: int
+    tokenizer: PreTrainedTokenizer, strings: list[str], max_seq_len: int
 ) -> Any:
     return tokenizer(
         strings,
@@ -26,33 +25,35 @@ def tokenize_strings(
     )
 
 
-@typechecked
 class PremiseSelectionDataset(Dataset):
     def __init__(
         self,
-        premise_file_path: Path,
-        tokenizer: GPT2Tokenizer,
+        data_path: Path,
+        tokenizer: PreTrainedTokenizer,
         max_seq_len: int,
-        max_num_examples: Optional[int] = None,
+        max_n_examples: Optional[int] = None,
     ) -> None:
         super(PremiseSelectionDataset, self).__init__()
+        self.edb = ExampleDB.load(data_path)
+        __shuffled_list = list(range(self.edb.size()))
+        random.seed(0)
+        random.shuffle(__shuffled_list)
+        self.edb_map = dict(zip(range(self.edb.size()), __shuffled_list))
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
-        self.examples: list[PremiseTrainingExample] = []
-
-        with jsonlines.open(premise_file_path) as fin:
-            for i, obj in enumerate(fin):
-                if max_num_examples and i >= max_num_examples:
-                    break
-                if i % 10000 == 0:
-                    print(f"\rLoading example: {i}", end="")
-                self.examples.append(PremiseTrainingExample.from_json(obj))
+        self.max_n_examples = max_n_examples
 
     def __len__(self) -> int:
-        return len(self.examples)
+        if self.max_n_examples is not None:
+            return self.max_n_examples
+        return self.edb.size()
 
-    def __getitem__(self, index: int) -> PremiseTrainingExample:
-        return self.examples[index]
+    def __getitem__(self, idx: int) -> PremiseTrainingExample:
+        target_idx = self.edb_map[idx]
+        target_example = PremiseTrainingExample.from_json(
+            json.loads(self.edb.retrieve(target_idx + 1))
+        )
+        return target_example
 
     def collate(self, examples: list[PremiseTrainingExample]) -> Any:
         batch_size = len(examples)

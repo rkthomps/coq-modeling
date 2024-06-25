@@ -20,6 +20,9 @@ def consolidate(
     data_conf: DatasetConf, input_dataset_loc: Path, output_loc: Path
 ) -> None:
     tmp_output_loc = Path("/tmp") / str(os.getpid()) / output_loc.name
+    if tmp_output_loc.exists():
+        shutil.rmtree(tmp_output_loc)
+    os.makedirs(tmp_output_loc, exist_ok=True)
     shutil.copy(input_dataset_loc / "conf.yaml", tmp_output_loc / DATA_CONF_NAME)
     data_split = DataSplit.load(data_conf.data_split_loc)
     for split in Split:
@@ -28,8 +31,12 @@ def consolidate(
         seen_strs: set[int] = set()
         split_num_duplicates = 0
         for file in tqdm(data_split.get_file_list(split)):
-            input_file_loc = input_dataset_loc / (file.dp_name + ".jsonl")
-            assert input_file_loc.exists()
+            input_file_loc = input_dataset_loc / file.dp_name
+            if not input_file_loc.exists():
+                _logger.warning(
+                    f"Couldn't find file {input_file_loc} during consolidation."
+                )
+                continue
             batch: list[tuple[str,]] = []
             with input_file_loc.open("r") as fin:
                 for line in fin:
@@ -68,9 +75,6 @@ if __name__ == "__main__":
 
     output_loc = Path(args.output_loc)
     if output_loc.exists():
-        answer = input(f"{output_loc} already exists. Overwrite? y/n: ")
-        if answer.lower() != "y":
-            raise FileExistsError(f"{output_loc}")
-        shutil.rmtree(output_loc)
+        raise FileExistsError(f"{output_loc}")
 
-    os.makedirs(output_loc)
+    consolidate(dataset_conf, dataset_loc, output_loc)

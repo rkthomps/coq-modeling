@@ -13,27 +13,6 @@ from premise_selection.premise_formatter import (
 from premise_selection.premise_filter import PremiseFilter
 
 
-class ReRankExample:
-    def __init__(self, premise: str, context: str, label: bool) -> None:
-        self.premise = premise
-        self.context = context
-        self.label = label
-
-    def to_json(self) -> Any:
-        return {
-            "premise": self.premise,
-            "context": self.context,
-            "label": self.label,
-        }
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> ReRankExample:
-        premise = json_data["premise"]
-        context = json_data["context"]
-        label = json_data["label"]
-        return cls(premise, context, label)
-
-
 class PremiseTrainingExample:
     def __init__(
         self,
@@ -77,6 +56,7 @@ class PremiseTrainingExample:
     ) -> list[PremiseTrainingExample]:
         in_file_neg_prems: list[str] = []
         out_of_file_neg_prems: list[str] = []
+        assert num_in_file_negatives < total_num_negatives
         filter_result = premise_filter.get_pos_and_avail_premises(
             step, proof, dataset_file
         )
@@ -96,17 +76,15 @@ class PremiseTrainingExample:
 
         if len(in_file_neg_prems) + len(out_of_file_neg_prems) < total_num_negatives:
             return []
-        if len(out_of_file_neg_prems) < total_num_negatives:
-            out_of_file_negs_to_sample = len(out_of_file_neg_prems)
-            in_file_negs_to_sample = total_num_negatives - out_of_file_negs_to_sample
+        if num_in_file_negatives + len(out_of_file_neg_prems) < total_num_negatives:
+            in_file_negs_to_sample = min(total_num_negatives, len(in_file_neg_prems))
         else:
             in_file_negs_to_sample = min(num_in_file_negatives, len(in_file_neg_prems))
-            out_of_file_negs_to_sample = total_num_negatives - in_file_negs_to_sample
-
-        in_file_negs_to_sample = min(num_in_file_negatives, len(in_file_neg_prems))
         out_of_file_negs_to_sample = total_num_negatives - in_file_negs_to_sample
-        if out_of_file_negs_to_sample > len(out_of_file_neg_prems):
-            return []
+        assert 0 <= in_file_negs_to_sample <= len(in_file_neg_prems)
+        assert 0 <= out_of_file_negs_to_sample <= len(out_of_file_neg_prems)
+        assert in_file_negs_to_sample + out_of_file_negs_to_sample == total_num_negatives
+
         training_examples: list[PremiseTrainingExample] = []
         formatted_context = context_format.format(step, proof)
         for pos_prem in formatted_pos_prems:

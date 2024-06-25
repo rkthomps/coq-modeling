@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import random
 from typing import Any, Optional
 from pathlib import Path
 import json
@@ -397,7 +398,12 @@ class LmDataset(Dataset):
         hard_seq_len: int,
         max_n_examples: Optional[int] = None,
     ) -> None:
+        super(LmDataset, self).__init__()
         self.edb = ExampleDB.load(data_path)
+        __shuffled_list = list(range(self.edb.size()))
+        random.seed(0)
+        random.shuffle(__shuffled_list)
+        self.edb_map = dict(zip(range(self.edb.size()), __shuffled_list))
         self.raw_examples: list[LmExample] = []
         self.collator = DataCollatorForCompletionOnlyLM(
             response_template=NEWLINE_RESPONSE_TEMPLATE,
@@ -415,7 +421,10 @@ class LmDataset(Dataset):
         return self.edb.size()
 
     def __getitem__(self, idx: int) -> Any:
-        target_lm_example = LmExample.from_json(json.loads(self.edb.retrieve(idx + 1)))
+        target_idx = self.edb_map[idx]
+        target_lm_example = LmExample.from_json(
+            json.loads(self.edb.retrieve(target_idx + 1))
+        )
         clean_example = self.example_collator.collate(self.tokenizer, target_lm_example)
         return self.tokenizer(
             clean_example,

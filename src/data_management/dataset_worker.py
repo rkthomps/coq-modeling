@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 import functools
 import jsonlines
+import multiprocessing as mp
 
 from data_management.dataset_file import DatasetFile
 from data_management.splits import FileInfo
@@ -129,7 +130,7 @@ def examples_from_file(
 def write_examples(
     examples: list[DatasetExample], file_info: FileInfo, dataset_conf: DatasetConf
 ) -> None:
-    out_loc = dataset_conf.output_dataset_loc / (file_info.dp_name + ".jsonl")
+    out_loc = dataset_conf.output_dataset_loc / file_info.dp_name
     json_examples = [e.to_json() for e in examples]
     assert not out_loc.exists()
     with jsonlines.open(out_loc, "w") as fout:
@@ -172,7 +173,11 @@ if __name__ == "__main__":
     while True:
         try:
             file_info = queue.get()
-            handle_file(file_info, dataset_client_conf, sentence_db)
+            worker_process = mp.Process(
+                target=handle_file, args=(file_info, dataset_client_conf, sentence_db)
+            )
+            worker_process.start()
+            worker_process.join()
         except EmptyFileQueueError:
             break
 

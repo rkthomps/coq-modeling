@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 from yaml import load, Loader
-from transformers import TrainingArguments, PreTrainedTokenizer 
+from transformers import TrainingArguments, PreTrainedTokenizer
 
 
 from util.constants import (
@@ -18,7 +18,12 @@ from util.constants import (
     REQS_NAME,
     GIT_NAME,
     TRAINING_CONF_NAME,
+    TMP_LOC,
 )
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
+
 
 def allocate_tokens(
     tokenizer: PreTrainedTokenizer, s: str, allowance: int, truncate_front: bool = True
@@ -29,6 +34,7 @@ def allocate_tokens(
     else:
         to_add = tokens[:allowance]
     return tokenizer.decode(to_add, skip_special_tokens=True), len(to_add)
+
 
 def load_config(path: str) -> dict[str, Any]:
     with open(path, "r") as fin:
@@ -44,12 +50,12 @@ def copy_configs(conf_path: Path, conf: dict[str, Any]) -> None:
     lm_data_conf = data_path / DATA_CONF_NAME
     premise_data_conf = data_path / PREMISE_DATA_CONF_NAME
     goal_data_conf = data_path / GOAL_DATA_CONF_NAME
-    rerank_data_conf = data_path / RERANK_DATA_CONF_NAME 
+    rerank_data_conf = data_path / RERANK_DATA_CONF_NAME
     if lm_data_conf.exists():
         shutil.copy(lm_data_conf, output_dir / DATA_CONF_NAME)
     elif premise_data_conf.exists():
         shutil.copy(premise_data_conf, output_dir / PREMISE_DATA_CONF_NAME)
-    elif goal_data_conf.exists(): 
+    elif goal_data_conf.exists():
         shutil.copy(goal_data_conf, output_dir / GOAL_DATA_CONF_NAME)
     else:
         shutil.copy(rerank_data_conf, output_dir / RERANK_DATA_CONF_NAME)
@@ -72,7 +78,7 @@ def make_output_dir(conf: dict[str, Any]) -> None:
             print(f"{output_dir} already exists.")
             exit(1)
     else:
-        os.makedirs(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
 
 
 def get_required_arg(key: str, conf: dict[str, Any]) -> Any:
@@ -87,6 +93,20 @@ def get_optional_arg(key: str, conf: dict[str, Any], default: Any) -> Any:
         print(f"{key} not found in configuration. Defaulting to {default}")
         return default
     return conf[key]
+
+
+def get_train_val_path(data_path: Path) -> tuple[Path, Path]:
+    tmp_path = TMP_LOC / data_path.name
+    if tmp_path.exists():
+        train_path = tmp_path / "train.db"
+        val_path = tmp_path / "val.db"
+        _logger.info(f"Using tmp data at {tmp_path}")
+        return train_path, val_path
+    else:
+        train_path = data_path / "train.db"
+        val_path = data_path / "val.db"
+        _logger.info(f"Using data at {data_path}")
+        return train_path, val_path
 
 
 def get_training_args(

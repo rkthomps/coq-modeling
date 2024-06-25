@@ -22,7 +22,7 @@ from premise_selection.premise_vector_db import PremiseVectorDB
 from premise_selection.model import PremiseRetriever
 from premise_selection.premise_filter import PremiseFilter
 from premise_selection.rerank_model import PremiseReranker
-from premise_selection.datamodule import tokenize_strings
+from premise_selection.select_data import tokenize_strings
 from premise_selection.rerank_datamodule import collate_examples
 from premise_selection.rerank_example import RerankExample
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence

@@ -6,7 +6,7 @@ from typing import Any, Optional
 from pathlib import Path
 
 from data_management.splits import split_file_path, Split
-from premise_selection.datamodule import PremiseSelectionDataset
+from premise_selection.select_data import PremiseSelectionDataset
 from premise_selection.model import PremiseRetriever, PremiseRetrieverConfig
 from util.constants import PREMISE_DATA_CONF_NAME
 
@@ -17,6 +17,7 @@ from util.train_utils import (
     get_training_args,
     make_output_dir,
     copy_configs,
+    get_train_val_path,
 )
 
 import transformers
@@ -49,12 +50,11 @@ def get_datasets(
     max_seq_len: int,
 ) -> tuple[PremiseSelectionDataset, PremiseSelectionDataset]:
     data_path = Path(get_required_arg("data_path", conf))
-    # num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
-    train_path = split_file_path(data_path, Split.TRAIN)
+    num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
+    train_path, val_path = get_train_val_path(data_path)
     train_dataset = PremiseSelectionDataset(train_path, tokenizer, max_seq_len)
-    val_path = split_file_path(data_path, Split.VAL)
     val_dataset = PremiseSelectionDataset(
-        val_path, tokenizer, max_seq_len, max_num_examples=10000
+        val_path, tokenizer, max_seq_len, max_n_examples=num_eval_examples
     )
     return train_dataset, val_dataset
 

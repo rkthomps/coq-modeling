@@ -1,16 +1,10 @@
 from __future__ import annotations
 from typing import Any
 
-import sys, os
-import ipdb
-import re
 from enum import Enum
 
 from transformers import (
-    GPT2Tokenizer,
     OPTModel,
-    get_cosine_schedule_with_warmup,
-    T5ForConditionalGeneration,
 )
 import torch
 import torch.nn.functional as F
@@ -18,7 +12,7 @@ from yaml import load, Loader
 
 from transformers import PreTrainedModel, PretrainedConfig
 from premise_selection.training_types import PremiseBatch
-from premise_selection.datamodule import tokenize_strings
+from premise_selection.select_data import tokenize_strings
 
 
 class PremiseRetrieverConfig(PretrainedConfig):

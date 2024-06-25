@@ -17,7 +17,7 @@ from yaml import load, Loader
 
 from transformers import OPTModel, GPT2Tokenizer, PreTrainedModel, PretrainedConfig
 from premise_selection.training_types import PremiseBatch
-from premise_selection.datamodule import tokenize_strings
+from premise_selection.select_data import tokenize_strings
 
 
 class PremiseRerankerConfig(PretrainedConfig):

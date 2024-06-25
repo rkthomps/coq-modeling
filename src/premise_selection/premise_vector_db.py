@@ -18,7 +18,7 @@ from yaml import load, Loader
 from data_management.dataset_file import Sentence
 from data_management.sentence_db import SentenceDB, DBSentence
 from premise_selection.model import PremiseRetriever
-from premise_selection.datamodule import tokenize_strings
+from premise_selection.select_data import tokenize_strings
 from premise_selection.premise_formatter import PremiseFormat, PREMISE_ALIASES
 from util.train_utils import get_required_arg
 from util.constants import PREMISE_DATA_CONF_NAME, TRAINING_CONF_NAME

@@ -56,12 +56,13 @@ def start_workers(
     else:
         worker_sbatch = (
             "#!/bin/bash\n"
-            f"#SBATCH -p cpu-preempt\n"
+            f"#SBATCH -p cpu\n"
             f"#SBATCH -c {n_threads_per_worker}\n"
             f"#SBATCH -t {timeout}\n"
             f"#SBATCH --array=0-{n_workers - 1}\n"
             f"#SBATCH --mem=16G\n"
-            f"#SBATCH -o slurm/out/slurm-prove-%j.out\n"
+            f"#SBATCH -o slurm/out/slurm-{data_conf.output_dataset_loc.name}-%j.out\n"
+            f"#SBATCH --job-name={data_conf.output_dataset_loc.name}\n"
             f"sbcast {data_conf.sentence_db_loc} /tmp/sentences.db\n"
             f"source venv/bin/activate\n"
             f"python3 src/data_management/dataset_worker.py {conf_loc} {queue_loc}\n"
@@ -85,6 +86,8 @@ def run(
 ):
     time_str = datetime.now().strftime("%m%d%H%M%S")
     queue_loc = TMP_LOC / (QUEUE_NAME + "-" + time_str)
+    new_conf_loc = TMP_LOC / (conf_loc.name + "-" + time_str)
+    shutil.copy(conf_loc, new_conf_loc)
     fill_queue(queue_loc, data_conf)
     start_workers(
         data_conf,
@@ -93,7 +96,7 @@ def run(
         n_devices_per_node,
         n_workers,
         n_threads_per_worker,
-        conf_loc,
+        new_conf_loc,
         queue_loc,
     )
 

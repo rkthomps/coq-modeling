@@ -37,6 +37,7 @@ from util.train_utils import (
     load_config,
     make_output_dir,
     copy_configs,
+    get_train_val_path,
     TRAINING_CONF_NAME,
     REQS_NAME,
     GIT_NAME,
@@ -86,20 +87,6 @@ def get_model(model_name: str) -> PreTrainedModel:
     # https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/inference/quantization/quantization.py
     # https://github.com/microsoft/DeepSpeedExamples/tree/master/inference/huggingface/zero_inference
     return model
-
-
-def get_train_val_path(data_path: Path) -> tuple[Path, Path]:
-    tmp_path = Path("/tmp") / data_path.name
-    if tmp_path.exists():
-        train_path = tmp_path / "train.db"
-        val_path = tmp_path / "val.db"
-        _logger.info(f"Using tmp data at {tmp_path}")
-        return train_path, val_path
-    else:
-        train_path = data_path / "train.db"
-        val_path = data_path / "val.db"
-        _logger.info(f"Using data at {data_path}")
-        return train_path, val_path
 
 
 def get_datasets(
