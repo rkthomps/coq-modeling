@@ -27,7 +27,7 @@ from evaluation.eval_utils import (
 from data_management.splits import FileInfo
 
 from util.constants import CLEAN_CONFIG, TMP_LOC, QUEUE_NAME
-from util.util import get_basic_logger, clear_port_map
+from util.util import get_basic_logger, clear_port_map, make_executable
 from util.file_queue import FileQueue
 
 _logger = get_basic_logger(__name__)
@@ -36,12 +36,6 @@ TACTIC_SERVER_LOC = Path("./src/model_deployment/tactic_gen_server.py")
 RUN_MODELS_LOC = Path("./slurm/jobs/run-models.sh")
 GPU_SBATCH_LOC = Path("./slurm/jobs/run-gpus.sh")
 PROOF_SBATCH_LOC = Path("./slurm/jobs/run-proofs.sh")
-
-
-def make_executable(p: Path):
-    assert p.exists()
-    st = os.stat(p)
-    os.chmod(p, st.st_mode | stat.S_IEXEC)
 
 
 def start_servers_and_update_conf(
@@ -195,7 +189,7 @@ if __name__ == "__main__":
     assert isinstance(n_threads_per_worker, int)
 
     with conf_loc.open("r") as fin:
-        conf = yaml.load(fin, Loader=yaml.Loader) 
+        conf = yaml.load(fin, Loader=yaml.Loader)
     eval_conf = EvalConf.from_yaml(conf)
     if eval_conf.save_loc.exists():
         answer = input(f"{eval_conf.save_loc} already exists. Overwrite? y/n: ")

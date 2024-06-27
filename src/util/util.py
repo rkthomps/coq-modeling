@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional
 from typing import Any
 import logging
+import stat
 import os
 import re
 from pathlib import Path, Path
@@ -44,6 +45,12 @@ def clear_port_map():
         os.remove(port_map_loc)
     with port_map_loc.open("w") as _:
         pass
+
+
+def make_executable(p: Path):
+    assert p.exists()
+    st = os.stat(p)
+    os.chmod(p, st.st_mode | stat.S_IEXEC)
 
 
 def read_port_map() -> dict[int, tuple[str, int]]:

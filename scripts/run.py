@@ -17,6 +17,7 @@ from model_deployment.conf_utils import (
     get_ip,
     update_ips,
     get_flexible_url,
+    wait_for_servers,
 )
 
 from model_deployment.observe_premise_selection import PremiseObserveConf
@@ -24,15 +25,8 @@ from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
 from model_deployment.run_whole_proofs import TestWholeProofsConf
-from evaluation.evaluate import EvalConf
-
-from premise_selection.evaluate import PremiseEvalConf
-from data_management.create_lm_dataset import LmDatasetConf
-from data_management.create_rerank_dataset import RerankDatasetConf
-from data_management.create_premise_dataset import SelectDataConfig
-
-from util.constants import SERVER_LOC, CLEAN_CONFIG, PORT_MAP_LOC
-from util.util import clear_port_map, read_port_map
+from util.constants import SERVER_LOC, CLEAN_CONFIG
+from util.util import clear_port_map, read_port_map, get_port_map_loc
 
 
 @dataclass
@@ -50,14 +44,6 @@ COMMANDS = {
     "run-dev-whole": Command(
         TestWholeProofsConf, Path("src/model_deployment/run_whole_proofs.py")
     ),
-    "select-data": Command(
-        SelectDataConfig, Path("src/data_management/create_premise_dataset.py")
-    ),
-    "rerank-data": Command(
-        RerankDatasetConf, Path("src/data_management/create_rerank_dataset.py")
-    ),
-    "lm-data": Command(LmDatasetConf, Path("src/data_management/create_lm_dataset.py")),
-    "eval-premise": Command(PremiseEvalConf, Path("src/premise_selection/evaluate.py")),
     "observe-premise": Command(
         PremiseObserveConf, Path("src/model_deployment/observe_premise_selection.py")
     ),
@@ -70,38 +56,6 @@ class CommandNotFoundError(Exception):
 
 class ServerFailedError(Exception):
     pass
-
-
-def wait_for_servers(
-    num_ports: int,
-    open_processes: list[subprocess.Popen[bytes]],
-) -> dict[int, tuple[str, int]]:
-    session = requests.Session()
-    urls: list[str] = []
-
-    cur_port_map = read_port_map()
-    while len(cur_port_map) < num_ports:
-        time.sleep(1)
-        cur_port_map = read_port_map()
-        print("Cur port map:", cur_port_map)
-
-    for port_incr in range(next_server_num):
-        ip_addr, port = cur_port_map[port_incr]
-        url = get_flexible_url(port_incr, ip_addr, port).get_url()
-        urls.append(url)
-
-    assert len(open_processes) == len(urls)
-    for process, server_url in zip(started_processes, urls):
-        while True:
-            try:
-                poll_result = subprocess.Popen.poll(process)
-                if poll_result is not None:
-                    raise ServerFailedError
-                response = session.get(server_url)
-                break
-            except requests.exceptions.RequestException:
-                continue
-    return cur_port_map
 
 
 if __name__ == "__main__":
@@ -155,7 +109,7 @@ if __name__ == "__main__":
         print("Merged conf:")
         print(clean_top_level_conf)
         print("Waiting for servers to start...")
-        port_map = wait_for_servers(next_server_num, started_processes)
+        port_map = wait_for_servers(next_server_num)
         update_ips(clean_top_level_conf, port_map)
 
         with clean_conf_path.open("wb") as fout:

@@ -10,6 +10,7 @@ import hashlib
 import json
 import argparse
 import logging
+import shutil
 
 import torch
 from transformers import GPT2Tokenizer
@@ -21,7 +22,12 @@ from premise_selection.model import PremiseRetriever
 from premise_selection.select_data import tokenize_strings
 from premise_selection.premise_formatter import PremiseFormat, PREMISE_ALIASES
 from util.train_utils import get_required_arg
-from util.constants import PREMISE_DATA_CONF_NAME, TRAINING_CONF_NAME
+from util.constants import PREMISE_DATA_CONF_NAME, TRAINING_CONF_NAME, TMP_LOC
+
+from util.util import get_basic_logger
+
+
+_logger = get_basic_logger(__name__)
 
 
 @functools.lru_cache(50)
@@ -116,8 +122,15 @@ class PremiseVectorDB:
     ) -> PremiseVectorDB:
         with open(os.path.join(db_loc, cls.METADATA_LOC)) as fin:
             metadata = json.load(fin)
+        tmp_path = TMP_LOC / db_loc.name
+        if tmp_path.exists():
+            _logger.info(f"Using vector db {tmp_path}")
+            use_path = tmp_path
+        else:
+            use_path = db_loc
+
         return cls(
-            db_loc,
+            use_path,
             metadata["page_size"],
             metadata["source"],
             metadata["sdb_hash"],
@@ -166,7 +179,7 @@ class PremiseVectorDB:
             torch.save(page_embs, page_loc)
             num_written += len(sentences_to_write)
             cur_page += 1
-            print(f"Processed {num_written} out of {sdb_size}")
+            _logger.info(f"Processed {num_written} out of {sdb_size}")
         return PremiseVectorDB(db_loc, page_size, source, sdb_hash)
 
 
@@ -184,18 +197,17 @@ def batch_sentences(page_sentences: list[str], batch_size: int) -> list[list[str
 
 
 def load_retriever(
-    checkpoint_loc: str,
+    checkpoint_loc: Path,
 ) -> tuple[PremiseRetriever, GPT2Tokenizer, type[PremiseFormat], int]:
-    model_loc = os.path.dirname(checkpoint_loc)
-    data_preparation_conf = os.path.join(model_loc, PREMISE_DATA_CONF_NAME)
+    data_preparation_conf = checkpoint_loc.parent / PREMISE_DATA_CONF_NAME
     with open(data_preparation_conf, "r") as fin:
         premise_conf = load(fin, Loader=Loader)
-    model_conf_loc = os.path.join(model_loc, TRAINING_CONF_NAME)
+    model_conf_loc = checkpoint_loc.parent / TRAINING_CONF_NAME
     with open(model_conf_loc, "r") as fin:
         model_conf = load(fin, Loader=Loader)
     max_seq_len = get_required_arg("max_seq_len", model_conf)
     tokenizer = GPT2Tokenizer.from_pretrained(model_conf["model_name"])
-    premise_format_alias = premise_conf["premise_format_alias"]
+    premise_format_alias = premise_conf["premise_format_type_alias"]
     premise_format = PREMISE_ALIASES[premise_format_alias]
     retriever = PremiseRetriever.from_pretrained(checkpoint_loc)
     return retriever, tokenizer, premise_format, max_seq_len
@@ -219,7 +231,7 @@ def select_encode(
                 batch,
                 max_seq_len,
             )
-            batch_emb, _ = retriever.encode_premise(
+            batch_emb = retriever.encode_premise(
                 batch_inputs.input_ids, batch_inputs.attention_mask
             )
         batch_embs.append(batch_emb)
@@ -229,21 +241,30 @@ def select_encode(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("db_loc", help="Where to put the vector db.")
-    parser.add_argument("page_size", type=int, help="Size of a page in the db.")
+    parser.add_argument("--db_loc", help="Where to put the vector db.")
+    parser.add_argument("--page_size", type=int, help="Size of a page in the db.")
     parser.add_argument(
-        "batch_size", type=int, help="Batch size to use when making the db."
+        "--batch_size", type=int, help="Batch size to use when making the db."
     )
     parser.add_argument(
-        "select_checkpoint", help="Checkpoint to use for the select model."
+        "--select_checkpoint", help="Checkpoint to use for the select model."
     )
-    parser.add_argument("sentence_db_loc", help="Location of the sentence database")
-
+    parser.add_argument("--sentence_db_loc", help="Location of the sentence database")
     args = parser.parse_args()
 
-    retriever, tokenizer, premise_format, max_seq_len = load_retriever(
-        args.select_checkpoint
-    )
+    db_loc = Path(args.db_loc)
+    page_size = args.page_size
+    batch_size = args.batch_size
+    checkpoint_loc = Path(args.select_checkpoint)
+    sentence_db_loc = Path(args.sentence_db_loc)
+
+    if db_loc.exists():
+        raise FileExistsError(f"{db_loc}")
+
+    assert checkpoint_loc.exists()
+    assert sentence_db_loc.exists()
+
+    retriever, tokenizer, premise_format, max_seq_len = load_retriever(checkpoint_loc)
     retriever.to("cuda")
     encode_fn = functools.partial(
         select_encode,
@@ -251,14 +272,14 @@ if __name__ == "__main__":
         tokenizer,
         premise_format,
         max_seq_len,
-        args.batch_size,
+        batch_size,
     )
 
     pdb = PremiseVectorDB.create(
-        Path(args.db_loc),
-        args.page_size,
-        args.select_checkpoint,
+        Path(db_loc),
+        page_size,
+        str(checkpoint_loc),
         encode_fn,
-        Path(args.sentence_db_loc),
+        sentence_db_loc,
     )
     pdb.save()

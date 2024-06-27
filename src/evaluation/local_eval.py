@@ -21,7 +21,7 @@ from model_deployment.conf_utils import (
     StartModelCommand,
 )
 from evaluation.eval_utils import (
-    initialize_and_fill_queue,
+    initialize_and_fill_queue_proofs,
     wait_for_servers,
     EvalConf,
 )
@@ -103,7 +103,7 @@ def run(
     time_str = datetime.now().strftime("%m%d%H%M%S")
     eval_conf_loc = TMP_LOC / (CLEAN_CONFIG + "-" + time_str)
     eval_queue_loc = TMP_LOC / (QUEUE_NAME + "-" + time_str)
-    initialize_and_fill_queue(eval_queue_loc, eval_conf)
+    initialize_and_fill_queue_proofs(eval_queue_loc, eval_conf)
     server_proces = start_servers_and_update_conf(eval_conf, device_list, eval_conf_loc)
     prover_procs = start_provers(
         n_workers,

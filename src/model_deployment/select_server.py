@@ -63,7 +63,9 @@ if __name__ == "__main__":
     parser.add_argument("pid", type=int, help="Pid of the parent process.")
     args = parser.parse_args(sys.argv[1:])
 
-    wrapper = SelectWrapper.from_checkpoint(args.checkpoint_loc, args.vector_db_loc)
+    wrapper = SelectWrapper.from_checkpoint(
+        args.checkpoint_loc, Path(args.vector_db_loc)
+    )
 
     id = args.id
     ip = get_ip()

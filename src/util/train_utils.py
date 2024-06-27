@@ -5,6 +5,7 @@ import sys, os
 import shutil
 import subprocess
 from pathlib import Path
+from enum import Enum
 
 from yaml import load, Loader
 from transformers import TrainingArguments, PreTrainedTokenizer
@@ -23,6 +24,12 @@ from util.constants import (
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
+
+
+class TrainType(Enum):
+    TACTIC = 1
+    SELECT = 2
+    RERANK = 3
 
 
 def allocate_tokens(
@@ -44,21 +51,18 @@ def load_config(path: str) -> dict[str, Any]:
     return conf
 
 
-def copy_configs(conf_path: Path, conf: dict[str, Any]) -> None:
+def copy_configs(conf_path: Path, conf: dict[str, Any], train_type: TrainType) -> None:
     output_dir = Path(get_required_arg("output_dir", conf))
     data_path = Path(get_required_arg("data_path", conf))
-    lm_data_conf = data_path / DATA_CONF_NAME
-    premise_data_conf = data_path / PREMISE_DATA_CONF_NAME
-    goal_data_conf = data_path / GOAL_DATA_CONF_NAME
-    rerank_data_conf = data_path / RERANK_DATA_CONF_NAME
-    if lm_data_conf.exists():
-        shutil.copy(lm_data_conf, output_dir / DATA_CONF_NAME)
-    elif premise_data_conf.exists():
-        shutil.copy(premise_data_conf, output_dir / PREMISE_DATA_CONF_NAME)
-    elif goal_data_conf.exists():
-        shutil.copy(goal_data_conf, output_dir / GOAL_DATA_CONF_NAME)
-    else:
-        shutil.copy(rerank_data_conf, output_dir / RERANK_DATA_CONF_NAME)
+    data_conf_loc = data_path / "conf.yaml"
+    assert data_conf_loc.exists()
+    match train_type:
+        case TrainType.TACTIC:
+            shutil.copy(data_conf_loc, output_dir / DATA_CONF_NAME)
+        case TrainType.SELECT:
+            shutil.copy(data_conf_loc, output_dir / PREMISE_DATA_CONF_NAME)
+        case TrainType.RERANK:
+            shutil.copy(data_conf_loc, output_dir / RERANK_DATA_CONF_NAME)
 
     shutil.copy(conf_path, output_dir / TRAINING_CONF_NAME)
     reqs = subprocess.check_output([sys.executable, "-m", "pip", "freeze"])

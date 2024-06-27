@@ -1,15 +1,11 @@
+from __future__ import annotations
 import sys, os
 import pickle
 from pathlib import Path
 from dataclasses import dataclass
 
 from evaluation.eval_utils import PremiseProofResult, PremiseStepResult
-
-
-@dataclass
-class EvalDesc:
-    alias: str
-    path_name: str
+from evaluation.eval_analysis import EvalDesc, ProofPair
 
 
 @dataclass
@@ -43,6 +39,17 @@ class PremiseEvalData:
             num_prems_hit += len(hits_below_k)
             num_prems += r.num_premises
         return num_prems_hit / num_prems
+
+    def proof_pairs(self) -> set[ProofPair]:
+        return set([ProofPair(r.file, str(r.proof_idx)) for r in self.proof_results])
+
+    def filter(self, proofs: set[ProofPair]) -> PremiseEvalData:
+        new_results: list[VerboseStepResult] = []
+        for r in self.proof_results:
+            key = ProofPair(r.file, str(r.proof_idx))
+            if key in proofs:
+                new_results.append(r)
+        return PremiseEvalData(self.alias, new_results)
 
 
 def load_pkl_results(results_loc: Path) -> list[PremiseProofResult]:
@@ -78,3 +85,12 @@ def load_evals(eval_descs: list[EvalDesc], results_loc: Path) -> list[PremiseEva
         eval_data = PremiseEvalData(eval_desc.alias, e_total_results)
         evals.append(eval_data)
     return evals
+
+
+def get_mutual_proofs(es: list[PremiseEvalData]) -> set[ProofPair]:
+    if 0 == len(es):
+        return set()
+    mutual_proofs = es[0].proof_pairs()
+    for e in es[1:]:
+        mutual_proofs &= e.proof_pairs()
+    return mutual_proofs

@@ -17,6 +17,7 @@ from util.train_utils import (
     get_training_args,
     make_output_dir,
     copy_configs,
+    TrainType,
 )
 
 import transformers
@@ -139,6 +140,6 @@ if __name__ == "__main__":
         trainer.train(checkpoint_name)
     else:
         make_output_dir(conf)
-        copy_configs(args.yaml_config, conf)
+        copy_configs(args.yaml_config, conf, TrainType.RERANK)
         print("Training from scratch")
         trainer.train()

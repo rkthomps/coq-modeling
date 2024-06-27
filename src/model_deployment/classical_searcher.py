@@ -81,6 +81,7 @@ class ClassicalSearchConf:
     max_expansions: int
     depth_limit: int
     timeout: int
+    beam_decode: bool
     initial_proof: Optional[str]
 
     @classmethod
@@ -95,6 +96,7 @@ class ClassicalSearchConf:
             yaml_data["max_expansions"],
             yaml_data["depth_limit"],
             yaml_data["timeout"],
+            yaml_data["beam_decode"],
             initial_proof,
         )
 
@@ -109,6 +111,7 @@ class ClassicalSearcher:
         max_num_leaf_expansions: int,
         depth_limit: int,
         timeout: int,
+        beam_decode: bool,
         initial_proof: Optional[str] = None,
     ) -> None:
         self.tactic_client = tactic_client
@@ -118,6 +121,7 @@ class ClassicalSearcher:
         self.max_num_leaf_expansions = max_num_leaf_expansions
         self.depth_limit = depth_limit
         self.timeout = timeout
+        self.beam_decode = beam_decode
 
         self.stop_early = initial_proof is not None
         if initial_proof is None:
@@ -184,6 +188,7 @@ class ClassicalSearcher:
             conf.max_expansions,
             conf.depth_limit,
             conf.timeout,
+            conf.beam_decode,
             conf.initial_proof,
         )
 
@@ -347,7 +352,7 @@ class ClassicalSearcher:
         all_next_num_tokens: list[int] = []
         for example in examples:
             result = self.tactic_client.get_recs(
-                example, recs_per_example, current_proof, beam=True
+                example, recs_per_example, current_proof, beam=self.beam_decode
             )
             all_next_tactics.extend(result.next_tactic_list)
             all_next_scores.extend(result.score_list)

@@ -38,6 +38,7 @@ from util.train_utils import (
     make_output_dir,
     copy_configs,
     get_train_val_path,
+    TrainType,
     TRAINING_CONF_NAME,
     REQS_NAME,
     GIT_NAME,
@@ -210,6 +211,6 @@ if __name__ == "__main__":
         trainer.train(checkpoint_name)
     else:
         make_output_dir(conf)
-        copy_configs(args.yaml_config, conf)
+        copy_configs(args.yaml_config, conf, TrainType.TACTIC)
         print("Training from scratch")
         trainer.train()

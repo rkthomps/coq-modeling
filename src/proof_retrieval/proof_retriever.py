@@ -211,6 +211,10 @@ class TextProofRetrieverConf:
         )
 
 
+class DeepProofRetriever:
+    pass
+
+
 class TextProofRetriever:
     def __init__(
         self, max_examples: int, data_loc: Path, sentence_db: SentenceDB

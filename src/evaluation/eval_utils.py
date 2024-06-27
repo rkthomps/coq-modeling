@@ -42,31 +42,19 @@ PROOF_MAP_LOC = DATA_LOC / "proof_maps"
 QUEUE_LOC = TMP_LOC / "queue"
 
 
-def initialize_and_fill_queue(queue_loc: Path, eval_conf: EvalConf):
+def initialize_and_fill_queue(
+    queue_loc: Path,
+    conf: EvalConf | PremiseEvalConf,
+):
     proof_map = create_eval_proof_map(
-        eval_conf.split,
-        eval_conf.data_split_loc,
-        eval_conf.sentence_db_loc,
-        eval_conf.data_loc,
+        conf.split, conf.data_split_loc, conf.sentence_db_loc, conf.data_loc
     )
     q = FileQueue[tuple[FileInfo, int]](queue_loc)
     q.initialize()
-    if eval_conf.max_eval_proofs is not None:
-        q.put_all(proof_map.proofs[: eval_conf.max_eval_proofs])
+    if conf.max_eval_proofs is not None:
+        q.put_all(proof_map.proofs[: conf.max_eval_proofs])
     else:
         q.put_all(proof_map.proofs)
-
-
-def initialize_and_fill_queue_premise(queue_loc: Path, eval_conf: PremiseEvalConf):
-    proof_map = create_eval_proof_map(
-        eval_conf.split,
-        eval_conf.data_split_loc,
-        eval_conf.sentence_db_loc,
-        eval_conf.data_loc,
-    )
-    q = FileQueue[tuple[FileInfo, int]](queue_loc)
-    q.initialize()
-    q.put_all(proof_map.proofs)
 
 
 @dataclass
@@ -259,9 +247,14 @@ class PremiseEvalConf:
     sentence_db_loc: Path
     data_split_loc: Path
     premise_conf: PremiseConf
+    max_eval_proofs: Optional[int]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseEvalConf:
+        if "max_eval_proofs" in yaml_data:
+            max_eval_proofs = yaml_data["max_eval_proofs"]
+        else:
+            max_eval_proofs = None
         return cls(
             str2split(yaml_data["split"]),
             Path(yaml_data["save_loc"]),
@@ -269,6 +262,7 @@ class PremiseEvalConf:
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["data_split_loc"]),
             premise_conf_from_yaml(yaml_data["premise"]),
+            max_eval_proofs,
         )
 
 

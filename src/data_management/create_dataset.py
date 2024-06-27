@@ -103,7 +103,7 @@ def run(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("conf_loc", help="Location of eval configuration")
+    parser.add_argument("conf_loc", help="Location of dataset configuration")
     parser.add_argument("timeout", help="Timeout for evaluation")
     parser.add_argument("n_gpu_nodes", type=int, help="Number of gpus nodes to use.")
     parser.add_argument(

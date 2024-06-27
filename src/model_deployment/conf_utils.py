@@ -21,7 +21,6 @@ from premise_selection.rerank_formatter import (
     BasicRerankFormatterConf,
     ProofRerankFormatterConf,
 )
-from premise_selection.evaluate import PremiseEvalConf
 
 from tactic_gen.lm_example import (
     FormatterConf,
@@ -47,7 +46,7 @@ from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
 from model_deployment.run_whole_proof import TestWholeProofConf
 from model_deployment.run_whole_proofs import TestWholeProofsConf
-from evaluation.eval_utils import EvalConf
+from evaluation.eval_utils import EvalConf, PremiseEvalConf
 from util.util import get_basic_logger, read_port_map
 from util.util import FlexibleUrl, get_flexible_url
 from util.constants import (
@@ -89,6 +88,7 @@ class StartTacticModelCommand:
             self.alias,
             f"{self.checkpoint_loc}",
             f"{self.id}",
+            f"{os.getpid()}",
         ]
 
     def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
@@ -98,6 +98,7 @@ class StartTacticModelCommand:
             self.alias,
             f"{self.checkpoint_loc}",
             f"$(expr ${env_var_name} \\* {commands_per_task} + {self.id})",
+            f"{os.getpid()}",
         ]
 
 
@@ -115,6 +116,7 @@ class StartSelectModelCommand:
                 f"{self.SELECT_SERVER_SCRIPT}",
                 f"{self.checkpoint_loc}",
                 f"{self.id}",
+                f"{os.getpid()}",
             ]
         return [
             "python3",
@@ -123,6 +125,7 @@ class StartSelectModelCommand:
             f"{self.vector_db_loc}",
             f"{self.checkpoint_loc}",
             f"{self.id}",
+            f"{os.getpid()}",
         ]
 
     def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
@@ -132,6 +135,7 @@ class StartSelectModelCommand:
                 f"{self.SELECT_SERVER_SCRIPT}",
                 f"{self.checkpoint_loc}",
                 f"$(expr ${env_var_name} \\* {commands_per_task} + {self.id})",
+                f"{os.getpid()}",
             ]
         return [
             "python3",
@@ -140,6 +144,7 @@ class StartSelectModelCommand:
             f"{self.vector_db_loc}",
             f"{self.checkpoint_loc}",
             f"$(expr ${env_var_name} \\* {commands_per_task} + {self.id})",
+            f"{os.getpid()}",
         ]
 
 
@@ -155,6 +160,7 @@ class StartRerankModelCommand:
             f"{self.RERANK_SERVER_SCRIPT}",
             f"{self.checkpoint_loc}",
             f"{self.id}",
+            f"{os.getpid()}",
         ]
 
     def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
@@ -163,6 +169,7 @@ class StartRerankModelCommand:
             f"{self.RERANK_SERVER_SCRIPT}",
             f"{self.checkpoint_loc}",
             f'"expr ${env_var_name} * {commands_per_task} + {self.id}"',
+            f"{os.getpid()}",
         ]
 
 
@@ -495,12 +502,13 @@ def to_client_conf(
                 conf.premise_conf, start_server_num
             )
             new_premise_eval_conf = PremiseEvalConf(
-                premise_conf,
+                conf.split,
+                conf.save_loc,
                 conf.data_loc,
                 conf.sentence_db_loc,
                 conf.data_split_loc,
-                conf.split_name,
-                conf.save_loc,
+                premise_conf,
+                conf.max_eval_proofs,
             )
             return new_premise_eval_conf, next_server_num, commands
         case TestWholeProofConf():

@@ -11,7 +11,6 @@ from data_management.splits import Split, DataSplit, split2str
 from data_management.dataset_utils import DatasetConf, data_conf_from_yaml
 
 from util.util import get_basic_logger
-from util.constants import DATA_CONF_NAME
 
 _logger = get_basic_logger(__name__)
 
@@ -23,7 +22,7 @@ def consolidate(
     if tmp_output_loc.exists():
         shutil.rmtree(tmp_output_loc)
     os.makedirs(tmp_output_loc, exist_ok=True)
-    shutil.copy(input_dataset_loc / "conf.yaml", tmp_output_loc / DATA_CONF_NAME)
+    shutil.copy(input_dataset_loc / "conf.yaml", tmp_output_loc)
     data_split = DataSplit.load(data_conf.data_split_loc)
     for split in Split:
         _logger.info(f"Consolidating {split}")
