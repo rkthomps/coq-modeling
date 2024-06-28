@@ -53,9 +53,8 @@ def get_formatter(formatter_conf: FormatterConf) -> LmFormatter:
 def tactic_examples_from_step(
     dataset_conf: LmDatasetConf, dset_file: DatasetFile, proof_idx: int, step_idx: int
 ) -> list[LmExample]:
-    proof = dset_file.proofs[proof_idx]
     formatters = [get_formatter(f) for f in dataset_conf.lm_formatter_confs]
-    return [f.example_from_step(step_idx, proof, dset_file) for f in formatters]
+    return [f.example_from_step(step_idx, proof_idx, dset_file) for f in formatters]
 
 
 @functools.cache

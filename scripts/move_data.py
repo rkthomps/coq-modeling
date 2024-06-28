@@ -27,7 +27,7 @@ def move_data_tar(train_conf: Any) -> None:
 
 def move_data(train_conf: Any) -> None:
     data_loc = Path(train_conf["data_path"])
-    target_loc = TMP_LOC / data_loc.name
+    target_loc = Path("/tmp") / data_loc.name
     if target_loc.exists():
         _logger.info(f"Found previously existing {target_loc}. Using it.")
         return

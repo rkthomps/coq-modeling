@@ -2,8 +2,10 @@ from __future__ import annotations
 from typing import Any, Optional
 from pathlib import Path
 from dataclasses import dataclass
+import functools
 
 
+from data_management.prev_lines import LineDict
 from data_management.splits import FileInfo
 from data_management.dataset_file import (
     DatasetFile,
@@ -45,12 +47,14 @@ class LmExample:
         next_steps: list[str],
         proofs: Optional[list[str]] = None,
         premises: Optional[list[str]] = None,
+        prev_lines: Optional[list[str]] = None,
     ) -> None:
         self.proof_script = proof_script
         self.proof_state = proof_state
         self.next_steps = next_steps
         self.proofs = proofs
         self.premises = premises
+        self.prev_lines = prev_lines
 
     def to_json(self) -> Any:
         return {
@@ -59,6 +63,7 @@ class LmExample:
             "next_steps": self.next_steps,
             "proofs": self.proofs,
             "premises": self.premises,
+            "prev_lines": self.prev_lines,
         }
 
     @classmethod
@@ -70,12 +75,14 @@ class LmExample:
             next_steps = json_data["next_steps"]
         proofs = json_data["proofs"] if "proofs" in json_data else None
         premises = json_data["premises"] if "premises" in json_data else None
+        prev_lines = json_data["prev_lines"] if "prev_lines" in json_data else None
         return cls(
             json_data["proof_script"],
             json_data["proof_state"],
             next_steps,
             proofs,
             premises,
+            prev_lines,
         )
 
 
@@ -154,8 +161,9 @@ class GeneralFormatter:
         self.num_proofs = num_proofs
 
     def example_from_step(
-        self, step_idx: int, proof: Proof, dp_obj: DatasetFile, **kwargs: Any
+        self, step_idx: int, proof_idx: int, dp_obj: DatasetFile, **kwargs: Any
     ) -> LmExample:
+        proof = dp_obj.proofs[proof_idx]
         step = proof.steps[step_idx]
         if self.proof_retriever is not None:
             assert self.num_proofs is not None
@@ -215,13 +223,78 @@ class GeneralFormatter:
         )
 
 
-FormatterConf = GeneralFormatterConf
+@dataclass
+class PrevLineFormatterConf:
+    ALIAS = "prev-line"
+    data_loc: Path
+    line_dict_loc: Path
+
+    def __hash__(self) -> int:
+        return hash(str(self))
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> PrevLineFormatterConf:
+        return cls(Path(yaml_data["data_loc"]), Path(yaml_data["line_dict_loc"]))
+
+
+@functools.lru_cache(maxsize=128)
+def get_file_lines(file: Path) -> list[str]:
+    with file.open("r") as f:
+        return f.read().split("\n")
+
+
+class PrevLineFormatter:
+    def __init__(self, data_loc: Path, line_dict: LineDict):
+        self.data_loc = data_loc
+        self.line_dict = line_dict
+
+    def get_repos_path(self, file_path: str) -> Path:
+        repos_path = Path("")
+        hit_repos = False
+        for p in Path(file_path).parts:
+            if p == "repos":
+                hit_repos = True
+            if hit_repos:
+                repos_path = repos_path / p
+        return repos_path
+
+    def example_from_step(
+        self, step_idx: int, proof_idx: int, dp_obj: DatasetFile, **kwargs: Any
+    ) -> LmExample:
+        proof = dp_obj.proofs[proof_idx]
+        step = proof.steps[step_idx]
+        file_repos_path = self.get_repos_path(dp_obj.file_context.file)
+
+        file_loc = self.data_loc / file_repos_path
+        file_lines = get_file_lines(file_loc)
+
+        if self.line_dict.has_file(str(file_repos_path)):
+            prefix_lines = file_lines[
+                : self.line_dict.get(str(file_repos_path), proof_idx)
+            ]
+        else:
+            prefix_lines = []
+
+        script = proof.proof_prefix_to_string(step)
+        goals = fmt_goals(step.goals)
+        next_steps = [s.step.text for s in proof.steps[step_idx:]]
+        return LmExample(script, goals, next_steps, None, None, prefix_lines)
+
+    @classmethod
+    def from_conf(cls, conf: PrevLineFormatterConf) -> PrevLineFormatter:
+        line_dict = LineDict.load(conf.line_dict_loc)
+        return cls(conf.data_loc, line_dict)
+
+
+FormatterConf = GeneralFormatterConf | PrevLineFormatterConf
 
 
 def formatter_from_conf(c: FormatterConf) -> LmFormatter:
     match c:
         case GeneralFormatterConf():
             return GeneralFormatter.from_conf(c)
+        case PrevLineFormatterConf():
+            return PrevLineFormatter.from_conf(c)
 
 
 def formatter_update_ips(f: FormatterConf, port_map: dict[int, tuple[str, int]]):
@@ -236,6 +309,10 @@ def merge_formatters(f1: FormatterConf, f2: FormatterConf) -> FormatterConf:
         case GeneralFormatterConf():
             assert isinstance(f2, GeneralFormatterConf)
             return f1.merge(f2)
+        case PrevLineFormatterConf():
+            assert isinstance(f2, PrevLineFormatterConf)
+            assert f1 == f2
+            return f1
 
 
 def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
@@ -243,11 +320,13 @@ def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
     match attempted_alias:
         case GeneralFormatterConf.ALIAS:
             return GeneralFormatterConf.from_yaml(yaml_data)
+        case PrevLineFormatterConf.ALIAS:
+            return PrevLineFormatterConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Formatter conf not found: " + attempted_alias)
 
 
-LmFormatter = GeneralFormatter
+LmFormatter = GeneralFormatter | PrevLineFormatter
 
 
 def close_lm_formatter(lm_formatter: LmFormatter):

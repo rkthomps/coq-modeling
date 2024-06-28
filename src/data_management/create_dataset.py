@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-from data_management.splits import DataSplit, Split
+from data_management.splits import DataSplit, Split, FileInfo, get_all_files
 from data_management.dataset_utils import DatasetConf, data_conf_from_yaml
 from util.constants import TMP_LOC, QUEUE_NAME
 from util.file_queue import FileQueue
@@ -16,14 +16,10 @@ WORKER_SBATCH_LOC = Path("./slurm/jobs/data-worker.sh")
 
 
 def fill_queue(queue_loc: Path, data_conf: DatasetConf) -> None:
-    q = FileQueue(queue_loc)
+    q = FileQueue[FileInfo](queue_loc)
     q.initialize()
-    data_split = DataSplit.load(data_conf.data_split_loc)
-    all_files = (
-        data_split.get_file_list(Split.TRAIN)
-        + data_split.get_file_list(Split.VAL)
-        + data_split.get_file_list(Split.TEST)
-    )
+    data_splits = [DataSplit.load(loc) for loc in data_conf.data_split_locs]
+    all_files = get_all_files(data_splits)
     q.put_all(all_files)
 
 

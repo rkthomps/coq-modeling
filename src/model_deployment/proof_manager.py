@@ -88,7 +88,7 @@ class ProofInfo:
 
 class ProofManager:
     TIMEOUT = 60
-    SEARCH_DIR = TMP_LOC / SEARCH_DIR_NAME 
+    SEARCH_DIR = TMP_LOC / SEARCH_DIR_NAME
 
     def __init__(
         self,
@@ -363,11 +363,12 @@ class ProofManager:
         dset_file: DatasetFile,
         goal_record: Optional[GoalRecord],
     ) -> LmExample:
-        proof = dset_file.proofs[-1]
+        last_proof_idx = len(dset_file.proofs) - 1
+        proof = dset_file.proofs[last_proof_idx]
         last_step_idx = len(proof.steps) - 1
         example = formatter.example_from_step(
             last_step_idx,
-            proof,
+            last_proof_idx,
             dp_obj=dset_file,
             file_info=self.file_info,
             split=self.split,

@@ -25,6 +25,7 @@ from premise_selection.rerank_formatter import (
 from tactic_gen.lm_example import (
     FormatterConf,
     GeneralFormatterConf,
+    PrevLineFormatterConf,
 )
 from model_deployment.rerank_client import (
     PremiseConf,
@@ -283,6 +284,8 @@ def formatter_conf_to_client_conf(
                 return new_general_formatter, next_server_num, commands
             else:
                 return conf, start_server_num, []
+        case PrevLineFormatterConf():
+            return conf, start_server_num, []
 
 
 def rerank_formatter_conf_to_client_conf(
@@ -324,7 +327,7 @@ def lm_dataset_conf_to_client_conf(
         lm_confs.append(formatter_conf)
         formatter_commands.extend(commands)
     new_dataset_conf = LmDatasetConf(
-        conf.data_split_loc,
+        conf.data_split_locs,
         conf.data_loc,
         conf.sentence_db_loc,
         conf.output_dataset_loc,
@@ -490,7 +493,7 @@ def to_client_conf(
                 )
             )
             reraank_data_conf = RerankDatasetConf(
-                conf.data_split_loc,
+                conf.data_split_locs,
                 conf.data_loc,
                 conf.sentence_db_loc,
                 conf.output_dataset_loc,

@@ -46,6 +46,15 @@ RANDOM_SEED = 0
 INVALID_DATE = datetime.datetime(1900, 1, 1, tzinfo=pytz.timezone("US/Pacific"))
 
 
+
+def get_all_files(data_splits: list[DataSplit]) -> list[FileInfo]:
+    f_infos: set[FileInfo] = set()
+    for ds in data_splits:
+        for split in Split:
+            f_infos |= set(ds.get_file_list(split))
+    return f_infos
+
+
 class FileInfo:
     def __init__(
         self,

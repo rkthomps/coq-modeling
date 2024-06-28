@@ -19,7 +19,7 @@ from premise_selection.rerank_formatter import (
 @dataclass
 class LmDatasetConf:
     ALIAS = "tactic"
-    data_split_loc: Path
+    data_split_locs: list[Path]
     data_loc: Path
     sentence_db_loc: Path
     output_dataset_loc: Path
@@ -29,7 +29,7 @@ class LmDatasetConf:
     def from_yaml(cls, yaml_data: Any) -> LmDatasetConf:
         assert 0 < len(yaml_data["lm_formatters"])
         return cls(
-            Path(yaml_data["data_split_loc"]),
+            [Path(p) for p in yaml_data["data_split_locs"]],
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["output_dataset_loc"]),
@@ -40,7 +40,7 @@ class LmDatasetConf:
 @dataclass
 class SelectDatasetConf:
     ALIAS = "select"
-    data_split_loc: Path
+    data_split_locs: list[Path]
     data_loc: Path
     sentence_db_loc: Path
     output_dataset_loc: Path
@@ -53,7 +53,7 @@ class SelectDatasetConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectDatasetConf:
         return cls(
-            Path(yaml_data["data_split_loc"]),
+            [Path(p) for p in yaml_data["data_split_locs"]],
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["output_dataset_loc"]),
@@ -68,7 +68,7 @@ class SelectDatasetConf:
 @dataclass
 class RerankDatasetConf:
     ALIAS = "rerank"
-    data_split_loc: Path
+    data_split_locs: list[Path]
     data_loc: Path
     sentence_db_loc: Path
     output_dataset_loc: Path
@@ -77,7 +77,7 @@ class RerankDatasetConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RerankDatasetConf:
         return cls(
-            Path(yaml_data["data_split_loc"]),
+            [Path(p) for p in yaml_data["data_split_locs"]],
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["output_dataset_loc"]),
