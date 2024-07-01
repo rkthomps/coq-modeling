@@ -6,7 +6,7 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH -o slurm-install-projs-%j.out
 
-HOME_DIR=/home/nfsaavedra/Projects
+HOME_DIR=$1
 PROJECT_DIR=$HOME_DIR/coq-modeling
 REPOS_DIR=$PROJECT_DIR/raw-data/coq-dataset/repos
 
