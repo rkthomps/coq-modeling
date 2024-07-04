@@ -17,7 +17,7 @@ random = DataSplit.load(Path("../../splits/random-split.json"))
 
 
 data_loc = Path("../../raw-data/coq-dataset")
-proofs_loc = Path("proofs/")
+data_points_loc = Path("data-points/")
 sentence_db_loc = Path("../../raw-data/coq-dataset/sentences.db")
 sentence_db = SentenceDB.load(sentence_db_loc)
 
@@ -37,7 +37,7 @@ def generate_data_points_in_file(file_info: FileInfo, file_data_point: DatasetFi
             prefix = "".join([s.text for s in proof_info.prefix_steps])
             prefix += proof_info.proof_term.term.text
             prefix += "\nsynth.\nQed.\n"
-            proof_file = proofs_loc / file_path / f"{i}.v"
+            proof_file = data_points_loc / file_path / f"{i}.v"
             with open(proof_file, "w") as f:
                 f.write(prefix)
 
@@ -51,9 +51,9 @@ def generate_data_points_in_split(data_split: DataSplit, split: Split, n_cores: 
         file_path = file_info.file.replace("/", "_")
         file_data_point = file_info.get_dp(data_loc, sentence_db)
 
-        if not os.path.exists(proofs_loc / file_path):
-            os.makedirs(proofs_loc / file_path)
-        with open(proofs_loc / file_path / "info.json", "w") as f:
+        if not os.path.exists(data_points_loc / file_path):
+            os.makedirs(data_points_loc / file_path)
+        with open(data_points_loc / file_path / "info.json", "w") as f:
             json.dump({"path": file_info.file}, f)
 
         futures.append(
@@ -70,6 +70,6 @@ if __name__ == "__main__":
     else:
         n_cores = 1
 
-    if not os.path.exists(proofs_loc):
-        os.makedirs(proofs_loc)
+    if not os.path.exists(data_points_loc):
+        os.makedirs(data_points_loc)
     generate_data_points_in_split(final, Split.TEST, n_cores)
