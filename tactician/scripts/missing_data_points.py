@@ -1,4 +1,5 @@
 import os
+import tqdm
 
 # Avoids error for missing API key
 os.environ["OPENAI_API_KEY"] = "PLACEHOLDER"
@@ -18,7 +19,7 @@ sentence_db = SentenceDB.load(sentence_db_loc)
 
 
 def find_missing_data_points_in_split(data_split: DataSplit, split: Split):
-    for file_info in data_split.get_file_list(split):
+    for file_info in tqdm.tqdm(data_split.get_file_list(split)):
         file_path = file_info.file.replace("/", "_")
         file_data_point = file_info.get_dp(data_loc, sentence_db)
 
