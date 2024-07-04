@@ -35,7 +35,7 @@ def generate_data_points_in_file(file_info: FileInfo, file_data_point: DatasetFi
 
             proof_info = get_proof_info(data_loc, file_info, proof.theorem, occurrence)
             prefix = "".join([s.text for s in proof_info.prefix_steps])
-            prefix += proof_info.proof_term.term.text
+            prefix += "\n" + proof_info.proof_term.term.text
             prefix += "\nsynth.\nQed.\n"
             proof_file = data_points_loc / file_path / f"{i}.v"
             with open(proof_file, "w") as f:
