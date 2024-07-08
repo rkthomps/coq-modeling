@@ -16,14 +16,14 @@ _logger = get_basic_logger(__name__)
 
 
 def consolidate(
-    data_conf: DatasetConf, input_dataset_loc: Path, output_loc: Path
+    data_split_loc: Path, input_dataset_loc: Path, output_loc: Path
 ) -> None:
     tmp_output_loc = Path("/tmp") / str(os.getpid()) / output_loc.name
     if tmp_output_loc.exists():
         shutil.rmtree(tmp_output_loc)
     os.makedirs(tmp_output_loc, exist_ok=True)
     shutil.copy(input_dataset_loc / "conf.yaml", tmp_output_loc)
-    data_split = DataSplit.load(data_conf.data_split_loc)
+    data_split = DataSplit.load(data_split_loc)
     for split in Split:
         _logger.info(f"Consolidating {split}")
         split_db = ExampleDB.create(tmp_output_loc / f"{split2str(split)}.db")
@@ -59,21 +59,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         "Takes a distributed set of dataset files; shuffles it; deduplicates it; and writes it to database files."
     )
+    parser.add_argument("data_split_loc", help="Location of the data split.")
     parser.add_argument("dataset_loc", help="Location of the dataset.")
     parser.add_argument("output_loc", help="Location of the output.")
     args = parser.parse_args(sys.argv[1:])
 
+    data_split_loc = Path(args.data_split_loc)
     dataset_loc = Path(args.dataset_loc)
     assert dataset_loc.exists()
     dataset_conf_loc = dataset_loc / "conf.yaml"
     assert dataset_conf_loc.exists()
 
-    with dataset_conf_loc.open("r") as fin:
-        raw_dataset_conf = yaml.safe_load(fin)
-    dataset_conf = data_conf_from_yaml(raw_dataset_conf)
-
     output_loc = Path(args.output_loc)
     if output_loc.exists():
         raise FileExistsError(f"{output_loc}")
 
-    consolidate(dataset_conf, dataset_loc, output_loc)
+    consolidate(data_split_loc, dataset_loc, output_loc)

@@ -51,10 +51,17 @@ def get_formatter(formatter_conf: FormatterConf) -> LmFormatter:
 
 
 def tactic_examples_from_step(
-    dataset_conf: LmDatasetConf, dset_file: DatasetFile, proof_idx: int, step_idx: int
+    file_info: FileInfo,
+    dataset_conf: LmDatasetConf,
+    dset_file: DatasetFile,
+    proof_idx: int,
+    step_idx: int,
 ) -> list[LmExample]:
     formatters = [get_formatter(f) for f in dataset_conf.lm_formatter_confs]
-    return [f.example_from_step(step_idx, proof_idx, dset_file) for f in formatters]
+    return [
+        f.example_from_step(step_idx, proof_idx, dset_file, file_info)
+        for f in formatters
+    ]
 
 
 @functools.cache
@@ -113,7 +120,9 @@ def examples_from_file(
             match dataset_conf:
                 case LmDatasetConf():
                     examples.extend(
-                        tactic_examples_from_step(dataset_conf, file_dp, i, j)
+                        tactic_examples_from_step(
+                            file_info, dataset_conf, file_dp, i, j
+                        )
                     )
                 case SelectDatasetConf():
                     examples.extend(
@@ -168,7 +177,7 @@ if __name__ == "__main__":
     assert isinstance(dataset_client_conf, DatasetConf)
     sentence_db = SentenceDB.load(dataset_client_conf.sentence_db_loc)
 
-    queue: FileQueue[FileInfo] = FileQueue(queue_loc)
+    queue: FileQueue = FileQueue(queue_loc)
     while True:
         try:
             file_info = queue.get()

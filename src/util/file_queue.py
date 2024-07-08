@@ -1,3 +1,4 @@
+from typing import Any
 import os
 import shutil
 import ast
@@ -6,23 +7,25 @@ import pickle
 from typing import TypeVar, Optional
 from pathlib import Path
 
-T = TypeVar("T")
 
 class EmptyFileQueueError(Exception):
     pass
 
+
 class QueueNotInitializedError(Exception):
     pass
 
-class FileQueue[T]:
-    def __init__(self, queue_loc: Path, sleep_time: float=0.01):
+
+# class FileQueue[T]:
+class FileQueue:
+    def __init__(self, queue_loc: Path, sleep_time: float = 0.01):
         self.queue_loc = queue_loc
         self.sleep_time = sleep_time
-    
+
     def initialize(self):
         with self.queue_loc.open("w") as _:
             pass
-    
+
     @property
     def lock_loc(self) -> Path:
         return Path(str(self.queue_loc) + ".lock")
@@ -30,13 +33,13 @@ class FileQueue[T]:
     def __check_initialized(self):
         if not self.queue_loc.exists():
             raise QueueNotInitializedError()
-    
+
     def __has_lock(self) -> bool:
         return os.path.exists(self.lock_loc / str(os.getpid()))
-        
+
     def __get_lock(self):
         if self.__has_lock():
-            return 
+            return
         while True:
             try:
                 os.makedirs(self.lock_loc)
@@ -46,20 +49,20 @@ class FileQueue[T]:
             except FileExistsError:
                 time.sleep(self.sleep_time)
         assert self.__has_lock()
-    
+
     def __make_line(self, item_bytes: bytes) -> str:
         return f"{item_bytes}\n"
-        
+
     def __release_lock(self):
         assert self.__has_lock()
         shutil.rmtree(self.lock_loc)
         assert not self.__has_lock()
 
-    def put_items(self, items: list[T]):
+    def put_items(self, items: list[Any]):
         self.__check_initialized()
         pass
 
-    def put_all(self, items: list[T]):
+    def put_all(self, items: list[Any]):
         self.__check_initialized()
         self.__get_lock()
         try:
@@ -69,8 +72,8 @@ class FileQueue[T]:
                     fout.write(self.__make_line(ibs))
         finally:
             self.__release_lock()
-    
-    def put(self, item: T):
+
+    def put(self, item: Any):
         self.__check_initialized()
         self.__get_lock()
         try:
@@ -79,7 +82,7 @@ class FileQueue[T]:
                 fout.write(self.__make_line(item_bytestring))
         finally:
             self.__release_lock()
-    
+
     def is_empty(self) -> bool:
         self.__check_initialized()
         self.__get_lock()
@@ -91,7 +94,7 @@ class FileQueue[T]:
         finally:
             self.__release_lock()
 
-    def peek(self) -> T:
+    def peek(self) -> Any:
         self.__check_initialized()
         self.__get_lock()
         try:
@@ -108,8 +111,7 @@ class FileQueue[T]:
         finally:
             self.__release_lock()
 
-
-    def get(self) -> T:
+    def get(self) -> Any:
         self.__check_initialized()
         self.__get_lock()
         try:
@@ -136,7 +138,3 @@ class FileQueue[T]:
             return first_obj
         finally:
             self.__release_lock()
-
-
-                    
-

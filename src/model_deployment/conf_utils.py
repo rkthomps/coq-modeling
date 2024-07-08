@@ -25,7 +25,6 @@ from premise_selection.rerank_formatter import (
 from tactic_gen.lm_example import (
     FormatterConf,
     GeneralFormatterConf,
-    PrevLineFormatterConf,
 )
 from model_deployment.rerank_client import (
     PremiseConf,
@@ -284,8 +283,6 @@ def formatter_conf_to_client_conf(
                 return new_general_formatter, next_server_num, commands
             else:
                 return conf, start_server_num, []
-        case PrevLineFormatterConf():
-            return conf, start_server_num, []
 
 
 def rerank_formatter_conf_to_client_conf(

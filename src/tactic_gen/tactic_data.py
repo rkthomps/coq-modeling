@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import random
+import functools
 from typing import Any, Optional
 from pathlib import Path
 import json
@@ -14,6 +15,7 @@ from transformers import PreTrainedTokenizer, BatchEncoding
 from trl import DataCollatorForCompletionOnlyLM
 import jsonlines
 from data_management.jsonl_utils import ExampleDB
+from data_management.line_dict import LineDict
 
 from tactic_gen.lm_example import LmExample
 from util.train_utils import allocate_tokens
@@ -63,12 +65,18 @@ def whole_number_allocate(
 
 
 def allocate_and_fmt(
-    tokenizer: PreTrainedTokenizer, ss: Optional[list[str]], allowance: int
+    tokenizer: PreTrainedTokenizer,
+    ss: Optional[list[str]],
+    allowance: int,
+    reverse: bool = True,
 ) -> str:
     if ss is None:
         return ""
     allowed_passages = whole_number_allocate(tokenizer, ss, allowance)
-    return "\n".join(allowed_passages[::-1])
+    if reverse:
+        return "\n".join(allowed_passages[::-1])
+    else:
+        return "\n".join(allowed_passages)
 
 
 @dataclass
@@ -76,6 +84,7 @@ class BasicCollator:
     script_tokens: int
     state_tokens: int
     out_tokens: int
+    whole_proof: bool
 
     ALIAS = "basic"
     STATE_SEP = "\n[STATE]\n"
@@ -99,18 +108,27 @@ class BasicCollator:
 
     def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
         input_str = self.collate_input(tokenizer, example)
+        if self.whole_proof:
+            target = "".join(example.next_steps)
+        else:
+            target = example.next_steps[0]
         out_str, _ = allocate_tokens(
-            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
+            tokenizer, target, self.out_tokens, truncate_front=False
         )
         combined_str = input_str + out_str
         return combined_str
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> BasicCollator:
+        if "whole_proof" in yaml_data:
+            whole_proof = yaml_data["whole_proof"]
+        else:
+            whole_proof = False
         return cls(
             yaml_data["script_tokens"],
             yaml_data["state_tokens"],
             yaml_data["out_tokens"],
+            whole_proof,
         )
 
 
@@ -121,6 +139,7 @@ class PremiseCollator:
     state_tokens: int
     premise_tokens: int
     out_tokens: int
+    whole_proof: bool
 
     STATE_SEP = "\n[STATE]\n"
     SCRIPT_SEP = "\n[SCRIPT]\n"
@@ -147,19 +166,28 @@ class PremiseCollator:
 
     def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
         input_str = self.collate_input(tokenizer, example)
+        if self.whole_proof:
+            target = "".join(example.next_steps)
+        else:
+            target = example.next_steps[0]
         out_str, _ = allocate_tokens(
-            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
+            tokenizer, target, self.out_tokens, truncate_front=False
         )
         combined_str = input_str + out_str
         return combined_str
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseCollator:
+        if "whole_proof" in yaml_data:
+            whole_proof = yaml_data["whole_proof"]
+        else:
+            whole_proof = False
         return cls(
             yaml_data["script_tokens"],
             yaml_data["state_tokens"],
             yaml_data["premise_tokens"],
             yaml_data["out_tokens"],
+            whole_proof,
         )
 
 
@@ -170,6 +198,7 @@ class ProofCollator:
     state_tokens: int
     proof_tokens: int
     out_tokens: int
+    whole_proof: bool
 
     STATE_SEP = "\n[STATE]\n"
     SCRIPT_SEP = "\n[SCRIPT]\n"
@@ -196,19 +225,28 @@ class ProofCollator:
 
     def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
         input_str = self.collate_input(tokenizer, example)
+        if self.whole_proof:
+            target = "".join(example.next_steps)
+        else:
+            target = example.next_steps[0]
         out_str, _ = allocate_tokens(
-            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
+            tokenizer, target, self.out_tokens, truncate_front=False
         )
         combined_str = input_str + out_str
         return combined_str
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofCollator:
+        if "whole_proof" in yaml_data:
+            whole_proof = yaml_data["whole_proof"]
+        else:
+            whole_proof = False
         return cls(
             yaml_data["script_tokens"],
             yaml_data["state_tokens"],
             yaml_data["proof_tokens"],
             yaml_data["out_tokens"],
+            whole_proof,
         )
 
 
@@ -220,6 +258,7 @@ class ProofPremiseNameCollator:
     proof_tokens: int
     premise_tokens: int
     out_tokens: int
+    whole_proof: bool
 
     STATE_SEP = "\n[STATE]\n"
     SCRIPT_SEP = "\n[SCRIPT]\n"
@@ -290,21 +329,30 @@ class ProofPremiseNameCollator:
         return combined_str
 
     def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
-        out_str, _ = allocate_tokens(
-            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
-        )
         input_str = self.collate_input(tokenizer, example)
+        if self.whole_proof:
+            target = "".join(example.next_steps)
+        else:
+            target = example.next_steps[0]
+        out_str, _ = allocate_tokens(
+            tokenizer, target, self.out_tokens, truncate_front=False
+        )
         combined_str = input_str + out_str
         return combined_str
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofPremiseNameCollator:
+        if "whole_proof" in yaml_data:
+            whole_proof = yaml_data["whole_proof"]
+        else:
+            whole_proof = False
         return cls(
             yaml_data["script_tokens"],
             yaml_data["state_tokens"],
             yaml_data["proof_tokens"],
             yaml_data["premise_tokens"],
             yaml_data["out_tokens"],
+            whole_proof,
         )
 
 
@@ -316,6 +364,7 @@ class ProofPremiseCollator:
     proof_tokens: int
     premise_tokens: int
     out_tokens: int
+    whole_proof: bool
 
     STATE_SEP = "\n[STATE]\n"
     SCRIPT_SEP = "\n[SCRIPT]\n"
@@ -346,20 +395,116 @@ class ProofPremiseCollator:
 
     def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
         input_str = self.collate_input(tokenizer, example)
+        if self.whole_proof:
+            target = "".join(example.next_steps)
+        else:
+            target = example.next_steps[0]
         out_str, _ = allocate_tokens(
-            tokenizer, example.next_steps[0], self.out_tokens, truncate_front=False
+            tokenizer, target, self.out_tokens, truncate_front=False
         )
         combined_str = input_str + out_str
         return combined_str
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ProofPremiseCollator:
+        if "whole_proof" in yaml_data:
+            whole_proof = yaml_data["whole_proof"]
+        else:
+            whole_proof = False
         return cls(
             yaml_data["script_tokens"],
             yaml_data["state_tokens"],
             yaml_data["proof_tokens"],
             yaml_data["premise_tokens"],
             yaml_data["out_tokens"],
+            whole_proof,
+        )
+
+
+@functools.lru_cache(maxsize=10000)
+def get_file_lines(file: Path) -> list[str]:
+    with file.open("r") as f:
+        return f.read().split("\n")
+
+
+@dataclass
+class NPrevLineCollator:
+    ALIAS = "n-prev-line"
+    script_tokens: int
+    state_tokens: int
+    prefix_tokens: int
+    out_tokens: int
+    data_loc: Path
+    line_dict: LineDict
+    whole_proof: bool
+
+    STATE_SEP = "\n[STATE]\n"
+    SCRIPT_SEP = "\n[SCRIPT]\n"
+    PREFIX_SEP = "\n[PREFIX]\n"
+
+    def get_prefix_lines(self, file_repos_path: Path, proof_idx: int) -> list[str]:
+        file_loc = self.data_loc / file_repos_path
+        file_lines = get_file_lines(file_loc)
+
+        if self.line_dict.has_file(str(file_repos_path)):
+            prefix_lines = file_lines[
+                : self.line_dict.get(str(file_repos_path), proof_idx)
+            ]
+        else:
+            prefix_lines = []
+        return prefix_lines
+
+    def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        assert example.file_name is not None
+        assert example.proof_idx is not None
+        prefix_lines = self.get_prefix_lines(Path(example.file_name), example.proof_idx)
+        prefix_str = allocate_and_fmt(
+            tokenizer, prefix_lines, self.prefix_tokens, reverse=False
+        )
+        state_str, _ = allocate_tokens(
+            tokenizer, example.proof_state, self.state_tokens
+        )
+        script_str, _ = allocate_tokens(
+            tokenizer, example.proof_script, self.script_tokens
+        )
+        combined_str = (
+            self.PREFIX_SEP
+            + prefix_str
+            + self.STATE_SEP
+            + state_str
+            + self.SCRIPT_SEP
+            + script_str
+            + NEWLINE_RESPONSE_TEMPLATE
+        )
+        return combined_str
+
+    def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        input_str = self.collate_input(tokenizer, example)
+        if self.whole_proof:
+            target = "".join(example.next_steps)
+        else:
+            target = example.next_steps[0]
+        out_str, _ = allocate_tokens(
+            tokenizer, target, self.out_tokens, truncate_front=False
+        )
+        combined_str = input_str + out_str
+        return combined_str
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> NPrevLineCollator:
+        line_dict = LineDict.load(Path(yaml_data["line_dict_loc"]))
+        if "whole_proof" in yaml_data:
+            whole_proof = yaml_data["whole_proof"]
+        else:
+            whole_proof = False
+        return cls(
+            yaml_data["script_tokens"],
+            yaml_data["state_tokens"],
+            yaml_data["prefix_tokens"],
+            yaml_data["out_tokens"],
+            Path(yaml_data["data_loc"]),
+            line_dict,
+            whole_proof,
         )
 
 
@@ -369,6 +514,7 @@ ExampleCollator = (
     | ProofCollator
     | ProofPremiseCollator
     | ProofPremiseNameCollator
+    | NPrevLineCollator
 )
 
 
@@ -385,6 +531,8 @@ def example_collator_from_conf(conf: Any) -> ExampleCollator:
             return ProofPremiseCollator.from_yaml(conf)
         case ProofPremiseNameCollator.ALIAS:
             return ProofPremiseNameCollator.from_yaml(conf)
+        case NPrevLineCollator.ALIAS:
+            return NPrevLineCollator.from_yaml(conf)
         case _:
             raise ValueError(f"Could not find example collator: {attempted_alias}")
 

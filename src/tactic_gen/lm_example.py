@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import functools
 
 
-from data_management.prev_lines import LineDict
+from data_management.line_dict import LineDict
 from data_management.splits import FileInfo
 from data_management.dataset_file import (
     DatasetFile,
@@ -19,6 +19,7 @@ from tactic_gen.n_step_sampler import (
     n_step_conf_from_yaml,
     n_step_from_conf,
 )
+from proof_retrieval.mine_goals import GoalRecord
 from model_deployment.rerank_client import (
     PremiseClient,
     PremiseConf,
@@ -29,7 +30,13 @@ from model_deployment.rerank_client import (
     close_premise_client,
 )
 
-from proof_retrieval.proof_retriever import TextProofRetriever, TextProofRetrieverConf
+from proof_retrieval.proof_retriever import (
+    ProofRetriever,
+    ProofRetrieverConf,
+    proof_retriever_conf_from_yaml,
+    proof_retriever_from_conf,
+    close_proof_retriever,
+)
 
 from util.util import get_basic_logger
 
@@ -37,6 +44,17 @@ _logger = get_basic_logger(__name__)
 
 
 GOAL_SEP = "\n[GOAL]\n"
+
+
+def get_repos_path(file_path: str) -> Path:
+    repos_path = Path("")
+    hit_repos = False
+    for p in Path(file_path).parts:
+        if p == "repos":
+            hit_repos = True
+        if hit_repos:
+            repos_path = repos_path / p
+    return repos_path
 
 
 class LmExample:
@@ -47,14 +65,18 @@ class LmExample:
         next_steps: list[str],
         proofs: Optional[list[str]] = None,
         premises: Optional[list[str]] = None,
-        prev_lines: Optional[list[str]] = None,
+        file_name: Optional[str] = None,
+        proof_idx: Optional[int] = None,
+        step_idx: Optional[int] = None,
     ) -> None:
         self.proof_script = proof_script
         self.proof_state = proof_state
         self.next_steps = next_steps
         self.proofs = proofs
         self.premises = premises
-        self.prev_lines = prev_lines
+        self.file_name = file_name
+        self.proof_idx = proof_idx
+        self.step_idx = step_idx
 
     def to_json(self) -> Any:
         return {
@@ -63,7 +85,9 @@ class LmExample:
             "next_steps": self.next_steps,
             "proofs": self.proofs,
             "premises": self.premises,
-            "prev_lines": self.prev_lines,
+            "file_name": self.file_name,
+            "proof_idx": self.proof_idx,
+            "step_idx": self.step_idx,
         }
 
     @classmethod
@@ -75,14 +99,18 @@ class LmExample:
             next_steps = json_data["next_steps"]
         proofs = json_data["proofs"] if "proofs" in json_data else None
         premises = json_data["premises"] if "premises" in json_data else None
-        prev_lines = json_data["prev_lines"] if "prev_lines" in json_data else None
+        file_name = json_data["file_name"] if "file_name" in json_data else None
+        proof_idx = json_data["proof_idx"] if "proof_idx" in json_data else None
+        step_idx = json_data["step_idx"] if "step_idx" in json_data else None
         return cls(
             json_data["proof_script"],
             json_data["proof_state"],
             next_steps,
             proofs,
             premises,
-            prev_lines,
+            file_name,
+            proof_idx,
+            step_idx,
         )
 
 
@@ -95,7 +123,7 @@ def fmt_goals(goals: list[Goal]) -> str:
 class GeneralFormatterConf:
     ALIAS = "general"
     premise_client_conf: Optional[PremiseConf]
-    proof_retriever_conf: Optional[TextProofRetrieverConf]
+    proof_retriever_conf: Optional[ProofRetrieverConf]
     num_premises: Optional[int]
     num_proofs: Optional[int]
 
@@ -132,7 +160,7 @@ class GeneralFormatterConf:
             num_premises = None
 
         if "proof_ret" in yaml_data:
-            proof_ret_conf = TextProofRetrieverConf.from_yaml(yaml_data["proof_ret"])
+            proof_ret_conf = proof_retriever_conf_from_yaml(yaml_data["proof_ret"])
             assert "num_proofs" in yaml_data
             num_proofs = yaml_data["num_proofs"]
         else:
@@ -151,7 +179,7 @@ class GeneralFormatter:
     def __init__(
         self,
         premise_client: Optional[PremiseClient],
-        proof_retriever: Optional[TextProofRetriever],
+        proof_retriever: Optional[ProofRetriever],
         num_premises: Optional[int],
         num_proofs: Optional[int],
     ):
@@ -161,14 +189,31 @@ class GeneralFormatter:
         self.num_proofs = num_proofs
 
     def example_from_step(
-        self, step_idx: int, proof_idx: int, dp_obj: DatasetFile, **kwargs: Any
+        self,
+        step_idx: int,
+        proof_idx: int,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        key_record: Optional[GoalRecord] = None,
+        cutoff_idx: Optional[int] = None,
+        max_num_nodes: int = 30,
+        max_num_steps: int = 500,
+        **kwargs: Any,
     ) -> LmExample:
         proof = dp_obj.proofs[proof_idx]
         step = proof.steps[step_idx]
+        file_repos_path = get_repos_path(dp_obj.file_context.file)
         if self.proof_retriever is not None:
             assert self.num_proofs is not None
             simliar_proofs = self.proof_retriever.get_similar_proofs(
-                step, proof, dp_obj
+                step_idx,
+                proof,
+                dp_obj,
+                file_info=file_info,
+                key_record=key_record,
+                cutoff_idx=cutoff_idx,
+                max_num_nodes=max_num_nodes,
+                max_num_steps=max_num_steps,
             )[: self.num_proofs]
             similar_proof_strs = [p.proof_text_to_string() for p in simliar_proofs]
         else:
@@ -194,12 +239,19 @@ class GeneralFormatter:
         goals = fmt_goals(step.goals)
         next_steps = [s.step.text for s in proof.steps[step_idx:]]
         return LmExample(
-            script, goals, next_steps, similar_proof_strs, relevant_premise_strs
+            script,
+            goals,
+            next_steps,
+            similar_proof_strs,
+            relevant_premise_strs,
+            str(file_repos_path),
+            proof_idx,
+            step_idx,
         )
 
     def close(self):
         if self.proof_retriever is not None:
-            self.proof_retriever.close()
+            close_proof_retriever(self.proof_retriever)
 
     @classmethod
     def from_conf(cls, conf: GeneralFormatterConf) -> GeneralFormatter:
@@ -211,7 +263,7 @@ class GeneralFormatter:
 
         if conf.proof_retriever_conf is not None:
             assert conf.num_proofs is not None
-            proof_retriever = TextProofRetriever.from_conf(conf.proof_retriever_conf)
+            proof_retriever = proof_retriever_from_conf(conf.proof_retriever_conf)
         else:
             proof_retriever = None
 
@@ -223,78 +275,13 @@ class GeneralFormatter:
         )
 
 
-@dataclass
-class PrevLineFormatterConf:
-    ALIAS = "prev-line"
-    data_loc: Path
-    line_dict_loc: Path
-
-    def __hash__(self) -> int:
-        return hash(str(self))
-
-    @classmethod
-    def from_yaml(cls, yaml_data: Any) -> PrevLineFormatterConf:
-        return cls(Path(yaml_data["data_loc"]), Path(yaml_data["line_dict_loc"]))
-
-
-@functools.lru_cache(maxsize=128)
-def get_file_lines(file: Path) -> list[str]:
-    with file.open("r") as f:
-        return f.read().split("\n")
-
-
-class PrevLineFormatter:
-    def __init__(self, data_loc: Path, line_dict: LineDict):
-        self.data_loc = data_loc
-        self.line_dict = line_dict
-
-    def get_repos_path(self, file_path: str) -> Path:
-        repos_path = Path("")
-        hit_repos = False
-        for p in Path(file_path).parts:
-            if p == "repos":
-                hit_repos = True
-            if hit_repos:
-                repos_path = repos_path / p
-        return repos_path
-
-    def example_from_step(
-        self, step_idx: int, proof_idx: int, dp_obj: DatasetFile, **kwargs: Any
-    ) -> LmExample:
-        proof = dp_obj.proofs[proof_idx]
-        step = proof.steps[step_idx]
-        file_repos_path = self.get_repos_path(dp_obj.file_context.file)
-
-        file_loc = self.data_loc / file_repos_path
-        file_lines = get_file_lines(file_loc)
-
-        if self.line_dict.has_file(str(file_repos_path)):
-            prefix_lines = file_lines[
-                : self.line_dict.get(str(file_repos_path), proof_idx)
-            ]
-        else:
-            prefix_lines = []
-
-        script = proof.proof_prefix_to_string(step)
-        goals = fmt_goals(step.goals)
-        next_steps = [s.step.text for s in proof.steps[step_idx:]]
-        return LmExample(script, goals, next_steps, None, None, prefix_lines)
-
-    @classmethod
-    def from_conf(cls, conf: PrevLineFormatterConf) -> PrevLineFormatter:
-        line_dict = LineDict.load(conf.line_dict_loc)
-        return cls(conf.data_loc, line_dict)
-
-
-FormatterConf = GeneralFormatterConf | PrevLineFormatterConf
+FormatterConf = GeneralFormatterConf
 
 
 def formatter_from_conf(c: FormatterConf) -> LmFormatter:
     match c:
         case GeneralFormatterConf():
             return GeneralFormatter.from_conf(c)
-        case PrevLineFormatterConf():
-            return PrevLineFormatter.from_conf(c)
 
 
 def formatter_update_ips(f: FormatterConf, port_map: dict[int, tuple[str, int]]):
@@ -309,10 +296,6 @@ def merge_formatters(f1: FormatterConf, f2: FormatterConf) -> FormatterConf:
         case GeneralFormatterConf():
             assert isinstance(f2, GeneralFormatterConf)
             return f1.merge(f2)
-        case PrevLineFormatterConf():
-            assert isinstance(f2, PrevLineFormatterConf)
-            assert f1 == f2
-            return f1
 
 
 def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
@@ -320,19 +303,17 @@ def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:
     match attempted_alias:
         case GeneralFormatterConf.ALIAS:
             return GeneralFormatterConf.from_yaml(yaml_data)
-        case PrevLineFormatterConf.ALIAS:
-            return PrevLineFormatterConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Formatter conf not found: " + attempted_alias)
 
 
-LmFormatter = GeneralFormatter | PrevLineFormatter
+LmFormatter = GeneralFormatter
 
 
 def close_lm_formatter(lm_formatter: LmFormatter):
     match lm_formatter:
         case GeneralFormatter():
             if lm_formatter.proof_retriever is not None:
-                lm_formatter.proof_retriever.close()
+                close_proof_retriever(lm_formatter.proof_retriever)
             if lm_formatter.premise_client is not None:
                 close_premise_client(lm_formatter.premise_client)

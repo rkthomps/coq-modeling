@@ -49,7 +49,7 @@ def initialize_and_fill_queue(
     proof_map = create_eval_proof_map(
         conf.split, conf.data_split_loc, conf.sentence_db_loc, conf.data_loc
     )
-    q = FileQueue[tuple[FileInfo, int]](queue_loc)
+    q = FileQueue(queue_loc)
     q.initialize()
     if conf.max_eval_proofs is not None:
         q.put_all(proof_map.proofs[: conf.max_eval_proofs])

@@ -100,7 +100,7 @@ def get_optional_arg(key: str, conf: dict[str, Any], default: Any) -> Any:
 
 
 def get_train_val_path(data_path: Path) -> tuple[Path, Path]:
-    tmp_path = TMP_LOC / data_path.name
+    tmp_path = Path("/tmp") / data_path.name
     if tmp_path.exists():
         train_path = tmp_path / "train.db"
         val_path = tmp_path / "val.db"

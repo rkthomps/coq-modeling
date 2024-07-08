@@ -23,6 +23,7 @@ from premise_selection.select_data import tokenize_strings
 from premise_selection.premise_formatter import PremiseFormat, PREMISE_ALIASES
 from util.train_utils import get_required_arg
 from util.constants import PREMISE_DATA_CONF_NAME, TRAINING_CONF_NAME, TMP_LOC
+from util.vector_db_utils import get_embs, get, get_page_loc
 
 from util.util import get_basic_logger
 
@@ -30,16 +31,7 @@ from util.util import get_basic_logger
 _logger = get_basic_logger(__name__)
 
 
-@functools.lru_cache(50)
-def load_page(db_loc: str, page_idx: int, device: str) -> Optional[torch.Tensor]:
-    page_loc = os.path.join(db_loc, f"{page_idx}.pt")
-    if not os.path.exists(page_loc):
-        return None
-    # return torch.load(page_loc).to("cuda")
-    return torch.load(page_loc).to(device)
-
-
-class PremiseVectorDB:
+class VectorDB:
     hash_cache: dict[Path, str] = {}
     METADATA_LOC = "metadata.json"
 
@@ -56,42 +48,11 @@ class PremiseVectorDB:
         self.sdb_hash = sdb_hash
         self.device = "cpu"
 
-    def page_loc(self, idx: int) -> str:
-        return os.path.join(self.db_loc, f"{idx}.pt")
-
-    def group_idxs(self, idxs: list[int]) -> dict[int, list[tuple[int, int]]]:
-        page_idxs: dict[int, list[tuple[int, int]]] = {}
-        for i, idx in enumerate(idxs):
-            page_idx = idx // self.page_size
-            if page_idx not in page_idxs:
-                page_idxs[page_idx] = []
-            page_idxs[page_idx].append((idx, i))  # vector idx, orig idx
-        return page_idxs
-
     def get_embs(self, idxs: list[int]) -> Optional[torch.Tensor]:
-        page_groups = self.group_idxs(idxs)
-        page_tensors: list[torch.Tensor] = []
-        all_orig_idxs: list[int] = []
-        for pg_num, pg_idxs in page_groups.items():
-            page_idxs = [p for p, _ in pg_idxs]
-            orig_idxs = [o for _, o in pg_idxs]
-            all_orig_idxs.extend(orig_idxs)
-            page_tensor = load_page(self.db_loc, pg_num, self.device)
-            if page_tensor is None:
-                return None
-            indices = torch.tensor(page_idxs, device=self.device) % self.page_size
-            page_tensors.append((page_tensor[indices]))
-        reidx = sorted(range(len(all_orig_idxs)), key=lambda idx: all_orig_idxs[idx])
-        reidx_tensor = torch.tensor(reidx, device=self.device)
-        big_tensor = torch.cat(page_tensors)
-        return big_tensor[reidx_tensor]
+        return get_embs(idxs, self.page_size, self.db_loc, self.device)
 
     def get(self, idx: int) -> Optional[torch.Tensor]:
-        page = idx // self.page_size
-        page_tensor = load_page(self.db_loc, page, self.device)
-        if page_tensor is not None:
-            return page_tensor[idx % self.page_size]
-        return None
+        return get(idx, self.page_size, self.db_loc, self.device)
 
     @classmethod
     def __hash_sdb(cls, sentence_db_loc: Path) -> str:
@@ -119,7 +80,7 @@ class PremiseVectorDB:
     def load(
         cls,
         db_loc: Path,
-    ) -> PremiseVectorDB:
+    ) -> VectorDB:
         with open(os.path.join(db_loc, cls.METADATA_LOC)) as fin:
             metadata = json.load(fin)
         tmp_path = TMP_LOC / db_loc.name
@@ -153,14 +114,14 @@ class PremiseVectorDB:
         return db_sentences
 
     @classmethod
-    def create(
+    def create_premise_db(
         cls,
         db_loc: Path,
         page_size: int,
         source: str,  # Describes the source of the database
         encoder: Callable[[list[DBSentence]], torch.Tensor],
         sentence_db_loc: Path,
-    ) -> PremiseVectorDB:
+    ) -> VectorDB:
         sdb = SentenceDB.load(sentence_db_loc)
         sdb_hash = cls.__hash_sdb(sentence_db_loc)
         sdb_size = sdb.size()
@@ -175,12 +136,22 @@ class PremiseVectorDB:
             )
             page_embs = encoder(sentences_to_write)
             assert len(page_embs) == len(sentences_to_write)
-            page_loc = os.path.join(db_loc, f"{cur_page}.pt")
+            page_loc = get_page_loc(db_loc, cur_page) 
             torch.save(page_embs, page_loc)
             num_written += len(sentences_to_write)
             cur_page += 1
             _logger.info(f"Processed {num_written} out of {sdb_size}")
-        return PremiseVectorDB(db_loc, page_size, source, sdb_hash)
+        return VectorDB(db_loc, page_size, source, sdb_hash)
+
+    @classmethod
+    def create_proof_db(
+        cls,
+        db_loc: Path,
+        page_size: int,
+        source: str,
+        encoder: Callable[[list[str]], torch.Tensor],
+    ) -> VectorDB:
+        raise NotImplementedError
 
 
 def batch_sentences(page_sentences: list[str], batch_size: int) -> list[list[str]]:
@@ -275,7 +246,7 @@ if __name__ == "__main__":
         batch_size,
     )
 
-    pdb = PremiseVectorDB.create(
+    pdb = VectorDB.create_premise_db(
         Path(db_loc),
         page_size,
         str(checkpoint_loc),

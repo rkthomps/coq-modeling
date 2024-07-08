@@ -18,7 +18,7 @@ from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
     CONTEXT_ALIASES,
 )
-from premise_selection.premise_vector_db import PremiseVectorDB
+from premise_selection.premise_vector_db import VectorDB
 from premise_selection.model import PremiseRetriever
 from premise_selection.premise_filter import PremiseFilter
 from premise_selection.rerank_model import PremiseReranker
@@ -111,7 +111,7 @@ class SelectWrapper:
         tokenizer: GPT2Tokenizer,
         premise_format: type[PremiseFormat],
         sentence_db: SentenceDB,
-        vector_db: Optional[PremiseVectorDB],
+        vector_db: Optional[VectorDB],
     ) -> None:
         self.retriever = retriever
         self.max_seq_len = max_seq_len
@@ -248,7 +248,7 @@ class SelectWrapper:
         # premise_filter = PremiseFilter.from_json(premise_conf["premise_filter"])
         retriever = PremiseRetriever.from_pretrained(checkpoint_loc)
         if vector_db_loc is not None:
-            vector_db = PremiseVectorDB.load(vector_db_loc)
+            vector_db = VectorDB.load(vector_db_loc)
         else:
             vector_db = None
         return cls(

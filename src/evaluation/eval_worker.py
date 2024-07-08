@@ -7,8 +7,7 @@ import multiprocessing as mp
 
 from data_management.splits import DataSplit, FileInfo
 from data_management.sentence_db import SentenceDB
-from evaluation.evaluate import EvalConf
-from evaluation.eval_utils import ProofMap
+from evaluation.eval_utils import ProofMap, EvalConf
 
 from model_deployment.mcts_searcher import MCTSConf
 from model_deployment.classical_searcher import ClassicalSearchConf
@@ -67,7 +66,7 @@ if __name__ == "__main__":
 
     sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
     data_split = DataSplit.load(eval_conf.data_split_loc)
-    q = FileQueue[tuple[FileInfo, int]](queue_loc)
+    q = FileQueue(queue_loc)
 
     while True:
         try:

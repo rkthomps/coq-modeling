@@ -156,17 +156,24 @@ class DecoderLocalWrapper:
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
         collator: ExampleCollator,
+        hard_seq_len: int,
     ):
         self.model = model
         self.tokenizer = tokenizer
         self.collator = collator
+        self.hard_seq_len = hard_seq_len
 
     def get_recs(
         self, example: LmExample, n: int, current_proof: str, beam: bool
     ) -> ModelResult:
         collated_input = self.collator.collate_input(self.tokenizer, example)
         print("Collated: ", collated_input)
-        inputs = self.tokenizer(collated_input, return_tensors="pt")
+        inputs = self.tokenizer(
+            collated_input,
+            max_length=self.hard_seq_len,
+            truncation=True,
+            return_tensors="pt",
+        )
         with torch.no_grad():
             outputs = self.model.generate(
                 inputs["input_ids"],
@@ -213,11 +220,12 @@ class DecoderLocalWrapper:
     @classmethod
     def from_checkpoint(cls, checkpoint_loc: Path) -> DecoderLocalWrapper:
         training_conf = cls.get_training_conf(checkpoint_loc)
+        hard_seq_length = get_required_arg("hard_seq_len", training_conf)
         example_collator_conf = training_conf["example_collator"]
         example_collator = example_collator_from_conf(example_collator_conf)
         tokenizer = get_tokenizer(training_conf, add_eos=False)
         model = get_model(str(checkpoint_loc.resolve()))
-        return cls(model, tokenizer, example_collator)
+        return cls(model, tokenizer, example_collator, hard_seq_length)
 
     @classmethod
     def from_conf(cls, json_data: Any) -> DecoderLocalWrapper:

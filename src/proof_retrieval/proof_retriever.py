@@ -51,10 +51,40 @@ class ProofCandidateReversed(ProofCandidate):
         return other.distance < self.distance
 
 
-class ProofRetriever:
-    def __init__(self, proof_bank_loc: Path, max_examples: int):
+@dataclass
+class TreeProofRetrieverConf:
+    proof_bank_loc: Path
+    max_steps: int
+    max_proofs: int
+    data_loc: Path
+    sentence_db_loc: Path
+    ALIAS = "tree"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> TreeProofRetrieverConf:
+        return cls(
+            Path(yaml_data["proof_bank_loc"]),
+            yaml_data["max_steps"],
+            yaml_data["max_proofs"],
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+        )
+
+
+class TreeProofRetriever:
+    def __init__(
+        self,
+        proof_bank_loc: Path,
+        max_steps: int,
+        max_proofs: int,
+        data_loc: Path,
+        sentence_db: SentenceDB,
+    ):
         self.proof_bank_loc = proof_bank_loc
-        self.max_examples = max_examples
+        self.max_steps = max_steps
+        self.max_proofs = max_proofs
+        self.data_loc = data_loc
+        self.sentence_db = sentence_db
         self.dp_cache = DPCache()
 
     @functools.lru_cache()
@@ -151,6 +181,45 @@ class ProofRetriever:
         cutoff_idx: Optional[int] = None,
         max_num_nodes: int = 30,
         max_num_steps: int = 500,
+    ):
+        candidates = self.get_similar_goal_records(
+            step_idx,
+            proof,
+            dp_obj,
+            file_info,
+            key_record,
+            cutoff_idx,
+            max_num_nodes,
+            max_num_steps,
+        )
+        seen_proofs: set[str] = set()
+        similar_whole_proofs: list[Proof] = []
+        for c in candidates:
+            try:
+                proof_obj, origin = self.get_whole_proof(
+                    c, self.data_loc, self.sentence_db
+                )
+                proof_str = proof_obj.proof_text_to_string()
+                if proof_str in seen_proofs:
+                    continue
+                seen_proofs.add(proof_str)
+                if self.max_proofs <= len(seen_proofs):
+                    break
+                similar_whole_proofs.append(proof_obj)
+            except ValueError:
+                _logger.warning(f"Couldn't find corresponding proof with {c.origin}")
+        return similar_whole_proofs
+
+    def get_similar_goal_records(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        file_info: FileInfo,
+        key_record: Optional[GoalRecord] = None,
+        cutoff_idx: Optional[int] = None,
+        max_num_nodes: int = 30,
+        max_num_steps: int = 500,
     ) -> list[ProofCandidateReversed]:
         file_goals = self.__get_file_goals(file_info.dp_name)
         if key_record is None and cutoff_idx is None:
@@ -188,12 +257,22 @@ class ProofRetriever:
             heapq.heappush(
                 best_record_candiates, ProofCandidateReversed(c_distance, c, o)
             )
-            if self.max_examples < len(best_record_candiates):
+            if self.max_steps < len(best_record_candiates):
                 heapq.heappop(best_record_candiates)
         sorted_candidates = heapq.nlargest(
             len(best_record_candiates), best_record_candiates
         )
         return sorted_candidates
+
+    @classmethod
+    def from_conf(cls, conf: TreeProofRetrieverConf) -> TreeProofRetriever:
+        return cls(
+            conf.proof_bank_loc,
+            conf.max_steps,
+            conf.max_proofs,
+            conf.data_loc,
+            SentenceDB.load(conf.sentence_db_loc),
+        )
 
 
 @dataclass
@@ -201,6 +280,7 @@ class TextProofRetrieverConf:
     max_examples: int
     data_loc: Path
     sentence_db_loc: Path
+    ALIAS = "tfidf"
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> TextProofRetrieverConf:
@@ -209,10 +289,6 @@ class TextProofRetrieverConf:
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
         )
-
-
-class DeepProofRetriever:
-    pass
 
 
 class TextProofRetriever:
@@ -253,8 +329,9 @@ class TextProofRetriever:
         return ids
 
     def get_similar_proofs(
-        self, key_step: FocusedStep, key_proof: Proof, dp_obj: DatasetFile
+        self, key_step_idx: int, key_proof: Proof, dp_obj: DatasetFile, **kwargs: Any
     ) -> list[Proof]:
+        key_step = key_proof.steps[key_step_idx]
         if len(key_step.goals) == 0:
             return []
         query_ids = self.get_goal_ids(key_step.goals)
@@ -278,9 +355,6 @@ class TextProofRetriever:
             similar_proofs.append(similar_proof)
         return similar_proofs
 
-    def close(self):
-        self.sentence_db.close()
-
     @classmethod
     def from_conf(cls, conf: TextProofRetrieverConf) -> TextProofRetriever:
         return cls(
@@ -288,3 +362,79 @@ class TextProofRetriever:
             conf.data_loc,
             SentenceDB.load(conf.sentence_db_loc),
         )
+
+
+class DeepProofRetrieverConf:
+    ALIAS = "deep"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> DeepProofRetrieverConf:
+        raise NotImplementedError()
+
+
+class DeepProofRetrieverClientConf:
+    ALIAS = "deep-client"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> DeepProofRetrieverClientConf:
+        raise NotImplementedError()
+
+
+class DeepProofRetrieverClient:
+    def get_similar_proofs(
+        self,
+        key_step_idx: int,
+        key_proof: Proof,
+        dp_obj: DatasetFile,
+        **kwargs: Any,
+    ) -> list[Proof]:
+        raise NotImplementedError()
+
+    @classmethod
+    def from_conf(cls, conf: DeepProofRetrieverClientConf) -> DeepProofRetrieverClient:
+        raise NotImplementedError()
+
+
+ProofRetrieverConf = (
+    TextProofRetrieverConf
+    | TreeProofRetrieverConf
+    | DeepProofRetrieverClientConf
+    | DeepProofRetrieverConf
+)
+
+ProofRetriever = TextProofRetriever | TreeProofRetriever | DeepProofRetrieverClient
+
+
+def close_proof_retriever(retriever: ProofRetriever):
+    match retriever:
+        case TextProofRetriever() | TreeProofRetriever():
+            retriever.sentence_db.close()
+        case DeepProofRetrieverClient():
+            pass
+
+
+def proof_retriever_from_conf(conf: ProofRetrieverConf) -> ProofRetriever:
+    match conf:
+        case TextProofRetrieverConf():
+            return TextProofRetriever.from_conf(conf)
+        case TreeProofRetrieverConf():
+            return TreeProofRetriever.from_conf(conf)
+        case DeepProofRetrieverClientConf():
+            return DeepProofRetrieverClient.from_conf(conf)
+        case DeepProofRetrieverConf():
+            raise ValueError("Cannot directly instantiate deep proof retriever.")
+
+
+def proof_retriever_conf_from_yaml(yaml_data: Any) -> ProofRetrieverConf:
+    attempted_alias = yaml_data["alias"]
+    match attempted_alias:
+        case TextProofRetrieverConf.ALIAS:
+            return TextProofRetrieverConf.from_yaml(yaml_data)
+        case TreeProofRetrieverConf.ALIAS:
+            return TreeProofRetrieverConf.from_yaml(yaml_data)
+        case DeepProofRetrieverClientConf.ALIAS:
+            return DeepProofRetrieverClientConf.from_yaml(yaml_data)
+        case DeepProofRetrieverConf.ALIAS:
+            return DeepProofRetrieverConf.from_yaml(yaml_data)
+        case _:
+            raise ValueError(f"Proof retriever alias: {attempted_alias} not found.")

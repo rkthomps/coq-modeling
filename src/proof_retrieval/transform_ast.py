@@ -5,7 +5,7 @@ import json
 import ipdb
 import functools
 
-# from edist import ted, seted, sed
+from edist import ted, seted, sed
 
 
 import numpy as np
