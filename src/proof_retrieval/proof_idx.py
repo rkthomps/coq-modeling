@@ -56,5 +56,3 @@ class ProofScriptIdx:
 
 
 ProofIdx = ProofStateIdx | ProofScriptIdx
-
-
