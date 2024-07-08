@@ -1,0 +1,10 @@
+n_procs: 16
+train_sample_loc: samples/final/train.json
+val_sample_loc: samples/final/val.json
+test_sample_loc: samples/final/test.json
+sentence_db_loc: sentences.db
+output_dataset_loc: data/goal
+
+goal_formatter: nothing
+
+

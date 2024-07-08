@@ -21,10 +21,13 @@ class RawProofRetrieverModel:
             truncation=True,
             max_length=self.max_seq_len,
             return_tensors="pt",
-        )
+        ).to(self.model.device)
         last_state = self.model(**inputs).last_hidden_state  # B x S x D
         avg_last_state = torch.mean(last_state, dim=1)  # B x D
         return F.normalize(avg_last_state, dim=1)
+
+    def to(self, device: int):
+        self.model.to(f"cuda:{device}")
 
     @classmethod
     def load_model(
