@@ -20,17 +20,19 @@ log.setLevel(logging.ERROR)
 from tactic_gen.lm_example import LmExample
 from data_management.dataset_file import Sentence
 from model_deployment.conf_utils import get_ip, get_free_port
+from proof_retrieval.proof_ret_wrapper import ProofRetWrapper
 
-wrapper: Optional[RerankWrapper] = None
+wrapper: Optional[ProofRetWrapper] = None
 
 
 @dispatcher.add_method
 def get_scores(
-    rerank_examples_json: list[Any],
+    key_proof_str: str,
+    avail_indices: list[int],
+    key_proof_idx: int | None,
 ) -> list[float]:
     assert wrapper is not None
-    examples = [RerankExample.from_json(e) for e in rerank_examples_json]
-    return wrapper.get_scores(examples)
+    return wrapper.get_scores(key_proof_str, avail_indices, key_proof_idx)
 
 
 @Request.application
@@ -41,13 +43,24 @@ def application(request: requests.models.Response):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("checkpoint_loc", help="Location of select model checkpoint.")
+    parser.add_argument(
+        "model_name",
+        help="Location of proof ret model checkpoint / name of the pretrained model.",
+    )
+    parser.add_argument("max_seq_len", type=int, help="Maximum sequence length.")
+    parser.add_argument(
+        "vector_db_loc", type=Path, help="Location of the proof vector db."
+    )
     parser.add_argument("id", type=int, help="Model id (important for evaluation).")
     parser.add_argument("pid", type=int, help="Id of the parent process.")
 
     args = parser.parse_args(sys.argv[1:])
 
-    wrapper = RerankWrapper.from_checkpoint(args.checkpoint_loc)
+    vector_db_loc = Path(args.vector_db_loc)
+    assert vector_db_loc.exists()
+    wrapper = ProofRetWrapper.from_model_name(
+        args.model_name, args.max_seq_len, vector_db_loc
+    )
 
     id = args.id
     ip = get_ip()

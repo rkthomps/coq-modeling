@@ -46,12 +46,15 @@ RANDOM_SEED = 0
 INVALID_DATE = datetime.datetime(1900, 1, 1, tzinfo=pytz.timezone("US/Pacific"))
 
 
-
 def get_all_files(data_splits: list[DataSplit]) -> list[FileInfo]:
-    f_infos: set[FileInfo] = set()
+    f_infos: list[FileInfo] = []
+    seen_file_infos: set[FileInfo] = set()
     for ds in data_splits:
         for split in Split:
-            f_infos |= set(ds.get_file_list(split))
+            for f_info in ds.get_file_list(split):
+                if f_info not in seen_file_infos:
+                    f_infos.append(f_info)
+                    seen_file_infos.add(f_info)
     return f_infos
 
 
@@ -92,11 +95,18 @@ class FileInfo:
 
     def get_dp(self, data_loc: Path, sentence_db: SentenceDB) -> DatasetFile:
         dp_loc = data_loc / DATA_POINTS_NAME / self.dp_name
+        tmp_dp_loc = Path("/tmp") / DATA_POINTS_NAME / self.dp_name
+        if tmp_dp_loc.exists():
+            return DatasetFile.load(tmp_dp_loc, sentence_db)
         return DatasetFile.load(dp_loc, sentence_db)
 
     def get_proofs(self, data_loc: Path, sentence_db: SentenceDB) -> list[Proof]:
         dp_loc = data_loc / DATA_POINTS_NAME / self.dp_name
-        dset_file = DatasetFile.load(dp_loc, sentence_db, metadata_only=True)
+        tmp_dp_loc = Path("/tmp") / DATA_POINTS_NAME / self.dp_name
+        if tmp_dp_loc.exists():
+            dset_file = DatasetFile.load(tmp_dp_loc, sentence_db, metadata_only=True)
+        else:
+            dset_file = DatasetFile.load(dp_loc, sentence_db, metadata_only=True)
         return dset_file.proofs
 
     @functools.cache
@@ -532,11 +542,12 @@ class DataSplit:
     @classmethod
     def void_split(cls) -> DataSplit:
         return cls([], [], [])
-    
 
     @classmethod
-    def create_random_file_split(cls, data_loc: Path, sentence_db: SentenceDB, train_pct: float=0.8) -> DataSplit:
-        thm_map = ThmMap(sentence_db) 
+    def create_random_file_split(
+        cls, data_loc: Path, sentence_db: SentenceDB, train_pct: float = 0.8
+    ) -> DataSplit:
+        thm_map = ThmMap(sentence_db)
         project_list = cls.__create_project_list(data_loc, thm_map)
         project_files = [file for proj in project_list for file in proj.files]
         random.seed(RANDOM_SEED)
@@ -553,8 +564,11 @@ class DataSplit:
         print("Num train files", len(train_files))
         print("Num val files", len(val_files))
         print("Num test files", len(test_files))
-        return cls([Project("train", train_files)], [Project("val", val_files)], [Project("test", test_files)])
-
+        return cls(
+            [Project("train", train_files)],
+            [Project("val", val_files)],
+            [Project("test", test_files)],
+        )
 
     @classmethod
     def create(
@@ -649,7 +663,6 @@ if __name__ == "__main__":
     #     help="Sort the repos by creation date.",
     # )
     # data_split = DataSplit.create(args.data_loc, args.time_sorted)
-
 
     # Creating the "final split"
     # with open(args.eval_projects_config, "r") as fin:
