@@ -21,3 +21,6 @@ CLEAN_CONFIG = "conf.pkl"
 SERVER_LOC = "./servers"
 PORT_MAP_NAME = "port-map"
 QUEUE_NAME = "queue"
+
+
+PROOF_VECTOR_DB_METADATA = "metadata.pkl"

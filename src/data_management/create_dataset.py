@@ -8,11 +8,13 @@ from datetime import datetime
 
 from data_management.splits import DataSplit, Split, FileInfo, get_all_files
 from data_management.dataset_utils import DatasetConf, data_conf_from_yaml
+from util.util import make_executable
 from util.constants import TMP_LOC, QUEUE_NAME
 from util.file_queue import FileQueue
 
 
 WORKER_SBATCH_LOC = Path("./slurm/jobs/data-worker.sh")
+WORKER_COMMAND_LOC = Path("./slurm/jobs/start-worker.sh")
 
 
 def fill_queue(queue_loc: Path, data_conf: DatasetConf) -> None:
@@ -21,6 +23,17 @@ def fill_queue(queue_loc: Path, data_conf: DatasetConf) -> None:
     data_splits = [DataSplit.load(loc) for loc in data_conf.data_split_locs]
     all_files = get_all_files(data_splits)
     q.put_all(all_files)
+
+
+def write_worker_command(conf_loc: Path, queue_loc: Path) -> None:
+    worker_command = (
+        f"#!/bin/bash\n"
+        f"source venv/bin/activate\n"
+        f"LOG_LEVEL=DEBUG python3 src/data_management/dataset_worker.py {conf_loc} {queue_loc}\n"
+    )
+    with WORKER_COMMAND_LOC.open("w") as fout:
+        fout.write(worker_command)
+    make_executable(WORKER_COMMAND_LOC)
 
 
 def start_workers(
@@ -36,18 +49,22 @@ def start_workers(
     total_n_gpus = n_gpu_nodes * n_devices_per_node
     if 0 < total_n_gpus:
         print(f"There will be {total_n_gpus} given the nonzero number of gpus.")
-        raise ValueError("NEED TO HANDLE GPU CASE")
-        proof_sbatch = (
+        write_worker_command(conf_loc, queue_loc)
+        worker_sbatch = (
             "#!/bin/bash\n"
-            f"#SBATCH -p cpu-preempt\n"
-            f"#SBATCH -G {n_threads_per_worker}\n"
+            f"#SBATCH -p gpu-preempt\n"
+            f"#SBATCH --nodes={n_gpu_nodes}\n"
+            f"#SBATCH --ntasks={total_n_gpus}\n"
+            f"#SBATCH --gpus-per-task=1\n"
+            f"#SBATCH --constraint=2080ti\n"
+            f"#SBATCH --mem-per-cpu=16G\n"
             f"#SBATCH -t {timeout}\n"
-            f"#SBATCH --array=0-{n_workers - 1}\n"
-            f"#SBATCH --mem=16G\n"
-            f"#SBATCH -o slurm/out/slurm-prove-%j.out\n"
+            f"#SBATCH -o slurm/out/slurm-{data_conf.output_dataset_loc.name}-%j.out\n"
+            f"#SBATCH --job-name={data_conf.output_dataset_loc.name}\n"
+            f"#SBATCH --no-requeue\n"
             f"sbcast {data_conf.sentence_db_loc} /tmp/sentences.db\n"
             f"source venv/bin/activate\n"
-            f"python3 src/evaluation/eval_worker.py {conf_loc} {queue_loc}\n"
+            f"srun -l {WORKER_COMMAND_LOC}\n"
         )
     else:
         worker_sbatch = (

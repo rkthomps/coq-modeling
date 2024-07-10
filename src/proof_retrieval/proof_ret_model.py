@@ -35,6 +35,8 @@ class RawProofRetrieverModel:
     ) -> RawProofRetrieverModel:
         model = AutoModel.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(model_name)
+        if torch.cuda.is_available():
+            model.to("cuda")
         return cls(model, tokenizer, max_seq_len)
 
 

@@ -369,11 +369,19 @@ class Proof:
     def __init__(self, theorem: Term, steps: list[FocusedStep]) -> None:
         self.theorem = theorem
         self.steps = steps
+        self.__text_id: Optional[str] = None 
 
     def is_proof_independent(self) -> bool:
         if 0 == len(self.steps):
             return True
         return "Defined" not in self.steps[-1].step.text
+    
+    def proof_text_id(self) -> str:
+        if self.__text_id is not None:
+            return self.__text_id
+        proof_text = self.proof_text_to_string()
+        self.__text_id = proof_text
+        return self.__text_id
 
     def proof_text_to_string(self, include_theorem: bool = True) -> str:
         theorem_text = self.theorem.term.text
@@ -518,18 +526,41 @@ class DatasetFile:
         self.out_of_file_avail_premises = self.__get_oof_avail_premises()
         self.in_file_avail_premises = self.__get_in_file_avail_premises()
         self.dependencies = self.__get_dp_dependencies()
+        self.__cached_dp_name: Optional[str] = None
 
     def proofs_to_string(self) -> str:
         proof_strings = [p.proof_text_to_string() for p in self.proofs]
         return "\n\n".join(proof_strings)
 
+    @property
+    def dp_name(self) -> str:
+        if self.__cached_dp_name is not None:
+            return self.__cached_dp_name
+        dp_names = self.__get_dp_norm_and_unorm_name(self.file_context.file)
+        if dp_names is None:
+            raise ValueError(
+                f"Expected data path {self.file_context.file} to have subpath starting with 'repos'"
+            )
+        norm_name, _ = dp_names
+        self.__cached_dp_name = norm_name
+        return self.__cached_dp_name 
+
+    def __get_dp_norm_and_unorm_name(
+        self, data_file_path: str
+    ) -> Optional[tuple[str, str]]:
+        repo_match = re.search(r"repos/(.*?\.v)", data_file_path)
+        if repo_match is None:
+            return None
+        (dp_unnorm_name,) = repo_match.groups()
+        dp_norm_name = dp_unnorm_name.replace("/", "-")
+        return dp_norm_name, dp_unnorm_name
+
     def __get_dp_dependencies(self) -> list[str]:
         dependencies: list[str] = []  # formatted as dp with / replaced with -
         for premise in self.file_context.avail_premises:
-            repo_match = re.search(r"repos/(.*?\.v)", premise.file_path)
-            if repo_match:
-                (dp_unnorm_name,) = repo_match.groups()
-                dp_norm_name = dp_unnorm_name.replace("/", "-")
+            dp_names = self.__get_dp_norm_and_unorm_name(premise.file_path)
+            if dp_names:
+                dp_norm_name, dp_unnorm_name = dp_names
                 if (
                     dp_unnorm_name in self.file_context.file
                     or self.file_context.file in dp_unnorm_name

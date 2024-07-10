@@ -4,14 +4,19 @@ from typing import Optional
 
 import torch
 
+from util.util import get_basic_logger
 
-@functools.lru_cache(50)
+_logger = get_basic_logger(__name__)
+
+
+@functools.lru_cache(1000)
 def load_page(db_loc: Path, page_idx: int, device: str) -> Optional[torch.Tensor]:
     page_loc = get_page_loc(db_loc, page_idx)
     if not page_loc.exists():
+        _logger.error(f"Page {page_idx} does not exist.")
         return None
     # return torch.load(page_loc).to("cuda")
-    return torch.load(page_loc).to(device)
+    return torch.load(page_loc, map_location=device)
 
 
 def group_idxs(idxs: list[int], page_size: int) -> dict[int, list[tuple[int, int]]]:
@@ -36,6 +41,7 @@ def get_embs(
         all_orig_idxs.extend(orig_idxs)
         page_tensor = load_page(db_loc, pg_num, device)
         if page_tensor is None:
+            _logger.error(f"No page for {pg_num} for indices {page_idxs}.")
             return None
         indices = torch.tensor(page_idxs, device=device) % page_size
         page_tensors.append((page_tensor[indices]))

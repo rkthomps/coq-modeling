@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import Any, Optional
 import functools
 from dataclasses import dataclass
+import requests
+import pickle
 
 import os
 import random
@@ -19,11 +21,14 @@ from data_management.dataset_file import (
     get_ids_from_goal,
     get_ids_from_sentence,
 )
+from proof_retrieval.proof_idx import ProofIdx
 from proof_retrieval.tfidf import tf_idf
 from proof_retrieval.mine_goals import FileGoals, GoalRecord
 from proof_retrieval.transform_ast import AdjTree
 
+from util.util import FlexibleUrl
 from util.util import get_basic_logger
+from util.constants import PROOF_VECTOR_DB_METADATA
 
 _logger = get_basic_logger(__name__)
 
@@ -291,6 +296,31 @@ class TextProofRetrieverConf:
         )
 
 
+def get_available_proofs(
+    key_proof: Proof,
+    dp_obj: DatasetFile,
+    dp_cache: DPCache,
+    data_loc: Path,
+    sentence_db: SentenceDB,
+) -> list[tuple[Proof, DatasetFile]]:
+    available_proofs: list[tuple[Proof, DatasetFile]] = []
+    for proof in dp_obj.proofs:
+        if proof == key_proof:
+            break
+        available_proofs.append((proof, dp_obj))
+
+    # print("Dependencies", dp_obj.dependencies)
+    for dep in dp_obj.dependencies:
+        try:
+            dep_obj = dp_cache.get_dp(dep, data_loc, sentence_db)
+        except FileNotFoundError:
+            _logger.warning(f"Could not find dependency: {dep}")
+            continue
+        for proof in dep_obj.proofs:
+            available_proofs.append((proof, dep_obj))
+    return available_proofs
+
+
 class TextProofRetriever:
     def __init__(
         self, max_examples: int, data_loc: Path, sentence_db: SentenceDB
@@ -303,22 +333,10 @@ class TextProofRetriever:
     def get_available_proofs(
         self, key_proof: Proof, dp_obj: DatasetFile
     ) -> list[Proof]:
-        available_proofs: list[Proof] = []
-        for proof in dp_obj.proofs:
-            if proof == key_proof:
-                break
-            available_proofs.append(proof)
-
-        # print("Dependencies", dp_obj.dependencies)
-        for dep in dp_obj.dependencies:
-            try:
-                dep_obj = self.dp_cache.get_dp(dep, self.data_loc, self.sentence_db)
-            except FileNotFoundError:
-                _logger.warning(f"Could not find dependency: {dep}")
-                continue
-            for proof in dep_obj.proofs:
-                available_proofs.append(proof)
-        return available_proofs
+        proofs_and_objs = get_available_proofs(
+            key_proof, dp_obj, self.dp_cache, self.data_loc, self.sentence_db
+        )
+        return [p for p, _ in proofs_and_objs]
 
     def get_goal_ids(self, goals: list[Goal]) -> list[str]:
         ids: list[str] = []
@@ -364,23 +382,150 @@ class TextProofRetriever:
         )
 
 
+@dataclass
 class DeepProofRetrieverConf:
     ALIAS = "deep"
+    model_name: str | Path
+    vector_db_loc: Path
+    max_seq_len: int
+    max_num_proofs: int
+    sentence_db_loc: Path
+    data_loc: Path
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> DeepProofRetrieverConf:
-        raise NotImplementedError()
+        model_name = yaml_data["model_name"]
+        if os.path.exists(model_name):
+            model_name = Path(model_name)
+        vector_db_loc = Path(yaml_data["vector_db_loc"])
+        sentence_db_loc = Path(yaml_data["sentence_db_loc"])
+        data_loc = Path(yaml_data["data_loc"])
+        return cls(
+            model_name,
+            vector_db_loc,
+            yaml_data["max_seq_len"],
+            yaml_data["max_num_proofs"],
+            sentence_db_loc,
+            data_loc,
+        )
 
 
+@dataclass
 class DeepProofRetrieverClientConf:
+    urls: list[FlexibleUrl]
+    vector_db_loc: Path
+    sentence_db_loc: Path
+    data_loc: Path
+    max_num_proofs: int
     ALIAS = "deep-client"
+
+    def merge(
+        self, other: DeepProofRetrieverClientConf
+    ) -> DeepProofRetrieverClientConf:
+        return DeepProofRetrieverClientConf(
+            self.urls + other.urls,
+            self.vector_db_loc,
+            self.sentence_db_loc,
+            self.data_loc,
+            self.max_num_proofs,
+        )
+
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
+        for url in self.urls:
+            new_ip, new_port = port_map[url.id]
+            url.ip = new_ip
+            url.port = new_port
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> DeepProofRetrieverClientConf:
         raise NotImplementedError()
 
 
+@dataclass
+class ProofDBQuery:
+    step_idx: int
+    proof: Proof
+    dp_name: str
+
+    def format(self) -> str:
+        goal_sep = "\n[GOAL]\n"
+        goal_strings = [g.to_string() for g in self.proof.steps[self.step_idx].goals]
+        return goal_sep.join(goal_strings)
+
+
+# will need to do proofs + premises but this is good for now
 class DeepProofRetrieverClient:
+    def __init__(
+        self,
+        urls: list[str],
+        proof_idx: ProofIdx,
+        sentence_db: SentenceDB,
+        data_loc: Path,
+        max_num_proofs: int,
+    ):
+        self.urls = urls
+        self.proof_idx = proof_idx
+        self.data_loc = data_loc
+        self.sentence_db = sentence_db
+        self.max_num_proofs = max_num_proofs
+        self.dp_cache = DPCache()
+        self.session = requests.Session()
+
+    def get_available_proofs(
+        self, key_proof: Proof, dp_obj: DatasetFile
+    ) -> list[tuple[Proof, DatasetFile]]:
+        return get_available_proofs(
+            key_proof, dp_obj, self.dp_cache, self.data_loc, self.sentence_db
+        )
+
+    def get_similar_proof_steps(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        **kwargs: Any,
+    ) -> list[tuple[Proof, int]]:
+        hashed_step_idx = self.proof_idx.hash_proof_step(
+            step_idx, proof, dp_obj.dp_name
+        )
+        if self.proof_idx.contains(hashed_step_idx):
+            query_step_idx = self.proof_idx.get_idx(hashed_step_idx)
+        else:
+            query_step_idx = None
+        # HARD CODED
+        goal_str = ProofDBQuery(step_idx, proof, dp_obj.dp_name).format()
+        available_proofs_and_objs = self.get_available_proofs(proof, dp_obj)
+        available_proof_idxs: list[int] = []
+        available_proof_steps: list[tuple[Proof, int]] = []
+        for p, dep_obj in available_proofs_and_objs:
+            for i, step in enumerate(p.steps):
+                try:
+                    step_hash = self.proof_idx.hash_proof_step(i, p, dep_obj.dp_name)
+                    step_idx = self.proof_idx.get_idx(step_hash)
+                    available_proof_idxs.append(step_idx)
+                    available_proof_steps.append((p, i))
+                except KeyError:
+                    _logger.error(f"Could not find step {i} in {dep_obj.dp_name}")
+                    return []
+
+        request_url = random.choice(self.urls)
+        request_data = {
+            "method": "get_scores",
+            "params": [goal_str, available_proof_idxs, query_step_idx],
+            "jsonrpc": "2.0",
+            "id": 0,
+        }
+        response = self.session.post(request_url, json=request_data).json()
+        scores = response["result"]
+        assert len(available_proof_steps) == len(scores)
+        similar_proof_steps = sorted(
+            range(len(available_proof_steps)), key=lambda idx: -1 * scores[idx]
+        )
+        similar_steps: list[tuple[Proof, int]] = []
+        for i in similar_proof_steps:
+            similar_steps.append(available_proof_steps[i])
+        return similar_steps
+
     def get_similar_proofs(
         self,
         key_step_idx: int,
@@ -388,11 +533,35 @@ class DeepProofRetrieverClient:
         dp_obj: DatasetFile,
         **kwargs: Any,
     ) -> list[Proof]:
-        raise NotImplementedError()
+        similar_proof_steps = self.get_similar_proof_steps(
+            key_step_idx, key_proof, dp_obj
+        )
+        similar_proofs: list[Proof] = []
+        seen_proofs: set[str] = set()
+        for p, i in similar_proof_steps:
+            proof_key = p.proof_text_to_string()
+            if proof_key in seen_proofs:
+                continue
+            seen_proofs.add(proof_key)
+            similar_proofs.append(p)
+            if self.max_num_proofs <= len(similar_proofs):
+                break
+        return similar_proofs
 
     @classmethod
     def from_conf(cls, conf: DeepProofRetrieverClientConf) -> DeepProofRetrieverClient:
-        raise NotImplementedError()
+        metadata_loc = conf.vector_db_loc / PROOF_VECTOR_DB_METADATA
+        with metadata_loc.open("rb") as fin:
+            metadata = pickle.load(fin)
+        proof_idx = metadata["proof_idx"]
+        sentence_db = SentenceDB.load(conf.sentence_db_loc)
+        return cls(
+            [u.get_url() for u in conf.urls],
+            proof_idx,
+            sentence_db,
+            conf.data_loc,
+            conf.max_num_proofs,
+        )
 
 
 ProofRetrieverConf = (
@@ -405,12 +574,30 @@ ProofRetrieverConf = (
 ProofRetriever = TextProofRetriever | TreeProofRetriever | DeepProofRetrieverClient
 
 
+def proof_conf_update_ips(c: ProofRetrieverConf, port_map: dict[int, tuple[str, int]]):
+    match c:
+        case DeepProofRetrieverClientConf():
+            c.update_ips(port_map)
+        case _:
+            pass
+
+
+def merge_proof_confs(
+    c1: ProofRetrieverConf, c2: ProofRetrieverConf
+) -> ProofRetrieverConf:
+    match c1:
+        case DeepProofRetrieverClientConf():
+            assert isinstance(c2, DeepProofRetrieverClientConf)
+            return c1.merge(c2)
+        case _:
+            assert c1 == c2
+            return c1
+
+
 def close_proof_retriever(retriever: ProofRetriever):
     match retriever:
-        case TextProofRetriever() | TreeProofRetriever():
+        case TextProofRetriever() | TreeProofRetriever() | DeepProofRetrieverClient():
             retriever.sentence_db.close()
-        case DeepProofRetrieverClient():
-            pass
 
 
 def proof_retriever_from_conf(conf: ProofRetrieverConf) -> ProofRetriever:

@@ -22,9 +22,16 @@ from premise_selection.rerank_formatter import (
     ProofRerankFormatterConf,
 )
 
+from proof_retrieval.proof_retriever import (
+    ProofRetrieverConf,
+    DeepProofRetrieverClientConf,
+    DeepProofRetrieverConf,
+)
+
 from tactic_gen.lm_example import (
     FormatterConf,
     GeneralFormatterConf,
+    formatter_update_ips,
 )
 from model_deployment.rerank_client import (
     PremiseConf,
@@ -168,13 +175,47 @@ class StartRerankModelCommand:
             "python3",
             f"{self.RERANK_SERVER_SCRIPT}",
             f"{self.checkpoint_loc}",
-            f'"expr ${env_var_name} * {commands_per_task} + {self.id}"',
+            f"$(expr ${env_var_name} \\* {commands_per_task} + {self.id})",
+            f"{os.getpid()}",
+        ]
+
+
+@dataclass
+class StartProofModelCommand:
+    model_name: str | Path
+    vector_db_loc: Path
+    max_seq_len: int
+    id: int
+    PROOF_SERVER_SCRIPT = Path("src/proof_retrieval/proof_ret_server.py")
+
+    def to_list(self) -> list[str]:
+        return [
+            "python3",
+            f"{self.PROOF_SERVER_SCRIPT}",
+            f"{self.model_name}",
+            f"{self.max_seq_len}",
+            f"{self.vector_db_loc}",
+            f"{self.id}",
+            f"{os.getpid()}",
+        ]
+
+    def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
+        return [
+            "python3",
+            f"{self.PROOF_SERVER_SCRIPT}",
+            f"{self.model_name}",
+            f"{self.max_seq_len}",
+            f"{self.vector_db_loc}",
+            f"$(expr ${env_var_name} \\* {commands_per_task} + {self.id})",
             f"{os.getpid()}",
         ]
 
 
 StartModelCommand = (
-    StartTacticModelCommand | StartSelectModelCommand | StartRerankModelCommand
+    StartTacticModelCommand
+    | StartSelectModelCommand
+    | StartRerankModelCommand
+    | StartProofModelCommand
 )
 
 
@@ -213,6 +254,27 @@ def get_rerank_command(
 ) -> tuple[FlexibleUrl, int, StartRerankModelCommand]:
     command = StartRerankModelCommand(rerank_conf.checkpoint_loc, start_server_num)
     return get_flexible_url(start_server_num, get_ip()), start_server_num + 1, command
+
+
+def proof_conf_to_client_conf(
+    conf: ProofRetrieverConf, start_server_num: int
+) -> tuple[ProofRetrieverConf, int, list[StartModelCommand]]:
+    match conf:
+        case DeepProofRetrieverConf():
+            command = StartProofModelCommand(
+                conf.model_name, conf.vector_db_loc, conf.max_seq_len, start_server_num
+            )
+            flex_url = get_flexible_url(start_server_num, get_ip())
+            new_retriever_client = DeepProofRetrieverClientConf(
+                [flex_url],
+                conf.vector_db_loc,
+                conf.sentence_db_loc,
+                conf.data_loc,
+                conf.max_num_proofs,
+            )
+            return new_retriever_client, start_server_num + 1, [command]
+        case _:
+            return conf, start_server_num, []
 
 
 def premise_conf_to_client_conf(
@@ -270,19 +332,38 @@ def formatter_conf_to_client_conf(
 ) -> tuple[FormatterConf, int, list[StartModelCommand]]:
     match conf:
         case GeneralFormatterConf():
+            next_server_num = start_server_num
             if conf.premise_client_conf is not None:
-                premise_conf, next_server_num, commands = premise_conf_to_client_conf(
-                    conf.premise_client_conf, start_server_num
+                new_premise_conf, next_server_num, premise_commands = (
+                    premise_conf_to_client_conf(
+                        conf.premise_client_conf, next_server_num
+                    )
                 )
-                new_general_formatter = GeneralFormatterConf(
-                    premise_conf,
-                    conf.proof_retriever_conf,
-                    conf.num_premises,
-                    conf.num_proofs,
-                )
-                return new_general_formatter, next_server_num, commands
             else:
-                return conf, start_server_num, []
+                new_premise_conf = conf.premise_client_conf
+                premise_commands = []
+
+            if conf.proof_retriever_conf is not None:
+                new_proof_ret_conf, next_server_num, proof_ret_commands = (
+                    proof_conf_to_client_conf(
+                        conf.proof_retriever_conf, next_server_num
+                    )
+                )
+            else:
+                new_proof_ret_conf = conf.proof_retriever_conf
+                proof_ret_commands = []
+
+            new_general_formatter = GeneralFormatterConf(
+                new_premise_conf,
+                new_proof_ret_conf,
+                conf.num_premises,
+                conf.num_proofs,
+            )
+            return (
+                new_general_formatter,
+                next_server_num,
+                premise_commands + proof_ret_commands,
+            )
 
 
 def rerank_formatter_conf_to_client_conf(
@@ -436,6 +517,8 @@ def update_ips(conf: TopLevelConf, port_map: dict[int, tuple[str, int]]):
             premise_conf_update_ips(conf.premise_conf, port_map)
         case PremiseObserveConf():
             premise_conf_update_ips(conf.premise_conf, port_map)
+        case LmDatasetConf():
+            [formatter_update_ips(f, port_map) for f in conf.lm_formatter_confs]
         case _:
             _logger.warning(
                 "IP updating only implemented for evaluation. Inter-node communication might not work."

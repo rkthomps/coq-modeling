@@ -11,6 +11,7 @@ import shutil
 import multiprocessing
 
 
+from proof_retrieval.proof_retriever import ProofDBQuery
 from proof_retrieval.proof_idx import ProofIdx, ProofStateIdx
 from proof_retrieval.proof_ret_model import ProofRetrievalModel
 from util.vector_db_utils import get_embs, get, get_page_loc
@@ -20,20 +21,14 @@ from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import Proof, DatasetFile
 from data_management.splits import DataSplit, FileInfo, get_all_files
 
+from util.constants import PROOF_VECTOR_DB_METADATA
+
 
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
-METADATA_LOC = "metadata.pkl"
 
 _logger = get_basic_logger(__name__)
-
-
-@dataclass
-class ProofDBQuery:
-    step_idx: int
-    proof: Proof
-    f_info: FileInfo
 
 
 def step_iterator(
@@ -48,7 +43,7 @@ def step_iterator(
         proofs = f_info.get_proofs(data_loc, sentence_db)
         for proof in proofs:
             for i, _ in enumerate(proof.steps):
-                yield ProofDBQuery(i, proof, f_info)
+                yield ProofDBQuery(i, proof, f_info.dp_name)
 
 
 def page_iterator(
@@ -111,7 +106,7 @@ class ProofVectorDB:
             "source": self.source,
             "proof_idx": self.proof_idx,
         }
-        with (path / METADATA_LOC).open("wb") as fout:
+        with (path / PROOF_VECTOR_DB_METADATA).open("wb") as fout:
             fout.write(pickle.dumps(metadata))
 
     def get_embs(self, idxs: list[int]) -> Optional[torch.Tensor]:
@@ -119,7 +114,7 @@ class ProofVectorDB:
 
     @classmethod
     def load(cls, db_loc: Path) -> ProofVectorDB:
-        metadata_loc = db_loc / METADATA_LOC
+        metadata_loc = db_loc / PROOF_VECTOR_DB_METADATA
         with metadata_loc.open("rb") as fin:
             metadata = pickle.load(fin)
         return cls(
@@ -128,12 +123,6 @@ class ProofVectorDB:
             metadata["source"],
             metadata["proof_idx"],
         )
-
-    @staticmethod
-    def format_query(q: ProofDBQuery) -> str:
-        goal_sep = "\n[GOAL]\n"
-        goal_strings = [g.to_string() for g in q.proof.steps[q.step_idx].goals]
-        return goal_sep.join(goal_strings)
 
     @classmethod
     def create_proof_state_db(
@@ -151,7 +140,7 @@ class ProofVectorDB:
         page_gen = page_iterator(step_gen, conf.page_size)
         for i, page in enumerate(page_gen):
             idxs = [
-                ProofStateIdx.hash_proof_step(q.step_idx, q.proof, q.f_info)
+                ProofStateIdx.hash_proof_step(q.step_idx, q.proof, q.dp_name)
                 for q in page
             ]
             for j, idx in enumerate(idxs):
@@ -163,7 +152,7 @@ class ProofVectorDB:
             batches = batch_page(page, conf.batch_size)
             batch_encodings: list[torch.Tensor] = []
             for batch in batches:
-                proof_states = [cls.format_query(q) for q in batch]
+                proof_states = [q.format() for q in batch]
                 with torch.no_grad():
                     encodings = model.encode(proof_states)
                 batch_encodings.append(encodings)
