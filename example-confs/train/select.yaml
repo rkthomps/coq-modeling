@@ -1,28 +1,30 @@
 # File Paths
 
-data_path: "data/premise-lemma"
+data_path: "data/select-all-random-clean"
 model_name: "facebook/opt-125m"
-output_dir: "models/premise-lemma-512" 
+output_dir: "models/select-all-random-big-batch" 
 
 # Training Args
 max_seq_len: 512
-per_device_train_batch_size: 2
+per_device_train_batch_size: 16
 learning_rate: 1.0e-4
-num_train_epochs: 2
+num_train_epochs: 2000
+max_steps: 30000
+
 gradient_accumulation_steps: 2
 loss_fn: cross-entropy
 
 # Evaluation Args
 eval_steps: 500
 eval_accumulation_steps: 1
-per_device_eval_batch_size: 4
+per_device_eval_batch_size: 16
 save_steps: 500
 num_eval_examples: 2000 # Evaluation would take ~2 hours each time w/o limiting this
 
 # Logging Args
-logging_steps: 10
+logging_steps: 100
 save_total_limit: 2
 
 # Train from checkpoint
-#checkpoint_name: "/home/kthompson/coq-modeling/models/rerank-15-pos-opt/checkpoint-500" 
+checkpoint_name: "models/select-all-random-big-batch/checkpoint-3500" 
 

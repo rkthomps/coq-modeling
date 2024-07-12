@@ -1,0 +1,13 @@
+
+db_loc: data/vector-dbs/codebert-proof-state-vector-db
+page_size: 1024
+batch_size: 128 
+model_name: microsoft/codebert-base
+max_seq_len: 512
+data_splits:
+  - splits/final-split.json
+  - splits/random-split.json
+data_loc: raw-data/coq-dataset
+sentence_db_loc: raw-data/coq-dataset/sentences.db
+
+

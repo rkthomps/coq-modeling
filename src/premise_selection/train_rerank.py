@@ -17,6 +17,7 @@ from util.train_utils import (
     get_training_args,
     make_output_dir,
     copy_configs,
+    get_train_val_path,
     TrainType,
 )
 
@@ -50,16 +51,15 @@ def get_datasets(
     max_seq_len: int,
 ) -> tuple[RerankDataset, RerankDataset]:
     data_path = Path(get_required_arg("data_path", conf))
-    # num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
-    train_path = split_file_path(data_path, Split.TRAIN)
+    num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
+    train_path, val_path = get_train_val_path(data_path)
     train_dataset = RerankDataset(
         train_path,
         tokenizer,
         max_seq_len,
     )
-    val_path = split_file_path(data_path, Split.VAL)
     val_dataset = RerankDataset(
-        val_path, tokenizer, max_seq_len, max_num_examples=10000
+        val_path, tokenizer, max_seq_len, max_n_examples=num_eval_examples
     )
     return train_dataset, val_dataset
 

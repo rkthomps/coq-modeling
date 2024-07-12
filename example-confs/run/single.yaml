@@ -1,6 +1,18 @@
 
 thm_info:
 
+  # Problem
+  # test_file: raw-data/coq-dataset/repos/coq-community-stalmarck/theories/Algorithm/OrderedListEq.v
+  # theorem_name: interOlist
+
+  test_file: raw-data/coq-dataset/repos/coq-community-math-classes/theory/int_pow.v
+  theorem_name: Instance
+
+  # Anonymous Name
+  # test_file: raw-data/coq-dataset/repos/coq-community-math-classes/implementations/list_finite_set.v
+  # theorem_name: Anon
+  # occurance: 1
+
   # Whole proof analysis
   # test_file: raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot/theories/general_Q.v
   # theorem_name: Qsgn_29
@@ -62,8 +74,8 @@ thm_info:
 
   # # # If some literal l1 is in the list resulting from inserting another literal l2
   # # # into a clause, then the literals must be equal, or l1 must have been in the original clause
-  test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
-  theorem_name: lit_insert_in
+  # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
+  # theorem_name: lit_insert_in
 
   # test_file: raw-data/coq-dataset/repos/coq-community-sudoku/theories/Sudoku.v
   # theorem_name: pos_test_exact
@@ -146,7 +158,7 @@ thm_info:
   # theorem_name: spec_Qhomographic_Qpositive_to_Q_Zopp_2
 
   data_loc: raw-data/coq-dataset
-  sentence_db_loc: sentences.db
+  sentence_db_loc: raw-data/coq-dataset/sentences.db
   data_split_loc: splits/final-split.json
 
 # search:
@@ -156,18 +168,19 @@ thm_info:
 #   timeout: 120
 #   print_proofs: True
 
-search:
-  alias: classical
-  node_score_alias: token-sum-score 
-  max_branch: 4
-  max_expansions: 500
-  depth_limit: 30
-  timeout: 120
-
 # search:
-#   alias: straight_line
-#   timeout: 60
-#   print_proofs: True
+#   alias: classical
+#   node_score_alias: token-sum-score 
+#   max_branch: 4
+#   max_expansions: 500
+#   depth_limit: 30
+#   timeout: 120
+#   beam_decode: false
+
+search:
+  alias: straight_line
+  timeout: 120
+  print_proofs: True
 
   # initial_proof: "\n
   # intros m n H.\n
@@ -248,13 +261,13 @@ search:
 #   alias: decoder 
 #   checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-15000 
 
-# tactic_gen:
-#   alias: decoder 
-#   checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-16500
-
 tactic_gen:
   alias: decoder 
-  checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-52000
+  checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-48000
+
+# tactic_gen:
+#   alias: decoder 
+#   checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-52000
 
 print_proofs: True
 print_trees: True 

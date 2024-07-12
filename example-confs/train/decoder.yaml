@@ -1,24 +1,23 @@
 # File Paths
-data_path: data/general-final
-#model_name: codellama/CodeLlama-7b-hf
-model_name: deepseek-ai/deepseek-coder-1.3b-instruct
-#model_name: openai-community/gpt2 
-output_dir: models/deepseek-proof-prem-final
+data_path: "data/codebert-raw-proof-ret-random-clean"
+model_name: "deepseek-ai/deepseek-coder-1.3b-instruct"
+output_dir: "models/deepseek-codebert-raw-proof-random"
 
 # Training Args
 hard_seq_len: 4096
 per_device_train_batch_size: 4
 learning_rate: 1.0e-3
 num_train_epochs: 2
+max_steps: 60000
 peft_lora_r: 64
 peft_lora_alpha: 16
 
 # Basic
 # example_collator:
 #   alias: basic
-#   state_tokens: 500 
-#   script_tokens: 300 
-#   out_tokens: 32 
+#   state_tokens: 2640
+#   script_tokens: 1320
+#   out_tokens: 128 
 
 # Proofs And Premises
 # example_collator:
@@ -37,15 +36,23 @@ peft_lora_alpha: 16
 #   premise_tokens: 1536 
 #   out_tokens: 128 
 
-# Proof only
+# Proofs only
 example_collator:
-  alias: proof
+  alias: proof 
   state_tokens: 1024 
   script_tokens: 512
-  proof_tokens: 1536
+  proof_tokens: 1536 
   out_tokens: 128 
 
-
+# Prev lines 
+# example_collator:
+#   alias: n-prev-line 
+#   state_tokens: 1024 
+#   script_tokens: 512
+#   prefix_tokens: 1536
+#   out_tokens: 128 
+#   data_loc: raw-data/coq-dataset
+#   line_dict_loc: data/line-dict.json
 
 # Evaluation Args
 eval_steps: 500 
@@ -55,8 +62,8 @@ per_device_eval_batch_size: 2
 num_eval_examples: 2000 # Evaluation would take ~2 hours each time w/o limiting this
 
 # Logging Args
-logging_steps: 10
+logging_steps: 100
 save_total_limit: 2
 
 # Train from checkpoint
-#checkpoint_name: "models/codellama-7b-whole-proof-ret/checkpoint-4500"
+checkpoint_name: models/deepseek-codebert-raw-proof-random/checkpoint-30500

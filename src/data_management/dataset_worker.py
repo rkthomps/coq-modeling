@@ -104,7 +104,7 @@ def rerank_examples_from_step(
     proof_idx: int,
     step_idx: int,
 ) -> list[RerankExample]:
-    rerank_formatter = get_rerank_formatter()
+    rerank_formatter = get_rerank_formatter(dataset_conf.rerank_formatter_conf)
     proof = dset_file.proofs[proof_idx]
     step = proof.steps[step_idx]
     return rerank_formatter.examples_from_step(step, proof, dset_file)

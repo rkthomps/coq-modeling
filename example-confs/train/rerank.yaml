@@ -1,13 +1,14 @@
 # File Paths
-data_path: "data/rerank-proof"
+data_path: "data/rerank-tfidf-proj-thm-final-clean"
 model_name: "facebook/opt-125m"
-output_dir: "models/rerank-proof-masked" 
+output_dir: "models/rerank-tfidf-prof-thm-final" 
 
 # Training Args
 max_seq_len: 512
 per_device_train_batch_size: 4
 learning_rate: 1.0e-4
 num_train_epochs: 5
+max_steps: 10000
 gradient_accumulation_steps: 2
 
 # Evaluation Args
