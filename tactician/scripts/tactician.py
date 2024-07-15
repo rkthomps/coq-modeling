@@ -1,9 +1,9 @@
 import sys
 import os
 import json
-import subprocess
-import shutil
+import pexpect
 import tqdm
+import time
 
 # Avoids error for missing API key
 os.environ["OPENAI_API_KEY"] = "PLACEHOLDER"
@@ -26,6 +26,25 @@ sentence_db = SentenceDB.load(sentence_db_loc)
 
 results = Path("results/")
 
+
+class CoqTop:
+    def __init__(self, file: str, timeout: int = 10):
+        self.process = pexpect.spawn(
+            f"coqtop -load-vernac-source {file}", 
+            encoding="utf-8",
+            timeout=timeout
+        )
+        self.process.expect("([a-zA-z1-9_][^\n]*?) < ")
+
+    def run(self, command: str):
+        self.process.write(command + "\n")
+        self.process.expect("([a-zA-z1-9_][^\n]*?) < ")
+        return self.process.before
+    
+    def kill(self):
+        self.process.kill(0)
+
+
 def test_proof(
     proof: Proof,
     file_path: Path, 
@@ -34,22 +53,38 @@ def test_proof(
     file_info: FileInfo, 
     i: int
 ):
-    new_path = Path(os.path.dirname(os.path.realpath(original_file_path))) / f"{i}.v"
-    shutil.copy(proof_file, new_path)
-    run = subprocess.run(
-        ["coqc", original_file_path], 
-        stdout=subprocess.PIPE, 
-        stderr=subprocess.PIPE,
-        timeout=60 * 10 # 10 minutes
-    )
-    
+    new_path = Path(os.path.dirname(os.path.realpath(original_file_path))) / f"eval{i}.v"
+    with open(proof_file, "r") as f:
+        proof_text = f.readlines()
+
+    with open(new_path, "w") as f:
+        f.writelines(proof_text[:-2]) # Without Qed and synth.
+
+    start = time.time()
+    coq_top = CoqTop(new_path, timeout=60 * 10)
+    compile_time = time.time() - start
+
+    start = time.time()
+    try:
+        stdout = coq_top.run("synth.")
+        timeout = False
+    except pexpect.exceptions.TIMEOUT:
+        stdout = ""
+        timeout = True
+    synth_time = time.time() - start
+    coq_top.kill()
+
+    success = "Tactician found a proof!" in stdout
+
     with open(results / f"{file_path}_{i}.json", "w") as f:
         f.write(json.dumps({
             "file": file_info.file,
+            "compile_time": compile_time,
+            "synth_time": synth_time, 
             "theorem": proof.theorem.term.text,
-            "success": "Tactician found a proof!" in run.stdout.decode("utf-8"),
-            "stdout": run.stdout.decode("utf-8"),
-            "stderr": run.stderr.decode("utf-8")
+            "success": success,
+            "timeout": timeout,
+            "stdout": stdout,
         }, indent=2))
     os.remove(new_path)
 
@@ -70,6 +105,7 @@ def tactician_data_points_in_split(
                 proof_file = data_points_loc / file_path / f"{i}.v"
                 if not os.path.exists(proof_file):
                     continue
+
                 futures.append(pool.submit(
                     test_proof, 
                     proof, 
