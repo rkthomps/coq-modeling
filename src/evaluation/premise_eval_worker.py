@@ -101,7 +101,7 @@ if __name__ == "__main__":
     assert isinstance(premise_client_conf, PremiseEvalConf)
     sentence_db = SentenceDB.load(premise_client_conf.sentence_db_loc)
 
-    q = FileQueue[tuple[FileInfo, int]](queue_loc)
+    q = FileQueue(queue_loc)
     while True:
         try:
             file_info, idx = q.get()
