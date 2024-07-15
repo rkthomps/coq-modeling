@@ -36,9 +36,9 @@ class CoqTop:
         )
         self.process.expect("([a-zA-z1-9_][^\n]*?) < ")
 
-    def run(self, command: str):
+    def run(self, command: str, expect: str = "([a-zA-z1-9_][^\n]*?) < "):
         self.process.write(command + "\n")
-        self.process.expect("([a-zA-z1-9_][^\n]*?) < ")
+        self.process.expect(expect)
         return self.process.before
     
     def kill(self):
@@ -66,7 +66,13 @@ def test_proof(
 
     start = time.time()
     try:
-        stdout = coq_top.run("synth.")
+        stdout = coq_top.run(
+            "synth.",
+            expect="Tactician found a proof!"
+        )
+        stdout += coq_top.process.after
+        coq_top.process.expect("([a-zA-z1-9_][^\n]*?) < ")
+        stdout += coq_top.process.before
         timeout = False
     except pexpect.exceptions.TIMEOUT:
         stdout = ""
