@@ -100,6 +100,7 @@ class StartTacticModelCommand:
 
     def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
         return [
+            "LOG_LEVEL=DEBUG",
             "python3",
             f"{self.TACTIC_GEN_SERVER_SCRIPT}",
             self.alias,
@@ -138,6 +139,7 @@ class StartSelectModelCommand:
     def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
         if self.vector_db_loc is None:
             return [
+                "LOG_LEVEL=DEBUG",
                 "python3",
                 f"{self.SELECT_SERVER_SCRIPT}",
                 f"{self.checkpoint_loc}",
@@ -145,6 +147,7 @@ class StartSelectModelCommand:
                 f"{os.getpid()}",
             ]
         return [
+            "LOG_LEVEL=DEBUG",
             "python3",
             f"{self.SELECT_SERVER_SCRIPT}",
             "--vector_db_loc",
@@ -172,6 +175,7 @@ class StartRerankModelCommand:
 
     def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
         return [
+            "LOG_LEVEL=DEBUG",
             "python3",
             f"{self.RERANK_SERVER_SCRIPT}",
             f"{self.checkpoint_loc}",
@@ -201,6 +205,7 @@ class StartProofModelCommand:
 
     def to_list_slurm(self, env_var_name: str, commands_per_task: int) -> list[str]:
         return [
+            "LOG_LEVEL=DEBUG",
             "python3",
             f"{self.PROOF_SERVER_SCRIPT}",
             f"{self.model_name}",

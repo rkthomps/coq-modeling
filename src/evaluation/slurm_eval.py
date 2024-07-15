@@ -69,7 +69,7 @@ def start_servers_and_update_conf(
             for c in server_commands
         ]
         run_model_file = (
-            "#!/bin/bash\n" + "source venv/bin/activate\n" + "\n".join(commands)
+            "#!/bin/bash\n" + "source venv/bin/activate\n" + " &\n".join(commands)
         )
         fout.write(run_model_file)
     make_executable(RUN_MODELS_LOC)
