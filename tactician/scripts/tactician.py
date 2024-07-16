@@ -66,6 +66,7 @@ def test_proof(
         coq_top = CoqTop(new_path, timeout=60 * 10)
     except Exception as e:
         logging.warning(f"Failed to compile {new_path}: {e}")
+        os.remove(new_path)
         return
     compile_time = time.time() - start
 
