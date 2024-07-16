@@ -29,11 +29,18 @@ results = Path("results/")
 
 
 class CoqTop:
-    def __init__(self, file: str, timeout: int = 10):
+    def __init__(
+        self, 
+        file: str, 
+        timeout: int = 10, 
+        workdir: str | None = None,
+        options: str = ""
+    ):
         self.process = pexpect.spawn(
-            f"coqtop -load-vernac-source {file}", 
+            f"coqtop -load-vernac-source {file} {options}", 
             encoding="utf-8",
-            timeout=timeout
+            timeout=timeout,
+            cwd=workdir
         )
         self.process.expect("([a-zA-z1-9_][^\n]*?) < ")
 
@@ -61,9 +68,25 @@ def test_proof(
     with open(new_path, "w") as f:
         f.writelines(proof_text[:-2]) # Without Qed and synth.
 
+    workspace = os.path.join(data_loc, file_info.workspace)
+    
+    if os.path.exists(os.path.join(workspace, "_CoqProject")):
+        with open(os.path.join(workspace, "_CoqProject"), "r") as f:
+            for line in f.readlines():
+                if line.startswith("-"):
+                    options = line
+                    break
+    else:
+        options = ""
+
     start = time.time()
     try:
-        coq_top = CoqTop(new_path, timeout=60 * 10)
+        coq_top = CoqTop(
+            new_path, 
+            timeout=60 * 10,
+            workdir=workspace,
+            options=options
+        )
     except Exception as e:
         logging.warning(f"Failed to compile {new_path}: {e}")
         os.remove(new_path)
