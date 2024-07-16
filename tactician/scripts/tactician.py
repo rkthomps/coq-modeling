@@ -45,7 +45,7 @@ class CoqTop:
         try:
             self.process.expect("([a-zA-z1-9_][^\n]*?) < ")
         except Exception as e:
-            self.process.kill(0)
+            self.process.kill(9)
             raise e
 
     def run(self, command: str, expect: str = "([a-zA-z1-9_][^\n]*?) < "):
@@ -54,7 +54,7 @@ class CoqTop:
         return self.process.before
     
     def kill(self):
-        self.process.kill(0)
+        self.process.kill(9)
 
 
 def test_proof(
