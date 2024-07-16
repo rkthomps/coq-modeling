@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Proof
 from data_management.splits import DataSplit, FileInfo, Split
-from proof_retrieval.proof_retriever import TextProofRetrieverConf, TextProofRetriever
+from proof_retrieval.proof_retriever import TfIdfProofRetrieverConf, TfIdfProofRetriever
 
 from util.constants import CLEAN_CONFIG
 
@@ -23,7 +23,7 @@ class ProofObserveConf:
     sentence_db_loc: Path
     proof_name: str
     step_idx: int
-    proof_conf: TextProofRetrieverConf
+    proof_conf: TfIdfProofRetrieverConf
     print_num: int
 
     @classmethod
@@ -35,7 +35,7 @@ class ProofObserveConf:
             Path(yaml_data["sentence_db_loc"]),
             yaml_data["theorem_name"],
             yaml_data["step_idx"],
-            TextProofRetrieverConf.from_yaml(yaml_data["proof_ret"]),
+            TfIdfProofRetrieverConf.from_yaml(yaml_data["proof_ret"]),
             yaml_data["print_num"],
         )
 
@@ -70,7 +70,7 @@ def print_proofs(conf: ProofObserveConf):
     dp_obj = file_info.get_dp(conf.data_loc, sentence_db)
     proof = find_proof(dp_obj, conf.proof_name)
     step = proof.steps[conf.step_idx]
-    proof_retriever = TextProofRetriever.from_conf(conf.proof_conf)
+    proof_retriever = TfIdfProofRetriever.from_conf(conf.proof_conf)
     print("Getting similar proofs: ")
     similar_proofs = proof_retriever.get_similar_proofs(step, proof, dp_obj)[
         : conf.print_num

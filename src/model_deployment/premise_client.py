@@ -26,10 +26,11 @@ from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
 )
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
+from proof_retrieval.bm25 import bm25
 from proof_retrieval.tfidf import tf_idf, compute_idfs
 from proof_retrieval.proof_retriever import (
-    TextProofRetriever,
-    TextProofRetrieverConf,
+    TfIdfProofRetriever,
+    TfIdfProofRetrieverConf,
 )
 from coqpyt.coq.structs import TermType
 
@@ -141,7 +142,7 @@ class TFIdfProofClientConf:
     context_format_alias: str
     premise_format_alias: str
     premise_filter_conf: PremiseFilterConf
-    text_proof_retriever_conf: TextProofRetrieverConf
+    text_proof_retriever_conf: TfIdfProofRetrieverConf
     nucleus_size: int
 
     @classmethod
@@ -150,7 +151,7 @@ class TFIdfProofClientConf:
             yaml_data["context_format_alias"],
             yaml_data["premise_format_alias"],
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
-            TextProofRetrieverConf.from_yaml(yaml_data["text_proof_retriever"]),
+            TfIdfProofRetrieverConf.from_yaml(yaml_data["text_proof_retriever"]),
             yaml_data["nucleus_size"],
         )
 
@@ -303,7 +304,7 @@ class TFIdfProofClient:
         context_format: type[ContextFormat],
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
-        proof_retriever: TextProofRetriever,
+        proof_retriever: TfIdfProofRetriever,
         nucleus_size: int,
     ):
         self.context_format = context_format
@@ -373,7 +374,7 @@ class TFIdfProofClient:
             CONTEXT_ALIASES[conf.context_format_alias],
             PREMISE_ALIASES[conf.premise_format_alias],
             PremiseFilter.from_conf(conf.premise_filter_conf),
-            TextProofRetriever.from_conf(conf.text_proof_retriever_conf),
+            TfIdfProofRetriever.from_conf(conf.text_proof_retriever_conf),
             conf.nucleus_size,
         )
 
@@ -519,54 +520,16 @@ class BM25OkapiClient:
         self.k1 = 1.8
         self.b = 0.75
 
-    def tokenizer(self, s: str) -> list[str]:
-        return s.split()
-
-    def compute_term_freqs(self, doc: list[str]) -> dict[str, int]:
-        term_freqs: dict[str, int] = {}
-        for term in doc:
-            if term not in term_freqs:
-                term_freqs[term] = 0
-            term_freqs[term] += 1
-        return term_freqs
-
-    def compute_doc_freqs(self, corpus: list[list[str]]) -> dict[str, int]:
-        doc_freqs: dict[str, int] = {}
-        for doc in corpus:
-            for word in set(doc):
-                if word not in doc_freqs:
-                    doc_freqs[word] = 0
-                doc_freqs[word] += 1
-        return doc_freqs
-
-    def get_premise_scores_from_strings(
-        self, context_str: str, premises: list[Sentence]
+    def get_premise_scores(
+        self, context: Goal, premises: list[Sentence]
     ) -> list[float]:
-        premise_strs = [self.premise_format.format(p) for p in premises]
-        docs = [self.tokenizer(p) for p in premise_strs]
-        query = self.tokenizer(context_str)
-        doc_freqs = self.compute_doc_freqs(docs)
-        avg_doc_len = sum([len(d) for d in docs]) / len(docs)
-        doc_term_freqs = [self.compute_term_freqs(doc) for doc in docs]
-
-        similarities: list[float] = []
-        for doc, doc_term_dict in zip(docs, doc_term_freqs):
-            doc_similarity = 0
-            for term in query:
-                if term not in doc_freqs:
-                    continue
-                if term not in doc_term_dict:
-                    continue
-                query_idf = math.log(
-                    (len(docs) - doc_freqs[term] + 0.5) / (doc_freqs[term] + 0.5) + 1
-                )
-                doc_term_num = doc_term_dict[term] * (self.k1 + 1)
-                doc_term_denom = doc_term_dict[term] + self.k1 * (
-                    1 - self.b + self.b * len(doc) / avg_doc_len
-                )
-                doc_similarity += query_idf * doc_term_num / doc_term_denom
-            similarities.append(doc_similarity)
-        return similarities
+        # premise_strs = [self.premise_format.format(p) for p in premises]
+        premise_docs = [get_ids_from_sentence(p) for p in premises]
+        query_hyp_ids, query_goal_ids = get_ids_from_goal(context)
+        query_ids = query_hyp_ids + query_goal_ids
+        # query_ids = query_goal_ids
+        # query = tokenize(context_str)
+        return bm25(query_ids, premise_docs)
 
     def get_ranked_premise_generator(
         self,
@@ -575,10 +538,12 @@ class BM25OkapiClient:
         dp_obj: DatasetFile,
         premises: list[Sentence],
     ) -> Iterable[Sentence]:
-        formatted_context = self.context_format.format(step, proof)
-        premise_scores = self.get_premise_scores_from_strings(
-            formatted_context, premises
-        )
+        if len(step.goals) == 0:
+            empty_premises: list[Sentence] = []
+            return empty_premises
+        focused_goal = step.goals[0]
+        # formatted_context = self.context_format.format(step, proof)
+        premise_scores = self.get_premise_scores(focused_goal, premises)
         num_premises = len(premise_scores)
         arg_sorted_premise_scores = sorted(
             range(num_premises), key=lambda idx: -1 * premise_scores[idx]

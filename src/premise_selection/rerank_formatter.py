@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from premise_selection.rerank_example import RerankExample
 from data_management.dataset_file import FocusedStep, Proof, DatasetFile, Sentence
 from model_deployment.premise_client import (
-    TextProofRetrieverConf,
-    TextProofRetriever,
+    TfIdfProofRetrieverConf,
+    TfIdfProofRetriever,
     SelectClient,
     SelectClientConf,
     select_client_from_conf,
@@ -37,7 +37,7 @@ class BasicRerankFormatterConf:
 class ProofRerankFormatterConf:
     ALIAS = "proof"
     select_conf: SelectClientConf
-    proof_retriever: TextProofRetrieverConf
+    proof_retriever: TfIdfProofRetrieverConf
     consider_num: int
     include_proofs_num: int
     negatives_per_positive: int
@@ -49,7 +49,7 @@ class ProofRerankFormatterConf:
     def from_yaml(cls, yaml_data: Any) -> ProofRerankFormatterConf:
         return cls(
             select_conf_from_yaml(yaml_data["select_conf"]),
-            TextProofRetrieverConf.from_yaml(yaml_data["text_proof_retriever"]),
+            TfIdfProofRetrieverConf.from_yaml(yaml_data["text_proof_retriever"]),
             yaml_data["consider_num"],
             yaml_data["include_proofs_num"],
             yaml_data["negatives_per_positive"],
@@ -142,7 +142,7 @@ class ProofRerankFormatter:
     def __init__(
         self,
         premise_client: SelectClient,
-        proof_retriever: TextProofRetriever,
+        proof_retriever: TfIdfProofRetriever,
         include_proofs_num: int,
         consider_num: int,
         negatives_per_positive: int,
@@ -214,7 +214,7 @@ class ProofRerankFormatter:
     def from_conf(cls, conf: ProofRerankFormatterConf) -> ProofRerankFormatter:
         return cls(
             select_client_from_conf(conf.select_conf),
-            TextProofRetriever.from_conf(conf.proof_retriever),
+            TfIdfProofRetriever.from_conf(conf.proof_retriever),
             conf.consider_num,
             conf.include_proofs_num,
             conf.negatives_per_positive,

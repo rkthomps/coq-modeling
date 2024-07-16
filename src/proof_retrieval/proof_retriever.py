@@ -23,6 +23,7 @@ from data_management.dataset_file import (
 )
 from proof_retrieval.proof_idx import ProofIdx
 from proof_retrieval.tfidf import tf_idf
+from proof_retrieval.bm25 import bm25
 from proof_retrieval.mine_goals import FileGoals, GoalRecord
 from proof_retrieval.transform_ast import AdjTree
 
@@ -281,14 +282,37 @@ class TreeProofRetriever:
 
 
 @dataclass
-class TextProofRetrieverConf:
+class Bm25ProofRetrieverConf:
+    max_examples: int
+    data_loc: Path
+    sentence_db_loc: Path
+    k1: float
+    b: float
+    ALIAS = "bm25"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> Bm25ProofRetrieverConf:
+        k1 = yaml_data["k1"] if "k1" in yaml_data else 1.8
+        b = yaml_data["b"] if "b" in yaml_data else 0.75
+
+        return cls(
+            yaml_data["max_examples"],
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            k1,
+            b,
+        )
+
+
+@dataclass
+class TfIdfProofRetrieverConf:
     max_examples: int
     data_loc: Path
     sentence_db_loc: Path
     ALIAS = "tfidf"
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> TextProofRetrieverConf:
+    def from_yaml(cls, yaml_data: Any) -> TfIdfProofRetrieverConf:
         return cls(
             yaml_data["max_examples"],
             Path(yaml_data["data_loc"]),
@@ -321,7 +345,7 @@ def get_available_proofs(
     return available_proofs
 
 
-class TextProofRetriever:
+class TfIdfProofRetriever:
     def __init__(
         self, max_examples: int, data_loc: Path, sentence_db: SentenceDB
     ) -> None:
@@ -374,11 +398,81 @@ class TextProofRetriever:
         return similar_proofs
 
     @classmethod
-    def from_conf(cls, conf: TextProofRetrieverConf) -> TextProofRetriever:
+    def from_conf(cls, conf: TfIdfProofRetrieverConf) -> TfIdfProofRetriever:
         return cls(
             conf.max_examples,
             conf.data_loc,
             SentenceDB.load(conf.sentence_db_loc),
+        )
+
+
+class Bm25ProofRetriever:
+    def __init__(
+        self,
+        max_examples: int,
+        data_loc: Path,
+        sentence_db: SentenceDB,
+        k1: float,
+        b: float,
+    ) -> None:
+        self.max_examples = max_examples
+        self.data_loc = data_loc
+        self.sentence_db = sentence_db
+        self.k1 = k1
+        self.b = b
+        self.dp_cache = DPCache()
+
+    def get_available_proofs(
+        self, key_proof: Proof, dp_obj: DatasetFile
+    ) -> list[Proof]:
+        proofs_and_objs = get_available_proofs(
+            key_proof, dp_obj, self.dp_cache, self.data_loc, self.sentence_db
+        )
+        return [p for p, _ in proofs_and_objs]
+
+    def get_goal_ids(self, goals: list[Goal]) -> list[str]:
+        ids: list[str] = []
+        for g in goals:
+            hyp_ids, goal_ids = get_ids_from_goal(g)
+            ids.extend(hyp_ids)
+            ids.extend(goal_ids)
+        return ids
+
+    def get_similar_proofs(
+        self, key_step_idx: int, key_proof: Proof, dp_obj: DatasetFile, **kwargs: Any
+    ) -> list[Proof]:
+        key_step = key_proof.steps[key_step_idx]
+        if len(key_step.goals) == 0:
+            return []
+        query_ids = self.get_goal_ids(key_step.goals)
+        available_proofs = self.get_available_proofs(key_proof, dp_obj)
+        reference_proofs: list[Proof] = []
+        docs: list[list[str]] = []
+        for ref_proof in available_proofs:
+            for step in ref_proof.steps:
+                reference_proofs.append(ref_proof)
+                docs.append(self.get_goal_ids(step.goals))
+        assert len(docs) == len(reference_proofs)
+        scores = bm25(query_ids, docs)
+        arg_sorted_scores = sorted(range(len(scores)), key=lambda idx: -1 * scores[idx])
+        similar_proofs: list[Proof] = []
+        for proof_idx in arg_sorted_scores:
+            if self.max_examples <= len(similar_proofs):
+                continue
+            similar_proof = reference_proofs[proof_idx]
+            if similar_proof in similar_proofs:
+                continue
+            similar_proofs.append(similar_proof)
+        return similar_proofs
+
+    @classmethod
+    def from_conf(cls, conf: Bm25ProofRetrieverConf) -> Bm25ProofRetriever:
+        return cls(
+            conf.max_examples,
+            conf.data_loc,
+            SentenceDB.load(conf.sentence_db_loc),
+            conf.k1,
+            conf.b,
         )
 
 
@@ -565,13 +659,19 @@ class DeepProofRetrieverClient:
 
 
 ProofRetrieverConf = (
-    TextProofRetrieverConf
+    TfIdfProofRetrieverConf
+    | Bm25ProofRetrieverConf
     | TreeProofRetrieverConf
     | DeepProofRetrieverClientConf
     | DeepProofRetrieverConf
 )
 
-ProofRetriever = TextProofRetriever | TreeProofRetriever | DeepProofRetrieverClient
+ProofRetriever = (
+    TfIdfProofRetriever
+    | Bm25ProofRetriever
+    | TreeProofRetriever
+    | DeepProofRetrieverClient
+)
 
 
 def proof_conf_update_ips(c: ProofRetrieverConf, port_map: dict[int, tuple[str, int]]):
@@ -596,14 +696,16 @@ def merge_proof_confs(
 
 def close_proof_retriever(retriever: ProofRetriever):
     match retriever:
-        case TextProofRetriever() | TreeProofRetriever() | DeepProofRetrieverClient():
+        case TfIdfProofRetriever() | TreeProofRetriever() | DeepProofRetrieverClient():
             retriever.sentence_db.close()
 
 
 def proof_retriever_from_conf(conf: ProofRetrieverConf) -> ProofRetriever:
     match conf:
-        case TextProofRetrieverConf():
-            return TextProofRetriever.from_conf(conf)
+        case TfIdfProofRetrieverConf():
+            return TfIdfProofRetriever.from_conf(conf)
+        case Bm25ProofRetrieverConf():
+            return Bm25ProofRetriever.from_conf(conf)
         case TreeProofRetrieverConf():
             return TreeProofRetriever.from_conf(conf)
         case DeepProofRetrieverClientConf():
@@ -615,8 +717,8 @@ def proof_retriever_from_conf(conf: ProofRetrieverConf) -> ProofRetriever:
 def proof_retriever_conf_from_yaml(yaml_data: Any) -> ProofRetrieverConf:
     attempted_alias = yaml_data["alias"]
     match attempted_alias:
-        case TextProofRetrieverConf.ALIAS:
-            return TextProofRetrieverConf.from_yaml(yaml_data)
+        case TfIdfProofRetrieverConf.ALIAS:
+            return TfIdfProofRetrieverConf.from_yaml(yaml_data)
         case TreeProofRetrieverConf.ALIAS:
             return TreeProofRetrieverConf.from_yaml(yaml_data)
         case DeepProofRetrieverClientConf.ALIAS:
