@@ -4,6 +4,7 @@ import json
 import pexpect
 import tqdm
 import time
+import logging
 
 # Avoids error for missing API key
 os.environ["OPENAI_API_KEY"] = "PLACEHOLDER"
@@ -61,7 +62,11 @@ def test_proof(
         f.writelines(proof_text[:-2]) # Without Qed and synth.
 
     start = time.time()
-    coq_top = CoqTop(new_path, timeout=60 * 10)
+    try:
+        coq_top = CoqTop(new_path, timeout=60 * 10)
+    except:
+        logging.warning(f"Failed to compile {new_path}")
+        return
     compile_time = time.time() - start
 
     start = time.time()
@@ -77,6 +82,10 @@ def test_proof(
     except pexpect.exceptions.TIMEOUT:
         stdout = ""
         timeout = True
+    except pexpect.exceptions.EOF:
+        stdout = ""
+        timeout = False
+        
     synth_time = time.time() - start
     coq_top.kill()
 
@@ -109,7 +118,10 @@ def tactician_data_points_in_split(
         for i, proof in enumerate(file_data_point.proofs):
             if proof.is_proof_independent():
                 proof_file = data_points_loc / file_path / f"{i}.v"
-                if not os.path.exists(proof_file):
+                if (
+                    not os.path.exists(proof_file)
+                    or os.path.exists(results / f"{file_path}_{i}.json")
+                ):
                     continue
 
                 futures.append(pool.submit(
