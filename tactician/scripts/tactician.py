@@ -42,7 +42,11 @@ class CoqTop:
             timeout=timeout,
             cwd=workdir
         )
-        self.process.expect("([a-zA-z1-9_][^\n]*?) < ")
+        try:
+            self.process.expect("([a-zA-z1-9_][^\n]*?) < ")
+        except Exception as e:
+            self.process.kill(0)
+            raise e
 
     def run(self, command: str, expect: str = "([a-zA-z1-9_][^\n]*?) < "):
         self.process.write(command + "\n")
