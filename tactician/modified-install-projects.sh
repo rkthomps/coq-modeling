@@ -24,10 +24,13 @@ install() {
 	echo "Processing $project"
 	cd $REPOS_DIR
 	git clone https://github.com/coq-community/$project.git coq-community-$project
+	if [ $? != 0 ]; then
+		exit 1
+	fi
 	cd coq-community-$project
 	git checkout $version
-	make -j32
 	opam install -y coq-$project
+	make -j32
 }
 
 # Most of the coq-community installations can be done in the same way
@@ -53,6 +56,9 @@ else
 	cd $REPOS_DIR
 	opam install -y coq-ext-lib
 	git clone https://github.com/coq-community/coq-ext-lib.git coq-community-coq-ext-lib
+	if [ $? != 0 ]; then
+		exit 1
+	fi
 	cd coq-community-coq-ext-lib
 	git checkout b1fa2800a867df12eaced8ad324a04c2ada12a5a
 	make -j32
@@ -65,6 +71,9 @@ else
 	echo "Processing thery-PolTac"
 	cd $REPOS_DIR
 	git clone https://github.com/thery/PolTac.git thery-PolTac
+	if [ $? != 0 ]; then
+		exit 1
+	fi
 	cd thery-PolTac
 	git checkout v8.12
 	make all
@@ -77,6 +86,9 @@ else
 	echo "Processing CompCert"
 	cd $REPOS_DIR
 	git clone https://github.com/AbsInt/CompCert.git AbsInt-CompCert
+	if [ $? != 0 ]; then
+		exit 1
+	fi
 	cd AbsInt-CompCert
 	git checkout v3.8
 	./configure --ignore-coq-version --ignore-ocaml-version x86_64-linux
@@ -90,6 +102,9 @@ else
 	echo "Processing coq-contribs-zfc"
 	cd $REPOS_DIR
 	git clone https://github.com/coq-contribs/zfc.git coq-contribs-zfc
+	if [ $? != 0 ]; then
+		exit 1
+	fi
 	cd coq-contribs-zfc
 	make
 fi

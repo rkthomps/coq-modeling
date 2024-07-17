@@ -7,7 +7,9 @@ import json
 os.environ["OPENAI_API_KEY"] = "PLACEHOLDER"
 
 from pathlib import Path
-from data_management.splits import DataSplit, Split, SentenceDB, FileInfo, DatasetFile
+from data_management.splits import (
+    DataSplit, Split, SentenceDB, FileInfo, DatasetFile, Proof
+)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -21,6 +23,10 @@ sentence_db_loc = Path("../../raw-data/coq-dataset/sentences.db")
 sentence_db = SentenceDB.load(sentence_db_loc)
 
 
+def normalize(s: str) -> str:
+    return " ".join(s.split())
+
+
 def generate_data_points_in_file(file_info: FileInfo, file_data_point: DatasetFile):
     file_path = file_info.file.replace("/", "_")
 
@@ -30,8 +36,8 @@ def generate_data_points_in_file(file_info: FileInfo, file_data_point: DatasetFi
                 continue
 
             with open(data_loc / file_info.file, "r") as f:
-                text = f.read()
-                index = text.find(proof.theorem.term.text)
+                text = normalize(f.read())
+                index = text.find(normalize(proof.theorem.term.text))
                 if index == -1:
                     continue
                 prefix = text[:index]

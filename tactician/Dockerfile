@@ -56,6 +56,7 @@ RUN mkdir /home/graph2tac/coq-modeling/raw-data && \
 	mkdir /home/graph2tac/coq-modeling/raw-data/coq-dataset/repos
 WORKDIR /home/graph2tac/coq-modeling/slurm/example-jobs
 COPY --chown=graph2tac modified-install-projects.sh /home/graph2tac/coq-modeling/slurm/example-jobs/install-projects.sh
+RUN git config http.postBuffer 524288000
 RUN chmod +x install-projects.sh && ./install-projects.sh /home/graph2tac
 
 COPY --chown=graph2tac scripts/generate_data_points_8_12.py /home/graph2tac/coq-modeling/tactician/scripts/generate_data_points_8_12.py
