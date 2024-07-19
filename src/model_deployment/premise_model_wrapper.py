@@ -247,6 +247,8 @@ class SelectWrapper:
         # context_format = CONTEXT_ALIASES[context_format_alias]
         # premise_filter = PremiseFilter.from_json(premise_conf["premise_filter"])
         retriever = PremiseRetriever.from_pretrained(checkpoint_loc)
+        if torch.cuda.is_available():
+            retriever.to("cuda")
         if vector_db_loc is not None:
             vector_db = VectorDB.load(vector_db_loc)
         else:
