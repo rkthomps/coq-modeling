@@ -3,6 +3,7 @@ import argparse
 import pickle
 import time
 from pathlib import Path
+import subprocess
 import multiprocessing as mp
 
 from data_management.splits import DataSplit, FileInfo
@@ -32,20 +33,33 @@ from util.file_queue import FileQueue, EmptyFileQueueError
 _logger = get_basic_logger(__name__)
 
 
-def get_orig_summary(file: Path, theorem: str, eval_conf: EvalConf) -> Summary:
+def get_orig_summary(
+    file: Path, theorem: str, proof_idx: int, theorem_id: str, eval_conf: EvalConf
+) -> Summary:
     match eval_conf.search_conf:
         case MCTSConf():
-            return MCTSSummary.from_search_result(file, theorem, None)
+            return MCTSSummary.from_search_result(
+                file, theorem, proof_idx, theorem_id, None
+            )
         case ClassicalSearchConf():
-            return ClassicalSummary.from_search_result(file, theorem, None)
+            return ClassicalSummary.from_search_result(
+                file, theorem, proof_idx, theorem_id, None
+            )
         case StraightLineSearcherConf():
-            return StraightLineSummary.from_search_result(file, theorem, None)
+            return StraightLineSummary.from_search_result(
+                file, theorem, proof_idx, theorem_id, None
+            )
 
 
 def run_and_save_proof(run_conf: RunProofConf):
-    _logger.info(f"running proof of {theorem_name} from {file}")
     result = run_proof(run_conf)
-    summary = summary_from_result(file, theorem_name, result)
+    summary = summary_from_result(
+        run_conf.file,
+        run_conf.theorem,
+        run_conf.loc.dp_proof_idx,
+        run_conf.theorem_id,
+        result,
+    )
     _logger.info(pretty_print_summary(summary))
     save_summary(summary, eval_conf.save_loc)
 
@@ -90,25 +104,16 @@ if __name__ == "__main__":
             location_info, eval_conf.search_conf, tactic_client, False, False
         )
 
-        file = eval_conf.data_loc / location_info.file_info.file
-        try:
-            theorem_name = (
-                run_conf.loc.dataset_file.proofs[
-                    run_conf.loc.dp_proof_idx
-                ].get_theorem_name()
-                + "-"
-                + str(run_conf.loc.dp_proof_idx)
-            )
-        except ValueError:
-            _logger.info(
-                f"Could not get name of theorem for: {run_conf.loc.dataset_file.proofs[run_conf.loc.dp_proof_idx]}"
-            )
-            continue
-
-        orig_summary = get_orig_summary(file, theorem_name, eval_conf)
+        orig_summary = get_orig_summary(
+            run_conf.file,
+            run_conf.theorem,
+            run_conf.loc.dp_proof_idx,
+            run_conf.theorem_id,
+            eval_conf,
+        )
         save_summary(orig_summary, eval_conf.save_loc)
 
-        _logger.info(f"running proof of {theorem_name} from {file}")
+        _logger.info(f"running proof of {run_conf.theorem_id} from {run_conf.file}")
         worker_process = mp.Process(target=run_and_save_proof, args=(run_conf,))
         worker_process.start()
         worker_process.join(2 * run_conf.search_conf.timeout)

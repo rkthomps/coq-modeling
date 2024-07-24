@@ -4,6 +4,7 @@ from typing import Any, Optional
 import sys, os
 import argparse
 import pickle
+import json
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -49,6 +50,21 @@ class RunProofConf:
     tactic_gen: TacticGenClient
     print_proofs: bool
     print_trees: bool
+
+    @property
+    def file(self) -> Path:
+        return self.loc.data_loc / self.loc.file_info.file
+
+    @property
+    def theorem(self) -> str:
+        return self.loc.dataset_file.proofs[self.loc.dp_proof_idx].theorem.term.text
+
+    @property
+    def theorem_id(self) -> str:
+        theorem_name = self.loc.dataset_file.proofs[
+            self.loc.dp_proof_idx
+        ].get_theorem_name()
+        return theorem_name + "-" + str(self.loc.dp_proof_idx)
 
 
 def normalize(s: str) -> str:
@@ -115,10 +131,14 @@ def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
 class MCTSSummary:
     file: Path
     theorem: str
+    proof_idx: int
+    theorem_id: str
     success: bool
     proof: Optional[str]
     search_time: float | None
     model_time: float | None
+
+    ALIAS = "mcts"
 
     def print_detailed_summary(self):
         print("File:", self.file)
@@ -127,6 +147,31 @@ class MCTSSummary:
         if self.success:
             assert self.proof is not None
             print("Proof:", self.proof)
+
+    def to_json(self) -> Any:
+        return {
+            "file": str(self.file),
+            "theorem": self.theorem,
+            "proof_idx": self.proof_idx,
+            "theorem_id": self.theorem_id,
+            "success": self.success,
+            "proof": self.proof,
+            "search_time": self.search_time,
+            "model_time": self.model_time,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> MCTSSummary:
+        return cls(
+            Path(json_data["file"]),
+            json_data["theorem"],
+            json_data["proof_idx"],
+            json_data["theorem_id"],
+            json_data["success"],
+            json_data["proof"],
+            json_data["search_time"],
+            json_data["model_time"],
+        )
 
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
         headers = [
@@ -151,28 +196,48 @@ class MCTSSummary:
 
     @classmethod
     def from_search_result(
-        cls, file: Path, theorem: str, result: MCTSSuccess | MCTSFailure | None
+        cls,
+        file: Path,
+        theorem: str,
+        proof_idx: int,
+        theorem_id: str,
+        result: MCTSSuccess | MCTSFailure | None,
     ) -> MCTSSummary:
         match result:
             case MCTSSuccess():
                 return cls(
                     file,
                     theorem,
+                    proof_idx,
+                    theorem_id,
                     True,
                     result.successful_proof.proof_text_to_string(),
                     result.time,
                     result.model_time,
                 )
             case MCTSFailure():
-                return cls(file, theorem, False, None, result.time, result.model_time)
+                return cls(
+                    file,
+                    theorem,
+                    proof_idx,
+                    theorem_id,
+                    False,
+                    None,
+                    result.time,
+                    result.model_time,
+                )
             case None:
-                return cls(file, theorem, False, None, None, None)
+                return cls(
+                    file, theorem, proof_idx, theorem_id, False, None, None, None
+                )
 
 
 @dataclass
 class ClassicalSummary:
     file: Path
     theorem: str
+    proof_idx: int
+    theorem_id: str
     success: bool
     proof: Optional[str]
     search_steps: int | None
@@ -183,6 +248,8 @@ class ClassicalSummary:
     num_tactic_errors: int | None
     num_nodes_pruned: int | None
 
+    ALIAS = "classical"
+
     def print_detailed_summary(self):
         print("File:", self.file)
         print("Theorem:", self.theorem)
@@ -190,6 +257,41 @@ class ClassicalSummary:
         if self.success:
             assert self.proof is not None
             print("Proof:", self.proof)
+
+    def to_json(self) -> Any:
+        return {
+            "file": str(self.file),
+            "theorem": self.theorem,
+            "proof_idx": self.proof_idx,
+            "theorem_id": self.theorem_id,
+            "success": self.success,
+            "proof": self.proof,
+            "search_steps": self.search_steps,
+            "max_depth": self.max_depth,
+            "num_proofs_attempted": self.num_proofs_attempted,
+            "search_time": self.search_time,
+            "model_time": self.model_time,
+            "num_tactic_errors": self.num_tactic_errors,
+            "num_nodes_pruned": self.num_nodes_pruned,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> ClassicalSummary:
+        return cls(
+            Path(json_data["file"]),
+            json_data["theorem"],
+            json_data["proof_idx"],
+            json_data["theorem_id"],
+            json_data["success"],
+            json_data["proof"],
+            json_data["search_steps"],
+            json_data["max_depth"],
+            json_data["num_proofs_attempted"],
+            json_data["search_time"],
+            json_data["model_time"],
+            json_data["num_tactic_errors"],
+            json_data["num_nodes_pruned"],
+        )
 
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
         headers = [
@@ -227,11 +329,25 @@ class ClassicalSummary:
         cls,
         file: Path,
         theorem: str,
+        proof_idx: int,
+        theorem_id: str,
         result: ClassicalSuccess | ClassicalFailure | None,
     ) -> ClassicalSummary:
         if result is None:
             return cls(
-                file, theorem, False, None, None, None, None, None, None, None, None
+                file,
+                theorem,
+                proof_idx,
+                theorem_id,
+                False,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
             )
         search_size = result.search_tree.root.size()
         num_errors = result.search_tree.root.num_errors()
@@ -247,6 +363,8 @@ class ClassicalSummary:
                 return ClassicalSummary(
                     file,
                     theorem,
+                    proof_idx,
+                    theorem_id,
                     True,
                     result.get_proof(),
                     expand_num,
@@ -263,6 +381,8 @@ class ClassicalSummary:
                 return ClassicalSummary(
                     file,
                     theorem,
+                    proof_idx,
+                    theorem_id,
                     False,
                     None,
                     expand_num,
@@ -279,11 +399,15 @@ class ClassicalSummary:
 class StraightLineSummary:
     file: Path
     theorem: str
+    proof_idx: int
+    theorem_id: str
     success: bool
     proof: str | None
     attempts: list[str] | None
     search_time: float | None
     model_time: float | None
+
+    ALIAS = "straight"
 
     def __lt__(self, other: ClassicalSummary) -> bool:
         if self.file == other.file:
@@ -304,6 +428,33 @@ class StraightLineSummary:
                 print(attempt)
         else:
             print("No Attempts")
+
+    def to_json(self) -> Any:
+        return {
+            "file": str(self.file),
+            "theorem": self.theorem,
+            "proof_idx": self.proof_idx,
+            "theorem_id": self.theorem_id,
+            "success": self.success,
+            "proof": self.proof,
+            "attempts": self.attempts,
+            "search_time": self.search_time,
+            "model_time": self.model_time,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> StraightLineSummary:
+        return cls(
+            Path(json_data["file"]),
+            json_data["theorem"],
+            json_data["proof_idx"],
+            json_data["theorem_id"],
+            json_data["success"],
+            json_data["proof"],
+            json_data["attempts"],
+            json_data["search_time"],
+            json_data["model_time"],
+        )
 
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
         headers = [
@@ -328,16 +479,22 @@ class StraightLineSummary:
         cls,
         file: Path,
         theorem: str,
+        proof_idx: int,
+        theorem_id: str,
         search_result: StraightLineSuccess | StraightLineFailure | None,
     ):
         if search_result is None:
-            return cls(file, theorem, False, None, None, None, None)
+            return cls(
+                file, theorem, proof_idx, theorem_id, False, None, None, None, None
+            )
         match search_result:
             case StraightLineSuccess():
                 proof_text = search_result.successful_proof.proof_text_to_string()
                 return cls(
                     file,
                     theorem,
+                    proof_idx,
+                    theorem_id,
                     True,
                     proof_text,
                     search_result.attempted_proofs,
@@ -348,6 +505,8 @@ class StraightLineSummary:
                 return cls(
                     file,
                     theorem,
+                    proof_idx,
+                    theorem_id,
                     False,
                     None,
                     search_result.attempted_proofs,
@@ -356,12 +515,30 @@ class StraightLineSummary:
                 )
 
 
+def summary_from_json(json_data: Any) -> Summary:
+    attempted_alias = json_data["alias"]
+    match attempted_alias:
+        case ClassicalSummary.ALIAS:
+            return ClassicalSummary.from_json(json_data)
+        case StraightLineSummary.ALIAS:
+            return StraightLineSummary.from_json(json_data)
+        case MCTSSummary.ALIAS:
+            return MCTSSummary.from_json(json_data)
+        case _:
+            raise ValueError(f"Unknown alias {attempted_alias}")
+
+
+def summary_to_json(summary: Summary) -> Any:
+    return summary.to_json() | {"alias": summary.ALIAS}
+
+
 def save_summary(summary: Summary, save_dir: Path):
-    save_loc = save_dir / str(summary.file / (summary.theorem + ".pkl")).replace(
+    save_loc = save_dir / str(summary.file / (summary.theorem_id + ".json")).replace(
         os.path.sep, "-"
     )
-    with save_loc.open("wb") as fout:
-        fout.write(pickle.dumps(summary))
+    with save_loc.open("w") as fout:
+        summary_json = summary_to_json(summary)
+        fout.write(json.dumps(summary_json, indent=2))
 
 
 def pretty_print_summary(summary: Summary):
@@ -383,12 +560,20 @@ Summary = MCTSSummary | ClassicalSummary | StraightLineSummary
 def summary_from_result(
     file: Path,
     theorem: str,
+    proof_idx: int,
+    theorem_id: str,
     result: SearchResult,
 ) -> Summary:
     match result:
         case ClassicalSuccess() | ClassicalFailure():
-            return ClassicalSummary.from_search_result(file, theorem, result)
+            return ClassicalSummary.from_search_result(
+                file, theorem, proof_idx, theorem_id, result
+            )
         case MCTSSuccess() | MCTSFailure():
-            return MCTSSummary.from_search_result(file, theorem, result)
+            return MCTSSummary.from_search_result(
+                file, theorem, proof_idx, theorem_id, result
+            )
         case StraightLineSuccess() | StraightLineFailure():
-            return StraightLineSummary.from_search_result(file, theorem, result)
+            return StraightLineSummary.from_search_result(
+                file, theorem, proof_idx, theorem_id, result
+            )

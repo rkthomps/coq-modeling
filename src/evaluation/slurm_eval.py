@@ -115,7 +115,7 @@ def start_provers(
 ):
     proof_sbatch = (
         "#!/bin/bash\n"
-        f"#SBATCH -p cpu-preempt\n"
+        f"#SBATCH -p cpu\n"
         f"#SBATCH -c {n_threads_per_worker}\n"
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --array=0-{n_workers - 1}\n"
@@ -123,6 +123,8 @@ def start_provers(
         f"#SBATCH -o slurm/out/slurm-prove-%j.out\n"
         f"sbcast {eval_conf.sentence_db_loc} /tmp/sentences.db\n"
         f"source venv/bin/activate\n"
+        f"module load opam/2.1.2\n"
+        f"eval $(opam env)\n"
         f"python3 src/evaluation/eval_worker.py {eval_conf_loc} {eval_queue_loc}\n"
     )
 

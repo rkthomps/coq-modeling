@@ -3,6 +3,7 @@ import os
 import sys
 import csv
 import ipdb
+import json
 from typing import Any
 from pathlib import Path
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from model_deployment.prove import (
     RunProofConf,
     LocationInfo,
     Summary,
+    summary_from_json,
     run_proof,
     summary_from_result,
     pretty_print_summary,
@@ -100,8 +102,9 @@ def run_test(test_proof: TestProofConf, save_dir: Path):
     file = test_proof.theorem_location_info.test_file.relative_to(
         test_proof.theorem_location_info.data_loc
     )
-    theorem = test_proof.theorem_location_info.theorem_name
-    summary = summary_from_result(file, theorem, result)
+    summary = summary_from_result(
+        file, run_conf.theorem, run_conf.loc.dp_proof_idx, run_conf.theorem_id, result
+    )
     pretty_print_summary(summary)
     save_summary(summary, save_dir)
 
@@ -109,11 +112,12 @@ def run_test(test_proof: TestProofConf, save_dir: Path):
 def load_results(save_dir: Path) -> list[Summary]:
     summaries: list[Summary] = []
     for f in os.listdir(save_dir):
-        if not f.endswith(".pkl"):
+        if not f.endswith(".json"):
             continue
-        with (save_dir / f).open("rb") as fin:
-            summary = pickle.load(fin)
-            summaries.append(summary)
+        with open(save_dir / f, "r") as fin:
+            summary_data = json.load(fin)
+            summary = summary_from_json(summary_data)
+        summaries.append(summary)
     return summaries
 
 
