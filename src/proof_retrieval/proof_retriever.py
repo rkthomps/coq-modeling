@@ -719,6 +719,8 @@ def proof_retriever_conf_from_yaml(yaml_data: Any) -> ProofRetrieverConf:
     match attempted_alias:
         case TfIdfProofRetrieverConf.ALIAS:
             return TfIdfProofRetrieverConf.from_yaml(yaml_data)
+        case Bm25ProofRetrieverConf.ALIAS:
+            return Bm25ProofRetrieverConf.from_yaml(yaml_data)
         case TreeProofRetrieverConf.ALIAS:
             return TreeProofRetrieverConf.from_yaml(yaml_data)
         case DeepProofRetrieverClientConf.ALIAS:

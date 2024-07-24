@@ -524,9 +524,11 @@ def update_ips(conf: TopLevelConf, port_map: dict[int, tuple[str, int]]):
             premise_conf_update_ips(conf.premise_conf, port_map)
         case LmDatasetConf():
             [formatter_update_ips(f, port_map) for f in conf.lm_formatter_confs]
+        case RerankDatasetConf():
+            premise_conf_update_ips(conf.rerank_formatter_conf.select_conf, port_map)
         case _:
             _logger.warning(
-                "IP updating only implemented for evaluation. Inter-node communication might not work."
+                f"IP updating not implemented for {conf.__class__}. Inter-node communication might not work."
             )  # TODO
 
 

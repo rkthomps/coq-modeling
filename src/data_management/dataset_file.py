@@ -398,7 +398,7 @@ class Proof:
             if name_match is not None:
                 (name,) = name_match.groups()
                 return name
-        _logger.warning("Could not find name for theorem: ", self.theorem.term.text)
+        _logger.warning(f"Could not find name for theorem: {self.theorem.term.text}")
         return "Anon"
 
     def proof_prefix_to_string(

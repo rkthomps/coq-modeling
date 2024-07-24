@@ -83,6 +83,7 @@ def start_servers_and_update_conf(
         f"#SBATCH --gpus-per-task=1\n"
         f"#SBATCH --constraint=2080ti\n"
         f"#SBATCH --mem-per-cpu=16G\n"
+        f"#SBATCH --no-requeue\n"
         f"#SBATCH -o slurm/out/slurm-serve-%j.out\n"
         f"srun -l {RUN_MODELS_LOC}\n"
     )
