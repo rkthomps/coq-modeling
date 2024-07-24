@@ -181,15 +181,24 @@ class SelectWrapper:
     def encode_premises(
         self, indices: list[int], non_indices: list[Sentence]
     ) -> torch.Tensor:
+        assert 0 < len(indices) or 0 < len(non_indices)
         if self.vector_db is not None:
-            index_embs = self.vector_db.get_embs(indices)
-            if index_embs is None or len(index_embs) == 0:
-                return self.encode_all(indices, non_indices)
-            to_encode = non_indices
-            to_encode_strs = [self.premise_format.format(s) for s in to_encode]
-            if 0 == len(non_indices):
+            index_embs = None
+            if 0 < len(indices):
+                index_embs = self.vector_db.get_embs(indices)
+                if index_embs is None or len(index_embs) == 0:
+                    return self.encode_all(indices, non_indices)
+            non_index_embs = None
+            if 0 < len(non_indices):
+                to_encode = non_indices
+                to_encode_strs = [self.premise_format.format(s) for s in to_encode]
+                non_index_embs = self.get_premise_embs(to_encode_strs)
+            if index_embs is None:
+                assert non_index_embs is not None
+                return non_index_embs
+            if non_index_embs is None:
+                assert index_embs is not None
                 return index_embs
-            non_index_embs = self.get_premise_embs(to_encode_strs)
             return torch.cat((index_embs, non_index_embs), 0)
         return self.encode_all(indices, non_indices)
 
@@ -212,6 +221,8 @@ class SelectWrapper:
     def get_premise_scores(
         self, context_str: str, idx_premises: list[int], other_premises: list[Sentence]
     ) -> list[float]:
+        if 0 == len(idx_premises) and 0 == len(other_premises):
+            return []
         premise_matrix = self.encode_premises(idx_premises, other_premises)
         if self.__transform_mat is not None:
             premise_matrix = premise_matrix @ self.__transform_mat

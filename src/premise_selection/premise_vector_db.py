@@ -127,19 +127,20 @@ class VectorDB:
         sdb_size = sdb.size()
         num_written = 0
         cur_page = 0
-        if os.path.exists(db_loc):
-            raise FileExistsError(f"{db_loc}")
-        os.makedirs(db_loc)
+        os.makedirs(db_loc, exist_ok=True)
         while num_written < sdb_size + 1:
             sentences_to_write = cls.load_page_sentences(
                 cur_page, page_size, sdb, sdb_size
             )
-            page_embs = encoder(sentences_to_write)
-            assert len(page_embs) == len(sentences_to_write)
-            page_loc = get_page_loc(db_loc, cur_page) 
-            torch.save(page_embs, page_loc)
+            page_loc = get_page_loc(db_loc, cur_page)
             num_written += len(sentences_to_write)
             cur_page += 1
+            if page_loc.exists():
+                _logger.warning(f"Using existing page: {page_loc}")
+                continue
+            page_embs = encoder(sentences_to_write)
+            assert len(page_embs) == len(sentences_to_write)
+            torch.save(page_embs, page_loc)
             _logger.info(f"Processed {num_written} out of {sdb_size}")
         return VectorDB(db_loc, page_size, source, sdb_hash)
 
@@ -230,7 +231,7 @@ if __name__ == "__main__":
     sentence_db_loc = Path(args.sentence_db_loc)
 
     if db_loc.exists():
-        raise FileExistsError(f"{db_loc}")
+        _logger.warning(f"Overwriting {db_loc}")
 
     assert checkpoint_loc.exists()
     assert sentence_db_loc.exists()

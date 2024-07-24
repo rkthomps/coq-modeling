@@ -19,7 +19,8 @@ class EvalDesc:
 @dataclass
 class SuccessfulSummary:
     file: Path
-    theorem_name: str
+    theorem: str
+    theorem_id: str
     search_time: float
     model_time: float
     attempts: int
@@ -31,7 +32,7 @@ class EvalData:
     results: list[Summary]
 
     def get_proof_set(self) -> set[ProofPair]:
-        return set([ProofPair(str(r.file), r.theorem) for r in self.results])
+        return set([ProofPair(str(r.file), r.theorem_id) for r in self.results])
 
     def get_successful_searches(self) -> list[SuccessfulSummary]:
         successes: list[SuccessfulSummary] = []
@@ -51,7 +52,14 @@ class EvalData:
                         num_attempts = len(r.attempts)
 
                 successes.append(
-                    SuccessfulSummary(r.file, r.theorem, r.search_time, r.model_time, num_attempts)
+                    SuccessfulSummary(
+                        r.file,
+                        r.theorem,
+                        r.theorem_id,
+                        r.search_time,
+                        r.model_time,
+                        num_attempts,
+                    )
                 )
         return successes
 
@@ -59,7 +67,6 @@ class EvalData:
         successes = self.get_successful_searches()
         successes.sort(key=lambda x: x.model_time)
         return [PlotPoint(s.model_time, i + 1) for i, s in enumerate(successes)]
-
 
     def get_time_points(self) -> list[PlotPoint]:
         successes = self.get_successful_searches()
@@ -70,11 +77,13 @@ class EvalData:
         successes = self.get_successful_searches()
         successes.sort(key=lambda x: x.attempts)
         return [PlotPoint(s.attempts, i + 1) for i, s in enumerate(successes)]
-    
+
     def filter_to_proofs(self, proofs: set[ProofPair]) -> EvalData:
-        new_results = [r for r in self.results if ProofPair(str(r.file), r.theorem) in proofs]
+        new_results = [
+            r for r in self.results if ProofPair(str(r.file), r.theorem_id) in proofs
+        ]
         return EvalData(self.alias, new_results)
-    
+
     def get_error_fraction(self) -> float:
         num_errors = 0
         for r in self.results:
@@ -86,10 +95,10 @@ class EvalData:
 @dataclass
 class ProofPair:
     file_name: str
-    theorem_name: str
+    theorem_id: str
 
     def __hash__(self) -> int:
-        return hash((self.file_name, self.theorem_name))
+        return hash((self.file_name, self.theorem_id))
 
 
 @dataclass
@@ -127,10 +136,10 @@ def get_two_eval_subsets(
     e1 = eval1_list[0]
     e2 = eval2_list[0]
     e1_successes = set(
-        [ProofPair(str(s.file), s.theorem_name) for s in e1.get_successful_searches()]
+        [ProofPair(str(s.file), s.theorem_id) for s in e1.get_successful_searches()]
     )
     e2_successes = set(
-        [ProofPair(str(s.file), s.theorem_name) for s in e2.get_successful_searches()]
+        [ProofPair(str(s.file), s.theorem_id) for s in e2.get_successful_searches()]
     )
     return TwoEvalSubsets(
         e1_successes - e2_successes,
@@ -144,21 +153,22 @@ def get_eval(evals: list[EvalData], alias: str) -> EvalData:
     assert len(eval_list) == 1
     return eval_list[0]
 
+
 def get_three_eval_subets(
     evals: list[EvalData], eval1_alias: str, eval2_alias: str, eval3_alias
 ) -> ThreeEvalSubsets:
-    e1 = get_eval(evals, eval1_alias) 
-    e2 = get_eval(evals, eval2_alias) 
-    e3 = get_eval(evals, eval3_alias) 
+    e1 = get_eval(evals, eval1_alias)
+    e2 = get_eval(evals, eval2_alias)
+    e3 = get_eval(evals, eval3_alias)
 
     e1_successes = set(
-        [ProofPair(str(s.file), s.theorem_name) for s in e1.get_successful_searches()]
+        [ProofPair(str(s.file), s.theorem_id) for s in e1.get_successful_searches()]
     )
     e2_successes = set(
-        [ProofPair(str(s.file), s.theorem_name) for s in e2.get_successful_searches()]
+        [ProofPair(str(s.file), s.theorem_id) for s in e2.get_successful_searches()]
     )
     e3_successes = set(
-        [ProofPair(str(s.file), s.theorem_name) for s in e3.get_successful_searches()]
+        [ProofPair(str(s.file), s.theorem_id) for s in e3.get_successful_searches()]
     )
 
     return ThreeEvalSubsets(
@@ -176,7 +186,7 @@ def count_total_successes(evals: list[EvalData]) -> int:
     success_set: set[tuple[Path, str]] = set()
     for e in evals:
         success_set |= set(
-            [(s.file, s.theorem_name) for s in e.get_successful_searches()]
+            [(s.file, s.theorem_id) for s in e.get_successful_searches()]
         )
     return len(success_set)
 
@@ -199,6 +209,7 @@ def find_mutual_proofs(evals: list[EvalData]) -> set[ProofPair]:
         inter_proof_set &= e.get_proof_set()
     return inter_proof_set
 
+
 def results_to_proof_map(results: list[Summary]) -> dict[ProofPair, Summary]:
     result_map: dict[ProofPair, Summary] = {}
     for r in results:
@@ -209,7 +220,9 @@ def results_to_proof_map(results: list[Summary]) -> dict[ProofPair, Summary]:
     return result_map
 
 
-def a_beats_b_generator(es: list[EvalData], e1_alias: str, e2_alias: str) -> Generator[tuple[ProofPair, Summary, Summary], None, None]:
+def a_beats_b_generator(
+    es: list[EvalData], e1_alias: str, e2_alias: str
+) -> Generator[tuple[ProofPair, Summary, Summary], None, None]:
     e1 = get_eval(es, e1_alias)
     e2 = get_eval(es, e2_alias)
     e2_map = results_to_proof_map(e2.results)
