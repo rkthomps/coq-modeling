@@ -1,24 +1,25 @@
 # Data and model locations
-raw-data/
+/raw-data/
 /data/
-models/
-evaluations/
-reports/
+/models/
+/evaluations/
+/reports/
+/docker/
 
 # Slurm
-slurm/*
+/slurm/*
 !slurm/example-jobs
 
 # Temporary
-tmp/
+/tmp/
 
 # Config Files
-confs/
+/confs/
 
 # Python files
-venv/
+/venv/
 *.egg-info
-build/
+/build/
 __pycache__
 .DS_STORE
 .hypothesis
