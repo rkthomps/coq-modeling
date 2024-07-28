@@ -41,6 +41,7 @@ PROOF_SBATCH_LOC = Path("./slurm/jobs/run-proofs.sh")
 def start_servers_and_update_conf(
     eval_conf: EvalConf,
     timeout: str,
+    gpu_partition: str,
     n_gpu_nodes: int,
     n_devices_per_node: int,
     eval_conf_loc: Path,
@@ -76,7 +77,7 @@ def start_servers_and_update_conf(
 
     server_sbatch = (
         "#!/bin/bash\n"
-        f"#SBATCH -p gpu-preempt\n"
+        f"#SBATCH -p {gpu_partition}\n"
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --nodes={n_gpu_nodes}\n"
         f"#SBATCH --ntasks={n_gpu_nodes * n_devices_per_node}\n"
@@ -108,6 +109,7 @@ def start_servers_and_update_conf(
 def start_provers(
     eval_conf: EvalConf,
     timeout: str,
+    cpu_partition: str,
     n_workers: int,
     n_threads_per_worker: int,
     eval_conf_loc: Path,
@@ -115,7 +117,7 @@ def start_provers(
 ):
     proof_sbatch = (
         "#!/bin/bash\n"
-        f"#SBATCH -p cpu\n"
+        f"#SBATCH -p {cpu_partition}\n"
         f"#SBATCH -c {n_threads_per_worker}\n"
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --array=0-{n_workers - 1}\n"
@@ -138,6 +140,8 @@ def start_provers(
 def run(
     eval_conf: EvalConf,
     timeout: str,
+    gpu_partition: str,
+    cpu_partition: str,
     n_gpu_nodes: int,
     n_devices_per_node: int,
     n_workers: int,
@@ -148,11 +152,17 @@ def run(
     eval_queue_loc = TMP_LOC / (QUEUE_NAME + "-" + time_str)
     initialize_and_fill_queue(eval_queue_loc, eval_conf)
     start_servers_and_update_conf(
-        eval_conf, timeout, n_gpu_nodes, n_devices_per_node, eval_conf_loc
+        eval_conf,
+        timeout,
+        gpu_partition,
+        n_gpu_nodes,
+        n_devices_per_node,
+        eval_conf_loc,
     )
     start_provers(
         eval_conf,
         timeout,
+        cpu_partition,
         n_workers,
         n_threads_per_worker,
         eval_conf_loc,
@@ -164,6 +174,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("conf_loc", help="Location of eval configuration")
     parser.add_argument("timeout", help="Timeout for evaluation")
+    parser.add_argument("gpu_partition", help="GPU Partition to use.")
+    parser.add_argument("cpu_partition", help="CPU Partition to use.")
     parser.add_argument("n_gpu_nodes", type=int, help="Number of gpus nodes to use.")
     parser.add_argument(
         "n_devices_per_node",
@@ -179,6 +191,8 @@ if __name__ == "__main__":
 
     conf_loc = Path(args.conf_loc)
     timeout = args.timeout
+    gpu_partition = args.gpu_partition
+    cpu_partition = args.cpu_partition
     n_gpu_nodes = args.n_gpu_nodes
     n_devices_per_node = args.n_devices_per_node
     n_workers = args.n_workers
@@ -186,6 +200,8 @@ if __name__ == "__main__":
 
     assert conf_loc.exists()
     assert isinstance(timeout, str)
+    assert isinstance(gpu_partition, str)
+    assert isinstance(cpu_partition, str)
     assert isinstance(n_gpu_nodes, int)
     assert isinstance(n_devices_per_node, int)
     assert isinstance(n_workers, int)
@@ -194,17 +210,25 @@ if __name__ == "__main__":
     with conf_loc.open("r") as fin:
         conf = yaml.load(fin, Loader=yaml.Loader)
     eval_conf = EvalConf.from_yaml(conf)
+
     if eval_conf.save_loc.exists():
-        answer = input(f"{eval_conf.save_loc} already exists. Overwrite? y/n: ")
-        if answer.lower() != "y":
+        answer = input(
+            f"{eval_conf.save_loc} already exists. r = Restart; c = Continue; s = Stop; (r/c/s?): "
+        )
+        if answer.lower() == "r":
+            shutil.rmtree(eval_conf.save_loc)
+        elif answer.lower() == "c":
+            pass
+        else:
             raise FileExistsError(f"{eval_conf.save_loc}")
-        shutil.rmtree(eval_conf.save_loc)
-    os.makedirs(eval_conf.save_loc)
+    os.makedirs(eval_conf.save_loc, exist_ok=True)
     shutil.copy(conf_loc, eval_conf.save_loc / "conf.yaml")
 
     run(
         eval_conf,
         timeout,
+        gpu_partition,
+        cpu_partition,
         n_gpu_nodes,
         n_devices_per_node,
         n_workers,

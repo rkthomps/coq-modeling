@@ -121,6 +121,8 @@ class GeneralResult:
     success: bool
     proof: Optional[str]
 
+    GIT_NAMES = ["coq-community", "coq-contribs", "thery", "AbsInt", "CertiKOS"]
+
     @staticmethod
     def normalize_thm(thm: str) -> str:
         return " ".join(thm.strip().split())
@@ -128,7 +130,7 @@ class GeneralResult:
     @classmethod
     def from_proverbot_result(cls, result: ProverBotResult) -> GeneralResult:
         return cls(
-            result.project / Path(result.file_name),
+            cls.clean_proverbot_path(result.project / Path(result.file_name)),
             cls.normalize_thm(result.thm_str),
             result.time,
             result.success,
@@ -136,41 +138,35 @@ class GeneralResult:
         )
 
     @staticmethod
-    def clean_tactician_path(file_path: Path, proverbot_paths: list[Path]) -> Path:
+    def clean_proverbot_path(file_path: Path) -> Path:
+        return Path(file_path.parts[0]) / file_path.name
+
+    @classmethod
+    def strip_path(cls, path: Path) -> Path:
+        for name in cls.GIT_NAMES:
+            dashed_name = f"{name}-"
+            if str(path).startswith(dashed_name):
+                return Path(str(path)[len(dashed_name) :])
+        raise ValueError(f"Unexpected prefix {path}")
+
+    @classmethod
+    def clean_tactician_path(cls, file_path: Path) -> Path:
         assert file_path.parts[0] == "repos"
-        # for path in proverbot_paths:
-        #     if str(file_path).endswith(str(path)):
-        #         return Path(path)
         rel_path = file_path.relative_to("repos")
-        if str(rel_path).startswith("coq-community-"):
-            return Path(str(rel_path)[(len("coq-community-")) :])
-        if str(rel_path).startswith("coq-contribs-"):
-            return Path(str(rel_path)[(len("coq-contribs-")) :])
-        if str(rel_path).startswith("thery-"):
-            return Path(str(rel_path)[(len("thery-")) :])
-        return rel_path
-
-    @staticmethod
-    def clean_rango_path(file_path: Path, proverbot_paths: list[Path]) -> Path:
-        assert list(file_path.parts[:3]) == ["raw-data", "coq-dataset", "repos"]
-        # for path in proverbot_paths:
-        #     if str(file_path).endswith(str(path)):
-        #         return Path(path)
-        rel_path = file_path.relative_to("raw-data/coq-dataset/repos")
-        if str(rel_path).startswith("coq-community-"):
-            return Path(str(rel_path)[(len("coq-community-")) :])
-        if str(rel_path).startswith("coq-contribs-"):
-            return Path(str(rel_path)[(len("coq-contribs-")) :])
-        if str(rel_path).startswith("thery-"):
-            return Path(str(rel_path)[(len("thery-")) :])
-        return rel_path
+        stripped_path = cls.strip_path(rel_path)
+        return Path(stripped_path.parts[0]) / stripped_path.name
 
     @classmethod
-    def from_tacitician_result(
-        cls, result: TacticianResult, proverbot_paths: list[Path]
-    ) -> GeneralResult:
+    def clean_rango_path(cls, file_path: Path) -> Path:
+        assert list(file_path.parts[:3]) == ["raw-data", "coq-dataset", "repos"]
+        rel_path = file_path.relative_to("raw-data/coq-dataset/repos")
+        stripped_path = cls.strip_path(rel_path)
+        return Path(stripped_path.parts[0]) / stripped_path.name
+
+    @classmethod
+    def from_tacitician_result(cls, result: TacticianResult) -> GeneralResult:
         return cls(
-            cls.clean_tactician_path(Path(result.file_name), proverbot_paths),
+            cls.clean_tactician_path(Path(result.file_name)),
             cls.normalize_thm(result.thm_str),
             result.time,
             result.success,
@@ -178,11 +174,9 @@ class GeneralResult:
         )
 
     @classmethod
-    def from_rango_summary(
-        cls, result: Summary, proverbot_paths: list[Path]
-    ) -> GeneralResult:
+    def from_rango_summary(cls, result: Summary) -> GeneralResult:
         return cls(
-            cls.clean_rango_path(result.file, proverbot_paths),
+            cls.clean_rango_path(result.file),
             cls.normalize_thm(result.theorem),
             result.search_time if result.search_time is not None else -1,
             result.success,
@@ -195,27 +189,17 @@ def load_proverbot(path: Path) -> list[GeneralResult]:
     return [GeneralResult.from_proverbot_result(result) for result in proverbot_results]
 
 
-def load_tactician(
-    path: Path, proverbot_paths: Optional[list[Path]] = None
-) -> list[GeneralResult]:
-    if proverbot_paths is None:
-        proverbot_paths = []
+def load_tactician(path: Path) -> list[GeneralResult]:
     tactician_result = load_tactician_results(path)
-    return [
-        GeneralResult.from_tacitician_result(result, proverbot_paths)
-        for result in tactician_result
-    ]
+    return [GeneralResult.from_tacitician_result(result) for result in tactician_result]
 
 
-def load_rango(
-    path: Path, proverbot_paths: Optional[list[Path]] = None
-) -> list[GeneralResult]:
-    if proverbot_paths is None:
-        proverbot_paths = []
+def load_rango(path: Path) -> list[GeneralResult]:
     rango_result = load_results(path)
     return [
-        GeneralResult.from_rango_summary(result, proverbot_paths)
+        GeneralResult.from_rango_summary(result)
         for result in rango_result
+        if result.search_time is not None
     ]
 
 

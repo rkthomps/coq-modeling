@@ -1,5 +1,6 @@
 import sys, os
 import argparse
+import json
 import pickle
 import time
 from pathlib import Path
@@ -19,6 +20,8 @@ from model_deployment.prove import (
     run_proof,
     summary_from_result,
     save_summary,
+    get_save_loc,
+    summary_from_json,
     pretty_print_summary,
     ClassicalSummary,
     MCTSSummary,
@@ -81,6 +84,7 @@ if __name__ == "__main__":
     sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
     data_split = DataSplit.load(eval_conf.data_split_loc)
     q = FileQueue(queue_loc)
+    tactic_client = tactic_gen_client_from_conf(eval_conf.tactic_conf)
 
     while True:
         try:
@@ -99,7 +103,6 @@ if __name__ == "__main__":
             sentence_db,
             data_split,
         )
-        tactic_client = tactic_gen_client_from_conf(eval_conf.tactic_conf)
         run_conf = RunProofConf(
             location_info, eval_conf.search_conf, tactic_client, False, False
         )
@@ -111,6 +114,17 @@ if __name__ == "__main__":
             run_conf.theorem_id,
             eval_conf,
         )
+        save_loc = get_save_loc(orig_summary, eval_conf.save_loc)
+        if save_loc.exists():
+            with save_loc.open("r") as fin:
+                save_data = json.load(fin)
+            saved_summary = summary_from_json(save_data)
+            if saved_summary.search_time is not None:
+                _logger.info(
+                    f"skipping proof of {run_conf.theorem_id} from {run_conf.file}"
+                )
+                continue
+
         save_summary(orig_summary, eval_conf.save_loc)
 
         _logger.info(f"running proof of {run_conf.theorem_id} from {run_conf.file}")

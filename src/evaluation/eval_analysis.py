@@ -31,8 +31,14 @@ class EvalData:
     alias: str
     results: list[Summary]
 
-    def get_proof_set(self) -> set[ProofPair]:
-        return set([ProofPair(str(r.file), r.theorem_id) for r in self.results])
+    def get_proof_set(self, include_errors: bool = True) -> set[ProofPair]:
+        return set(
+            [
+                ProofPair(str(r.file), r.theorem_id)
+                for r in self.results
+                if r.model_time is not None or include_errors
+            ]
+        )
 
     def get_successful_searches(self) -> list[SuccessfulSummary]:
         successes: list[SuccessfulSummary] = []
@@ -201,12 +207,14 @@ def load_evals(eval_descs: list[EvalDesc], results_loc: Path) -> list[EvalData]:
     return evals
 
 
-def find_mutual_proofs(evals: list[EvalData]) -> set[ProofPair]:
+def find_mutual_proofs(
+    evals: list[EvalData], include_errors: bool = True
+) -> set[ProofPair]:
     if 0 == len(evals):
         return set()
-    inter_proof_set = evals[0].get_proof_set()
+    inter_proof_set = evals[0].get_proof_set(include_errors)
     for e in evals[1:]:
-        inter_proof_set &= e.get_proof_set()
+        inter_proof_set &= e.get_proof_set(include_errors)
     return inter_proof_set
 
 

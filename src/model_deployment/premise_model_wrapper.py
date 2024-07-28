@@ -231,7 +231,9 @@ class SelectWrapper:
             context_encoding = self.retriever.encode_context(
                 context_inputs.input_ids, context_inputs.attention_mask
             ).to(self.retriever.device)
-        similarities = torch.mm(context_encoding, premise_matrix.t())
+        similarities = torch.mm(
+            context_encoding, premise_matrix.t().to(self.retriever.device)
+        )
         assert similarities.shape[0] == 1
         return similarities[0].tolist()
 

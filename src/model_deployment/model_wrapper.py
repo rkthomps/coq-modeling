@@ -167,7 +167,7 @@ class DecoderLocalWrapper:
         self, example: LmExample, n: int, current_proof: str, beam: bool
     ) -> ModelResult:
         collated_input = self.collator.collate_input(self.tokenizer, example)
-        print("Collated: ", collated_input)
+        #print("Collated: ", collated_input)
         inputs = self.tokenizer(
             collated_input,
             max_length=self.hard_seq_len,

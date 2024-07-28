@@ -531,11 +531,13 @@ def summary_from_json(json_data: Any) -> Summary:
 def summary_to_json(summary: Summary) -> Any:
     return summary.to_json() | {"alias": summary.ALIAS}
 
-
-def save_summary(summary: Summary, save_dir: Path):
-    save_loc = save_dir / str(summary.file / (summary.theorem_id + ".json")).replace(
+def get_save_loc(summary: Summary, save_dir: Path):
+    return save_dir / str(summary.file / (summary.theorem_id + ".json")).replace(
         os.path.sep, "-"
     )
+
+def save_summary(summary: Summary, save_dir: Path):
+    save_loc = get_save_loc(summary, save_dir)
     with save_loc.open("w") as fout:
         summary_json = summary_to_json(summary)
         fout.write(json.dumps(summary_json, indent=2))
