@@ -100,7 +100,7 @@ def test_proof(
     start = time.time()
     try:
         stdout = coq_top.run(
-            "synth.",
+            "all: synth.",
             expect="Tactician found a proof!"
         )
         stdout += coq_top.process.after
