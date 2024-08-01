@@ -97,7 +97,8 @@ class RerankWrapper:
         max_seq_len = get_required_arg("max_seq_len", model_conf)
         tokenizer = GPT2Tokenizer.from_pretrained(model_conf["model_name"])
         reranker = PremiseReranker.from_pretrained(checkpoint_loc)
-        reranker = reranker.to("cuda")
+        if torch.cuda.is_available():
+            reranker = reranker.to("cuda")
         return cls(reranker, tokenizer, max_seq_len)
 
 

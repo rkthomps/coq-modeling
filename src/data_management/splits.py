@@ -58,6 +58,18 @@ def get_all_files(data_splits: list[DataSplit]) -> list[FileInfo]:
     return f_infos
 
 
+def get_dp_name(file: Path, data_loc: Path) -> str:
+    return str(file.relative_to(data_loc / REPOS_NAME)).replace("/", "-")
+
+
+def info_from_path(file: Path, workspace: Path, data_loc: Path) -> FileInfo:
+    return FileInfo(
+        get_dp_name(file, data_loc),
+        str(file.relative_to(data_loc)),
+        str(workspace.relative_to(data_loc)),
+        workspace.name,
+    )
+
 class FileInfo:
     def __init__(
         self,

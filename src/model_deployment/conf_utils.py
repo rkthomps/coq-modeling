@@ -598,7 +598,8 @@ def to_client_conf(
                 conf.sentence_db_loc,
                 conf.data_split_loc,
                 premise_conf,
-                conf.max_eval_proofs,
+                conf.start_at,
+                conf.end_at,
             )
             return new_premise_eval_conf, next_server_num, commands
         case TestWholeProofConf():
@@ -637,7 +638,8 @@ def to_client_conf(
                 conf.data_split_loc,
                 conf.search_conf,
                 tactic_client_conf,
-                conf.max_eval_proofs,
+                conf.start_at,
+                conf.end_at,
             )
             return eval_conf, next_server_num, commands
         case PremiseObserveConf():

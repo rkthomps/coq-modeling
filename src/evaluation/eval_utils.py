@@ -51,8 +51,12 @@ def initialize_and_fill_queue(
     )
     q = FileQueue(queue_loc)
     q.initialize()
-    if conf.max_eval_proofs is not None:
-        q.put_all(proof_map.proofs[: conf.max_eval_proofs])
+    if conf.end_at is not None and conf.start_at is not None:
+        q.put_all(proof_map.proofs[conf.start_at : conf.end_at])
+    elif conf.end_at is not None:
+        q.put_all(proof_map.proofs[: conf.end_at])
+    elif conf.start_at is not None:
+        q.put_all(proof_map.proofs[conf.start_at :])
     else:
         q.put_all(proof_map.proofs)
 
@@ -119,7 +123,8 @@ class EvalConf:
     data_split_loc: Path
     search_conf: SearcherConf
     tactic_conf: TacticGenConf
-    max_eval_proofs: Optional[int]
+    start_at: Optional[int]
+    end_at: Optional[int]
 
     def update_ips(self, port_map: dict[int, tuple[str, int]]):
         tactic_conf_update_ips(self.tactic_conf, port_map)
@@ -128,9 +133,9 @@ class EvalConf:
         data_split = DataSplit.load(self.data_split_loc)
         sentence_db = SentenceDB.load(self.sentence_db_loc)
         file_list = data_split.get_file_list(self.split)
-        if self.max_eval_proofs is not None and self.max_eval_proofs < len(file_list):
+        if self.end_at is not None and self.end_at < len(file_list):
             random.seed(0)
-            file_list = random.sample(file_list, self.max_eval_proofs)
+            file_list = random.sample(file_list, self.end_at)
         for file_info in file_list:
             proofs = file_info.get_proofs(self.data_loc, sentence_db)
             for i, proof in enumerate(proofs):
@@ -156,7 +161,7 @@ class EvalConf:
         assert self.sentence_db_loc == other.sentence_db_loc
         assert self.data_split_loc == other.data_split_loc
         assert self.search_conf == other.search_conf
-        assert self.max_eval_proofs == other.max_eval_proofs
+        assert self.end_at == other.end_at
         new_tactic_conf = merge_tactic_confs(self.tactic_conf, other.tactic_conf)
         return EvalConf(
             self.n_procs,
@@ -167,14 +172,19 @@ class EvalConf:
             self.data_split_loc,
             self.search_conf,
             new_tactic_conf,
-            self.max_eval_proofs,
+            self.start_at,
+            self.end_at,
         )
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> EvalConf:
-        max_eval_proofs = None
-        if "max_eval_proofs" in yaml_data:
-            max_eval_proofs = yaml_data["max_eval_proofs"]
+        end_at = None
+        if "end_at" in yaml_data:
+            end_at = yaml_data["end_at"]
+        start_at = None
+        if "start_at" in yaml_data:
+            start_at = yaml_data["start_at"]
+
         return cls(
             yaml_data["n_procs"],
             str2split(yaml_data["split"]),
@@ -184,7 +194,8 @@ class EvalConf:
             Path(yaml_data["data_split_loc"]),
             searcher_conf_from_yaml(yaml_data["search"]),
             tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
-            max_eval_proofs,
+            start_at,
+            end_at,
         )
 
 
@@ -247,14 +258,17 @@ class PremiseEvalConf:
     sentence_db_loc: Path
     data_split_loc: Path
     premise_conf: PremiseConf
-    max_eval_proofs: Optional[int]
+    start_at: Optional[int]
+    end_at: Optional[int]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseEvalConf:
-        if "max_eval_proofs" in yaml_data:
-            max_eval_proofs = yaml_data["max_eval_proofs"]
-        else:
-            max_eval_proofs = None
+        end_at = None
+        if "end_at" in yaml_data:
+            end_at = yaml_data["end_at"]
+        start_at = None
+        if "start_at" in yaml_data:
+            start_at = yaml_data["start_at"]
         return cls(
             str2split(yaml_data["split"]),
             Path(yaml_data["save_loc"]),
@@ -262,7 +276,8 @@ class PremiseEvalConf:
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["data_split_loc"]),
             premise_conf_from_yaml(yaml_data["premise"]),
-            max_eval_proofs,
+            start_at,
+            end_at,
         )
 
 

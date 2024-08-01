@@ -497,6 +497,7 @@ class FileContext:
                 avail_premises.append(sentence)
                 seen_sentences.add(sentence)
         return cls(file, workspace, repository, avail_premises)
+    
 
     @classmethod
     def from_directory(cls, dir_path: str, sentence_db: SentenceDB) -> FileContext:

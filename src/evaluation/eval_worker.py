@@ -55,7 +55,13 @@ def get_orig_summary(
 
 
 def run_and_save_proof(run_conf: RunProofConf):
-    result = run_proof(run_conf)
+    try:
+        result = run_proof(run_conf)
+    except TimeoutError:
+        _logger.error(
+            f"Got timeout error running proof: {run_conf.theorem_id} from {run_conf.file}"
+        )
+        return
     summary = summary_from_result(
         run_conf.file,
         run_conf.theorem,
@@ -71,12 +77,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("eval_pkl_conf_loc")
     parser.add_argument("queue_loc")
+    parser.add_argument("--only_new", default=False, action="store_true")
 
     args = parser.parse_args(sys.argv[1:])
     eval_pkl_conf_loc = Path(args.eval_pkl_conf_loc)
     queue_loc = Path(args.queue_loc)
+    only_new = args.only_new
     assert eval_pkl_conf_loc.exists()
     assert queue_loc.exists()
+    assert isinstance(only_new, bool)
 
     with eval_pkl_conf_loc.open("rb") as fin:
         eval_conf: EvalConf = pickle.load(fin)
@@ -85,6 +94,9 @@ if __name__ == "__main__":
     data_split = DataSplit.load(eval_conf.data_split_loc)
     q = FileQueue(queue_loc)
     tactic_client = tactic_gen_client_from_conf(eval_conf.tactic_conf)
+
+    if only_new:
+        _logger.info("Only running proofs that don't exist on disk.")
 
     while True:
         try:
@@ -115,13 +127,19 @@ if __name__ == "__main__":
             eval_conf,
         )
         save_loc = get_save_loc(orig_summary, eval_conf.save_loc)
+
         if save_loc.exists():
+            if only_new:
+                _logger.info(
+                    f"skipping proof of {run_conf.theorem_id} from {run_conf.file}. Already saved."
+                )
+                continue
             with save_loc.open("r") as fin:
                 save_data = json.load(fin)
             saved_summary = summary_from_json(save_data)
             if saved_summary.search_time is not None:
                 _logger.info(
-                    f"skipping proof of {run_conf.theorem_id} from {run_conf.file}"
+                    f"skipping proof of {run_conf.theorem_id} from {run_conf.file}. Already ran."
                 )
                 continue
 

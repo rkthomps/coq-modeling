@@ -531,10 +531,13 @@ def summary_from_json(json_data: Any) -> Summary:
 def summary_to_json(summary: Summary) -> Any:
     return summary.to_json() | {"alias": summary.ALIAS}
 
+
 def get_save_loc(summary: Summary, save_dir: Path):
-    return save_dir / str(summary.file / (summary.theorem_id + ".json")).replace(
+    save_name = str(summary.file / (summary.theorem_id + ".json")).replace(
         os.path.sep, "-"
-    )
+    )[-255:]
+    return save_dir / save_name
+
 
 def save_summary(summary: Summary, save_dir: Path):
     save_loc = get_save_loc(summary, save_dir)

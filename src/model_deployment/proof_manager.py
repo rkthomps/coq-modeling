@@ -64,6 +64,7 @@ class ProofCheckResult:
     current_goals: Optional[list[Goal]]
     goal_record: Optional[GoalRecord]
     new_proof: Optional[Proof]
+    steps: Optional[list[CStep]]
 
     @classmethod
     def get_invalid(cls, attempted_steps: list[str]) -> ProofCheckResult:
@@ -76,6 +77,7 @@ class ProofCheckResult:
             current_goals,
             goal_record,
             new_dataset_file,
+            None,
         )
 
 
@@ -326,6 +328,7 @@ class ProofManager:
                 get_all_goals(current_goals),
                 goal_record,
                 new_proof,
+                steps,
             )
 
         try:
@@ -355,6 +358,7 @@ class ProofManager:
             get_all_goals(current_goals),
             goal_record,
             new_proof,
+            None,
         )
 
     def get_example(

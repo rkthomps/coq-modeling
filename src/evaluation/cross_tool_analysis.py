@@ -1,14 +1,37 @@
 from __future__ import annotations
 from typing import Optional, Any
 from pathlib import Path
+import ipdb
+import re
 import os
 import json
+from edist.sed import standard_sed
 
 
 from dataclasses import dataclass
 
 from model_deployment.run_proofs import load_results
-from model_deployment.prove import Summary
+from model_deployment.prove import Summary, StraightLineSummary
+
+
+def remove_proof_qed(s: str) -> str:
+    return s.replace("Proof.", "").replace("Qed.", "")
+
+
+def proof_length(s: str) -> int:
+    s = remove_proof_qed(s)
+    tactics = re.split(r"[.;]\s+", s.strip())
+    proof_length = len(tactics)
+    if 0 == proof_length:
+        print(s)
+    assert 0 < proof_length
+    return len(tactics)
+
+
+def fair_edist(s1: str, s2: str) -> int:
+    s1 = remove_proof_qed(s1)
+    s2 = remove_proof_qed(s2)
+    return standard_sed(s1, s2)
 
 
 @dataclass
@@ -19,10 +42,10 @@ class NamedEval:
     def get_proof_pairs(self) -> set[ProofPair]:
         return {ProofPair(result.file, result.theorem) for result in self.results}
 
-    def get_successful_results(self) -> list[SuccessfulResult]:
+    def get_successful_results(self, timeout: float = 600) -> list[SuccessfulResult]:
         successes: list[SuccessfulResult] = []
         for result in self.results:
-            if result.success:
+            if result.success and result.time < timeout:
                 assert result.proof is not None
                 successes.append(
                     SuccessfulResult(
@@ -33,6 +56,33 @@ class NamedEval:
                     )
                 )
         return successes
+
+    def get_successful_proof_pairs(
+        self, timeout: float = 600
+    ) -> dict[ProofPair, SuccessfulResult]:
+        success_dict: dict[ProofPair, SuccessfulResult] = {}
+        for result in self.results:
+            if result.success and result.time < timeout:
+                assert result.proof is not None
+                success_dict[ProofPair(result.file, result.theorem)] = SuccessfulResult(
+                    result.file,
+                    result.theorem,
+                    result.time,
+                    result.proof,
+                )
+        return success_dict
+
+    def get_successful_proofs_in_range(
+        self, lower: int, upper: Optional[int]
+    ) -> set[ProofPair]:
+        pairs: set[ProofPair] = set()
+        for r in self.results:
+            if r.success:
+                assert r.proof is not None
+                proof_len = proof_length(r.proof)
+                if lower <= proof_len and (upper is None or proof_len <= upper):
+                    pairs.add(ProofPair(r.file, r.theorem))
+        return pairs
 
     def get_time_points(self) -> list[PlotPoint]:
         successes = self.get_successful_results()
@@ -105,6 +155,27 @@ def get_mutual_proof_pairs(evals: list[NamedEval]) -> set[ProofPair]:
     return mutual_pairs
 
 
+def get_mutually_successful_proof_pairs(
+    evals: list[NamedEval],
+) -> dict[str, list[SuccessfulResult]]:
+    assert 0 < len(evals)
+    eval_successes = [e.get_successful_proof_pairs() for e in evals]
+    all_successes = set(eval_successes[0].keys())
+    for e in evals[1:]:
+        e_successes = set(e.get_successful_proof_pairs().keys())
+        all_successes &= e_successes
+
+    success_dict: dict[str, list[SuccessfulResult]] = dict(
+        [(e.name, []) for e in evals]
+    )
+    for easy_proof in all_successes:
+        for e, e_succeses in zip(evals, eval_successes):
+            success_dict[e.name].append(e_succeses[easy_proof])
+    for k, v in success_dict.items():
+        assert len(v) == len(all_successes)
+    return success_dict
+
+
 @dataclass
 class SuccessfulResult:
     file: Path
@@ -116,12 +187,45 @@ class SuccessfulResult:
 @dataclass
 class GeneralResult:
     file: Path
+    raw_file: Path
     theorem: str
     time: float
     success: bool
     proof: Optional[str]
 
     GIT_NAMES = ["coq-community", "coq-contribs", "thery", "AbsInt", "CertiKOS"]
+
+    def to_json(self) -> Any:
+        return {
+            "file": str(self.file),
+            "raw_file": str(self.raw_file),
+            "theorem": self.theorem,
+            "time": self.time,
+            "success": self.success,
+            "proof": self.proof,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> GeneralResult:
+        return cls(
+            Path(json_data["file"]),
+            Path(json_data["raw_file"]),
+            json_data["theorem"],
+            json_data["time"],
+            json_data["success"],
+            json_data["proof"],
+        )
+
+    @classmethod
+    def get_tactician_proof(cls, stdout: str) -> str:
+        proof_text = re.sub(r"\u001b\[\d+m", "", stdout)
+        proof_text = proof_text.replace("only 1: ", "")
+        proof_portion_match = re.search(
+            r"synth with cache \((.*?)\)\.\r\nNo more (sub)?goals.", proof_text
+        )
+        assert proof_portion_match is not None
+        (proof_portion, _) = proof_portion_match.groups()
+        return proof_portion
 
     @staticmethod
     def normalize_thm(thm: str) -> str:
@@ -131,6 +235,7 @@ class GeneralResult:
     def from_proverbot_result(cls, result: ProverBotResult) -> GeneralResult:
         return cls(
             cls.clean_proverbot_path(result.project / Path(result.file_name)),
+            result.project / Path(result.file_name),
             cls.normalize_thm(result.thm_str),
             result.time,
             result.success,
@@ -167,21 +272,48 @@ class GeneralResult:
     def from_tacitician_result(cls, result: TacticianResult) -> GeneralResult:
         return cls(
             cls.clean_tactician_path(Path(result.file_name)),
+            Path(result.file_name),
             cls.normalize_thm(result.thm_str),
             result.time,
             result.success,
-            result.proof,
+            (
+                cls.get_tactician_proof(result.proof)
+                if result.success and result.proof is not None
+                else None
+            ),
         )
 
     @classmethod
     def from_rango_summary(cls, result: Summary) -> GeneralResult:
+        assert isinstance(result, StraightLineSummary)
+        proof = None
+        if result.success:
+            assert result.attempts is not None
+            assert result.proof is not None
+            assert result.attempts[-1] in result.proof
+            proof = result.attempts[-1]
         return cls(
             cls.clean_rango_path(result.file),
+            result.file.relative_to("raw-data/coq-dataset"),
             cls.normalize_thm(result.theorem),
             result.search_time if result.search_time is not None else -1,
             result.success,
-            result.proof,
+            proof,
         )
+
+
+def load_human(path: Path) -> list[GeneralResult]:
+    human_results: list[GeneralResult] = []
+    for human_result in os.listdir(path):
+        with (path / human_result).open() as fin:
+            human_data = json.load(fin)
+            human_result = GeneralResult.from_json(human_data)
+            human_result.theorem = GeneralResult.normalize_thm(human_result.theorem)
+            human_result.file = (
+                Path(human_result.file.parts[0]) / human_result.file.name
+            )
+            human_results.append(human_result)
+    return human_results
 
 
 def load_proverbot(path: Path) -> list[GeneralResult]:
@@ -190,8 +322,8 @@ def load_proverbot(path: Path) -> list[GeneralResult]:
 
 
 def load_tactician(path: Path) -> list[GeneralResult]:
-    tactician_result = load_tactician_results(path)
-    return [GeneralResult.from_tacitician_result(result) for result in tactician_result]
+    tactician_results = load_tactician_results(path)
+    return [GeneralResult.from_tacitician_result(r) for r in tactician_results]
 
 
 def load_rango(path: Path) -> list[GeneralResult]:
@@ -213,6 +345,7 @@ class TacticianResult:
     thm_str: str
     success: bool
     time: float
+    timeout: bool
     proof: Optional[str]
 
     def clean_path(self, proverbot_paths: list[str]) -> str:
@@ -230,6 +363,7 @@ class TacticianResult:
             json_data["theorem"],
             json_data["success"],
             json_data["synth_time"],
+            json_data["timeout"],
             json_data["stdout"],
         )
 
@@ -309,6 +443,26 @@ def load_proverbot_results(path: Path) -> list[ProverBotResult]:
 
 
 if __name__ == "__main__":
-    root = Path("evaluations/tactician/results-24-07-22")
+    # root = Path("evaluations/tactician/results-24-07-22")
+    root = Path("evaluations/graph2tac/results-2024-07-29")
     print("Loading results")
-    load_tactician_results(root)
+    # results, files = load_tactician_results(root)
+    results = load_tactician_results(root)
+    problems: list[Any] = []
+    for r in results:
+        if r.success:
+            assert r.proof is not None
+            GeneralResult.get_tactician_proof(r.proof)
+            # try:
+            #     GeneralResult.get_tactician_proof(r.proof)
+            # except AssertionError:
+            #     problems.append(
+            #         {
+            #             "file": r.file_name,
+            #             "result_file": file,
+            #             "stdout": r.proof,
+            #         }
+            #     )
+    # print(f"{len(problems)} problems found")
+    # with open("g2t_problems.json", "w") as fout:
+    #     fout.write(json.dumps(problems, indent=2))

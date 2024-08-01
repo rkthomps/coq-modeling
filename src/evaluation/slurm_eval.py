@@ -85,6 +85,7 @@ def start_servers_and_update_conf(
         f"#SBATCH --constraint=2080ti\n"
         f"#SBATCH --mem-per-cpu=16G\n"
         f"#SBATCH --no-requeue\n"
+        f"#SBATCH --mail-type=BEGIN,END,FAIL\n"
         f"#SBATCH -o slurm/out/slurm-serve-%j.out\n"
         f"srun -l {RUN_MODELS_LOC}\n"
     )
@@ -114,7 +115,14 @@ def start_provers(
     n_threads_per_worker: int,
     eval_conf_loc: Path,
     eval_queue_loc: Path,
+    only_new: bool,
 ):
+    if only_new:
+        command_str = f"python3 src/evaluation/eval_worker.py {eval_conf_loc} {eval_queue_loc} --only_new"
+    else:
+        command_str = (
+            f"python3 src/evaluation/eval_worker.py {eval_conf_loc} {eval_queue_loc}"
+        )
     proof_sbatch = (
         "#!/bin/bash\n"
         f"#SBATCH -p {cpu_partition}\n"
@@ -127,7 +135,7 @@ def start_provers(
         f"source venv/bin/activate\n"
         f"module load opam/2.1.2\n"
         f"eval $(opam env)\n"
-        f"python3 src/evaluation/eval_worker.py {eval_conf_loc} {eval_queue_loc}\n"
+        f"{command_str}\n"
     )
 
     with PROOF_SBATCH_LOC.open("w") as fout:
@@ -146,6 +154,7 @@ def run(
     n_devices_per_node: int,
     n_workers: int,
     n_threads_per_worker: int,
+    only_new: bool,
 ):
     time_str = datetime.now().strftime("%m%d%H%M%S")
     eval_conf_loc = TMP_LOC / (CLEAN_CONFIG + "-" + time_str)
@@ -167,6 +176,7 @@ def run(
         n_threads_per_worker,
         eval_conf_loc,
         eval_queue_loc,
+        only_new,
     )
 
 
@@ -186,6 +196,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "n_threads_per_worker", type=int, help="Number of threads per worker."
     )
+
     args = parser.parse_args(sys.argv[1:])
     os.makedirs(TMP_LOC, exist_ok=True)
 
@@ -211,14 +222,17 @@ if __name__ == "__main__":
         conf = yaml.load(fin, Loader=yaml.Loader)
     eval_conf = EvalConf.from_yaml(conf)
 
+    only_new = False
     if eval_conf.save_loc.exists():
         answer = input(
-            f"{eval_conf.save_loc} already exists. r = Restart; c = Continue; s = Stop; (r/c/s?): "
+            f"{eval_conf.save_loc} already exists. r = Restart; c = Continue; o = Only New; s = Stop; (r/c/o/s?): "
         )
         if answer.lower() == "r":
             shutil.rmtree(eval_conf.save_loc)
         elif answer.lower() == "c":
             pass
+        elif answer.lower() == "o":
+            only_new = True
         else:
             raise FileExistsError(f"{eval_conf.save_loc}")
     os.makedirs(eval_conf.save_loc, exist_ok=True)
@@ -233,4 +247,5 @@ if __name__ == "__main__":
         n_devices_per_node,
         n_workers,
         n_threads_per_worker,
+        only_new,
     )
