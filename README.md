@@ -4,8 +4,8 @@ Rango uses _retrieval augmentation_ to adapt to its environment.
 This repository contains the code required for:
 - Processing data to train Rango, proof retrievers and lemma retrievers
 - Training Rango, proof retrievers and lemma retrievers
-- Running Rango on proofs in CoqHub
-- Evaluating Rango on CoqHub's testing set
+- Running Rango on proofs in CoqStoq
+- Evaluating Rango on CoqStoq's testing set
 
 ## Setup
 - **Install Dependencies:**
