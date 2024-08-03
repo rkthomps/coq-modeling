@@ -7,6 +7,12 @@ This repository contains the code required for:
 - Running Rango on proofs in CoqStoq
 - Evaluating Rango on CoqStoq's testing set
 
+## CoqStoq Dataset
+You can access the CoqStoq dataset [here](https://zenodo.org/records/13190944?token=eyJhbGciOiJIUzUxMiIsImlhdCI6MTcyMjY3NzIyOCwiZXhwIjoxNzM1Njg5NTk5fQ.eyJpZCI6ImNjODA2M2MwLTFlNDYtNDljZS05ZjkzLTAxYWNiYjhhMGY0ZSIsImRhdGEiOnt9LCJyYW5kb20iOiJjNDA2ZmVjNzhmMWRkNzAzNzVmNDRjOWJhMTIxNzY4OSJ9.AY9p1oeV_I4L44MQRDHTgpQU9xlDKbK805zLo22wZ9GZZQTKvfbB8mWxFuqjHSMLswLeT_5CuvS_M9vZa12lMw)
+
+## Trained Models
+You can the language models powering Rango and its variants [here](https://zenodo.org/records/13190944?token=eyJhbGciOiJIUzUxMiIsImlhdCI6MTcyMjY3NzIyOCwiZXhwIjoxNzM1Njg5NTk5fQ.eyJpZCI6ImNjODA2M2MwLTFlNDYtNDljZS05ZjkzLTAxYWNiYjhhMGY0ZSIsImRhdGEiOnt9LCJyYW5kb20iOiJjNDA2ZmVjNzhmMWRkNzAzNzVmNDRjOWJhMTIxNzY4OSJ9.AY9p1oeV_I4L44MQRDHTgpQU9xlDKbK805zLo22wZ9GZZQTKvfbB8mWxFuqjHSMLswLeT_5CuvS_M9vZa12lMw)
+
 ## Setup
 - **Install Dependencies:**
     - Install repo:
