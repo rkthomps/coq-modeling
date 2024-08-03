@@ -28,7 +28,7 @@ This repository contains the code required for:
 
 
 ## Processing Data
-Make sure you have a copy of the CoqHub _data_points_ files in the `raw-data/coq-dataset/data_points` subdirectory of your project.
+Make sure you have a copy of the CoqStoq _data_points_ files in the `raw-data/coq-dataset/data_points` subdirectory of your project.
 Then, with access to a slurm cluster, you may preprocess your dataset by running the command:
 `bash slurm/example-jobs/create_dataset.sh`. This command creates a dataset following a configuration file specified by a constant in the script. 
 Example configuration files can be found in `example-confs/data/lm.yaml`, `example-confs/data/premise.yaml`, and `example-confs/data/rerank.yaml` for tactic generation, dense retrieval, and reranking respectively.
