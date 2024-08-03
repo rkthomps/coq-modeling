@@ -11,7 +11,7 @@ This repository contains the code required for:
 You can access the CoqStoq dataset [here](https://zenodo.org/records/13188269?token=eyJhbGciOiJIUzUxMiIsImlhdCI6MTcyMjY3MDg5MiwiZXhwIjoxNzM1Njg5NTk5fQ.eyJpZCI6ImRmNmVjMDViLWE1NGUtNDMwOC1hNWEzLTkyOWFlNDRlNWY2ZSIsImRhdGEiOnt9LCJyYW5kb20iOiI1ZDk1Y2U3ZjAzNDJkZjJhYmU3YzBjNTJlMDZhYjc1OCJ9.y7SD3bDwFfPidOQcD-GshfMrEg5yhv0OsxdNC5Up148Xq4_483Yn69Lb3hYhSO3hP_0jkAZ4gJU0ODRIurz2NQ)
 
 ## Trained Models
-You can the language models powering Rango and its variants [here](https://zenodo.org/records/13190944?token=eyJhbGciOiJIUzUxMiIsImlhdCI6MTcyMjY3NzIyOCwiZXhwIjoxNzM1Njg5NTk5fQ.eyJpZCI6ImNjODA2M2MwLTFlNDYtNDljZS05ZjkzLTAxYWNiYjhhMGY0ZSIsImRhdGEiOnt9LCJyYW5kb20iOiJjNDA2ZmVjNzhmMWRkNzAzNzVmNDRjOWJhMTIxNzY4OSJ9.AY9p1oeV_I4L44MQRDHTgpQU9xlDKbK805zLo22wZ9GZZQTKvfbB8mWxFuqjHSMLswLeT_5CuvS_M9vZa12lMw)
+You can access the language models powering Rango and its variants [here](https://zenodo.org/records/13190944?token=eyJhbGciOiJIUzUxMiIsImlhdCI6MTcyMjY3NzIyOCwiZXhwIjoxNzM1Njg5NTk5fQ.eyJpZCI6ImNjODA2M2MwLTFlNDYtNDljZS05ZjkzLTAxYWNiYjhhMGY0ZSIsImRhdGEiOnt9LCJyYW5kb20iOiJjNDA2ZmVjNzhmMWRkNzAzNzVmNDRjOWJhMTIxNzY4OSJ9.AY9p1oeV_I4L44MQRDHTgpQU9xlDKbK805zLo22wZ9GZZQTKvfbB8mWxFuqjHSMLswLeT_5CuvS_M9vZa12lMw)
 
 ## Setup
 - **Install Dependencies:**
@@ -32,6 +32,7 @@ You can the language models powering Rango and its variants [here](https://zenod
     - Install coq-lsp:
       - `opam install coq-lsp`
 
+- Note: The scripts in this repository are designed to run on cluster running the slurm workload manager.
 
 ## Processing Data
 Make sure you have a copy of the CoqStoq _data_points_ files in the `raw-data/coq-dataset/data_points` subdirectory of your project.
