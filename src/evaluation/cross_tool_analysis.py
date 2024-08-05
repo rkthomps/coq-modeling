@@ -84,10 +84,30 @@ class NamedEval:
                     pairs.add(ProofPair(r.file, r.theorem))
         return pairs
 
+    def get_proofs_in_dep_range(
+        self, lower: int, upper: Optional[int], proj: bool = False
+    ) -> set[ProofPair]:
+        pairs: set[ProofPair] = set()
+        for r in self.results:
+            assert r.num_deps is not None
+            assert r.num_proj_deps is not None
+            num_deps = r.num_proj_deps if proj else r.num_deps
+            if lower <= num_deps and (upper is None or num_deps <= upper):
+                pairs.add(ProofPair(r.file, r.theorem))
+        return pairs
+
     def get_time_points(self) -> list[PlotPoint]:
         successes = self.get_successful_results()
         successes.sort(key=lambda x: x.time)
         return [PlotPoint(s.time, i + 1) for i, s in enumerate(successes)]
+
+    def filter_projects(self, projects: list[str]) -> NamedEval:
+        filtered_results: list[GeneralResult] = []
+        for result in self.results:
+            if result.file.parts[0] not in projects:
+                continue
+            filtered_results.append(result)
+        return NamedEval(self.name, filtered_results)
 
     def filter_results(self, pairs: set[ProofPair]) -> NamedEval:
         filtered: list[GeneralResult] = []
@@ -192,6 +212,11 @@ class GeneralResult:
     time: float
     success: bool
     proof: Optional[str]
+    num_deps: Optional[int]
+    num_proj_deps: Optional[int]
+
+    def __lt__(self, other: GeneralResult) -> bool:
+        return (self.file, self.theorem) < (other.file, other.theorem)
 
     GIT_NAMES = ["coq-community", "coq-contribs", "thery", "AbsInt", "CertiKOS"]
 
@@ -203,6 +228,8 @@ class GeneralResult:
             "time": self.time,
             "success": self.success,
             "proof": self.proof,
+            "num_deps": self.num_deps,
+            "num_proj_deps": self.num_proj_deps,
         }
 
     @classmethod
@@ -214,6 +241,8 @@ class GeneralResult:
             json_data["time"],
             json_data["success"],
             json_data["proof"],
+            json_data["num_deps"],
+            json_data["num_proj_deps"],
         )
 
     @classmethod
@@ -240,6 +269,8 @@ class GeneralResult:
             result.time,
             result.success,
             result.proof,
+            None,
+            None,
         )
 
     @staticmethod
@@ -281,6 +312,8 @@ class GeneralResult:
                 if result.success and result.proof is not None
                 else None
             ),
+            None,
+            None,
         )
 
     @classmethod
@@ -299,6 +332,8 @@ class GeneralResult:
             result.search_time if result.search_time is not None else -1,
             result.success,
             proof,
+            None,
+            None,
         )
 
 

@@ -366,16 +366,17 @@ class Proof:
         re.compile(r"\S+\s+(\S+?)[\[\]\{\}\(\):=,\s]"),
     ]
 
-    def __init__(self, theorem: Term, steps: list[FocusedStep]) -> None:
+    def __init__(self, theorem: Term, steps: list[FocusedStep], proof_idx: int) -> None:
         self.theorem = theorem
         self.steps = steps
-        self.__text_id: Optional[str] = None 
+        self.proof_idx = proof_idx
+        self.__text_id: Optional[str] = None
 
     def is_proof_independent(self) -> bool:
         if 0 == len(self.steps):
             return True
         return "Defined" not in self.steps[-1].step.text
-    
+
     def proof_text_id(self) -> str:
         if self.__text_id is not None:
             return self.__text_id
@@ -427,10 +428,12 @@ class Proof:
         }
 
     @classmethod
-    def from_json(cls, json_data: Any, sentence_db: SentenceDB) -> Proof:
+    def from_json(
+        cls, json_data: Any, sentence_db: SentenceDB, proof_idx: int
+    ) -> Proof:
         theorem = Term.from_json(json_data["theorem"], sentence_db)
         steps = [FocusedStep.from_json(s, sentence_db) for s in json_data["steps"]]
-        return cls(theorem, steps)
+        return cls(theorem, steps, proof_idx)
 
 
 class FileContext:
@@ -497,7 +500,6 @@ class FileContext:
                 avail_premises.append(sentence)
                 seen_sentences.add(sentence)
         return cls(file, workspace, repository, avail_premises)
-    
 
     @classmethod
     def from_directory(cls, dir_path: str, sentence_db: SentenceDB) -> FileContext:
@@ -544,7 +546,7 @@ class DatasetFile:
             )
         norm_name, _ = dp_names
         self.__cached_dp_name = norm_name
-        return self.__cached_dp_name 
+        return self.__cached_dp_name
 
     def __get_dp_norm_and_unorm_name(
         self, data_file_path: str
@@ -656,7 +658,10 @@ class DatasetFile:
                 json_data["file_context"], sentence_db
             )
 
-        proofs = [Proof.from_json(p, sentence_db) for p in json_data["proofs"]]
+        proofs = [
+            Proof.from_json(p, sentence_db, i)
+            for i, p in enumerate(json_data["proofs"])
+        ]
         return cls(file_context, proofs)
 
     @staticmethod
@@ -672,13 +677,13 @@ class DatasetFile:
             if step.term == cur_term:
                 cur_proof_steps.append(step)
                 continue
-            proofs.append(Proof(cur_term, cur_proof_steps))
+            proofs.append(Proof(cur_term, cur_proof_steps, len(proofs)))
 
             assert step.term not in seen_terms
             seen_terms.add(step.term)
             cur_term = step.term
             cur_proof_steps = [step]
-        proofs.append(Proof(cur_term, cur_proof_steps))
+        proofs.append(Proof(cur_term, cur_proof_steps, len(proofs)))
         return proofs
 
     @classmethod

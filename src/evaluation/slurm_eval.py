@@ -86,6 +86,7 @@ def start_servers_and_update_conf(
         f"#SBATCH --mem-per-cpu=16G\n"
         f"#SBATCH --no-requeue\n"
         f"#SBATCH --mail-type=BEGIN,END,FAIL\n"
+        f"#SBATCH --job-name={eval_conf.start_at}-serve\n"
         f"#SBATCH -o slurm/out/slurm-serve-%j.out\n"
         f"srun -l {RUN_MODELS_LOC}\n"
     )
@@ -130,6 +131,7 @@ def start_provers(
         f"#SBATCH -t {timeout}\n"
         f"#SBATCH --array=0-{n_workers - 1}\n"
         f"#SBATCH --mem=16G\n"
+        f"#SBATCH --job-name={eval_conf.start_at}-prove\n"
         f"#SBATCH -o slurm/out/slurm-prove-%j.out\n"
         f"sbcast {eval_conf.sentence_db_loc} /tmp/sentences.db\n"
         f"source venv/bin/activate\n"
