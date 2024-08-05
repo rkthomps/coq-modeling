@@ -1,65 +1,63 @@
-# coq-modeling
-Language models for Coq based on data collected from the coq lsp. 
+# Rango
+Rango is a proof synthesis tool for the Coq theorem prover.
+Rango uses _retrieval augmentation_ to adapt to its environment.
+This repository contains the code required for:
+- Processing data to train Rango, proof retrievers and lemma retrievers
+- Training Rango, proof retrievers and lemma retrievers
+- Running Rango on proofs in CoqStoq
+- Evaluating Rango on CoqStoq's testing set
+
+## CoqStoq Dataset
+You can access the CoqStoq dataset [here](https://zenodo.org/records/13188269?token=eyJhbGciOiJIUzUxMiIsImlhdCI6MTcyMjY3MDg5MiwiZXhwIjoxNzM1Njg5NTk5fQ.eyJpZCI6ImRmNmVjMDViLWE1NGUtNDMwOC1hNWEzLTkyOWFlNDRlNWY2ZSIsImRhdGEiOnt9LCJyYW5kb20iOiI1ZDk1Y2U3ZjAzNDJkZjJhYmU3YzBjNTJlMDZhYjc1OCJ9.y7SD3bDwFfPidOQcD-GshfMrEg5yhv0OsxdNC5Up148Xq4_483Yn69Lb3hYhSO3hP_0jkAZ4gJU0ODRIurz2NQ)
+
+## Trained Models
+You can access the language models powering Rango and its variants [here](https://zenodo.org/records/13190944?token=eyJhbGciOiJIUzUxMiIsImlhdCI6MTcyMjY3NzIyOCwiZXhwIjoxNzM1Njg5NTk5fQ.eyJpZCI6ImNjODA2M2MwLTFlNDYtNDljZS05ZjkzLTAxYWNiYjhhMGY0ZSIsImRhdGEiOnt9LCJyYW5kb20iOiJjNDA2ZmVjNzhmMWRkNzAzNzVmNDRjOWJhMTIxNzY4OSJ9.AY9p1oeV_I4L44MQRDHTgpQU9xlDKbK805zLo22wZ9GZZQTKvfbB8mWxFuqjHSMLswLeT_5CuvS_M9vZa12lMw)
 
 ## Setup
 - **Install Dependencies:**
     - Install repo:
       - `git clone --recurse-submodules https://github.com/rkthomps/coq-modeling`
+      - `pip3 install -e .`
+      - `cd coqpyt`
+      - `pip3 install .`
+        
     - Install opam (Ocaml package manager):
       - `sudo apt-get update && sudo apt-get install opam`.
       - `opam init`
       - `eval $(opam env --switch=default)`
+     
+    - Install Coq:
+      - `opam pin add coq 8.18.0`
+        
     - Install coq-lsp:
       - `opam install coq-lsp`
-    - You must have a cuda compiler. Determine how to install `nvcc` on your machine.
-    - You must have a development version of python 3.10+ installed. 
-- **Install Project:** Change to project directory and run `python3 -m pip install --editable .`
 
-## Dowloading and Partitioning Data
-The data currently exists on "inesc.id.pt" machines & [google drive](https://drive.google.com/drive/folders/12fruVfOomVO9pnJSN1T8CnG4ci95CdL2?usp=drive_link). The dataset has two parts: 
-- Data-points (preprocessed data)
-- Raw coq files
-For training tasks, the data-points segment of the dataset is sufficient.
-For evaluation tasks, the raw coq files segment of the dataset is sufficient.\
-For consistancy, format the data on your machine with the following directory structure
-- <dataset name (like "coq-dataset")>
-  - repos
-  - data_points
+- Note: The scripts in this repository are designed to run on cluster running the slurm workload manager.
 
+## Processing Data
+Make sure you have a copy of the CoqStoq _data_points_ files in the `raw-data/coq-dataset/data_points` subdirectory of your project.
+Then, with access to a slurm cluster, you may preprocess your dataset by running the command:
+`bash slurm/example-jobs/create_dataset.sh`. This command creates a dataset following a configuration file specified by a constant in the script. 
+Example configuration files can be found in `example-confs/data/lm.yaml`, `example-confs/data/premise.yaml`, and `example-confs/data/rerank.yaml` for tactic generation, dense retrieval, and reranking respectively.
 
-## Creating Tactic Generation Training Data
-Since we use Language Models to predict tactics, both the input and target of our examples are strings. The interface [LmExample](src/data_management/lm_example.py) represents such an example. To define how input and target strings are composed, create a `LmFormatter`. The subclass defines how to get a single (str -> str) training example from a single proof step. 
+Before using your processed data to train models you must "consolidate it" into sqlite databases. 
+You can consolidate a dataset as follows: `python3 src/data_management/consolidate.py <split location> <dataset location> <new dataset location>`
+Split location is likely `splits/final-split.json`, but you can also use an inter-file split: `splits/random-split.json`. 
+Consolidating will create a directory with a `train.db` `val.db` and `test.db` file with training, validation and testing examples.
 
-You can use the file [create_lm_dataset.py](src/data_management/create_lm_dataset.py) to convert the raw data into a dataset of examples. 
-- This creates a dataset from a configuration file. You can use [random-sample-basic.yaml](src/data_management/tactic-confs/random-sample-basic.yaml) as a reference. Simply run the command `python3 src/data_management/create_lm_dataset.py -n 8 src/data_management/tactic-confs/random-sample-basic.yaml`. Note, [premise_tactic.yaml](src/data_management/tactic-confs/premise_tactic.yaml) is a configuration file. It can and should be replaced with a custom config file. As a result, you should see a new directory named "/processed/data/location" with the files "train-deduplicated-shuffled.jsonl", "val-deduplicated-shuffled.jsonl", and "test-deduplicated-shuffled.jsonl". Each line of one of the .jsonl files represents one example. The examples are shuffled and deduplicated within their respective splits.
+## Training Models
+You can train a model by running
+`sbatch slurm/example-jobs/train_decoder.sh`
+This commmand will use the configuration file stored in `confs/train/decoder.yaml`. Example configuration files for training can be found in `example-confs/train/decoder.yaml`
+You can also train dense retrival models and rerankers with the `train_select.sh` and `train_rerank.sh` scripts in the `slurm/example-jobs` directory.
 
-## Finetuning Code Llama
-To finetune Code Llama, you can run\
-`torchrun --nproc-per-node=4 src/tactic_gen/train_codellama.py src/tactic_gen/confs/test.yaml`.\
-The value of `--include` indicates the machines to be used for training. You can configure the training by providing a .yaml config file. The file [codellama_basic.yaml](src/tactic_gen/confs/codellama_basic.yaml) is an example.
+## Evaluating Models
+With access to a slurm cluster, you can evaluate a trained model using the command `bash slurm/jobs/eval.sh`.
+This evaluation uses a configuration file. There is an example configuration file in `example-confs/eval/proofs.yaml`
 
-## Creating Premise Selection Training Data
-A training example for premise selection is associated with a single premise used in a single tactic. The example also contains a number of "negative premises" - premises that were not used in the tactic. These negative premises may be "in-file" negatives - premises from the same file as the proof, or "out-of-file" negatives - premises from a dependency of the proof. You can mine a premise selection dataset with\
-`python3 src/data_management/create_premise_dataset.py src/data_management/premise-confs/premise_basic.yaml`\
-where [premise_basic.yaml](src/data_management/premise_basic.yaml) is a configuration file for creating the premise selection dataset.
+## Inspecting Results
+You can inspect the results of the evaluated models using the notebook `notebooks/evaluation/eval.ipynb`
 
-## Training a Premise Selection Model
-You can train a premise selection model using [Pytorch Lightning](https://lightning.ai/). Specifically, run\
-`CUDA_VISIBLE_DEVICES=4 python3 src/premise_selection/main.py fit -c src/premise_selection/confs/premise_train_basic.yaml`\
-where [premise_train_basic.yaml](src/premise_selection/confs/premise_train_basic.yaml) is configuration file for training and can be substituted with a custom configuration file. 
-**Acknowledgement:** Our premise selection model and its integration is heavily inspired by the great work on [LeanDojo](https://leandojo.org/).
-
-## Evaluating Your Premise Selection Model
-You can evaluate the premise selection model with\
-`CUDA_VISIBLE_DEVICES=4 python3 src/premise_selection/evaluate.py /path/to/model/checkpoint /raw/data/location-split val`\
-to evaluate a model saved to checkpoint "/path/to/model/checkpoint" on validation data from "/raw/data/location-split". Alternatively you could evaluate on "train" or "test" splits. 
- 
-
-## Evaluation
-To evaluate a tactic prediction model, you need to ensure that you have a compiled corpus of coq files on your machine. 
-To compile the corpus of coq files, run `make`. **TODO: make should take an argument specifying the location of of the corpus and an eval config**
-
-- **Running Evaluation**
-  - Run evaluation on a hold-out set of theorems with\
-    `python3 src/evaluation/evaluate.py src/evaluation/confs/eval.yaml`\
-    Note, [eval.yaml](src/evaluation/confs/eval.yaml) is a configuration file, and can be replaced with any .yaml file of the same format. 
+## Running Single Proofs
+You can run Rango on a single coq proof from the CoqHub dataset with `python3 scripts/run.py prove confs/single.yaml 0`. 
+Make sure you have access to a gpu when you run this command. 
