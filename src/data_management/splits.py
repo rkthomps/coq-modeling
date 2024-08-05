@@ -21,7 +21,6 @@ import functools
 import yaml
 from pathlib import Path
 
-import ipdb
 import argparse
 
 import git

@@ -7,7 +7,7 @@
 #SBATCH -o slurm-install-projs-%j.out
 
 HOME_DIR=$1
-PROJECT_DIR=$HOME_DIR/coq-modeling
+PROJECT_DIR=$HOME_DIR/coq-modeling-g2t
 REPOS_DIR=$PROJECT_DIR/raw-data/coq-dataset/repos
 
 opam pin add -y coq 8.11.dev

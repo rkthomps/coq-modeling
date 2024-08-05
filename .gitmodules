@@ -13,3 +13,6 @@
 [submodule "coqpyt"]
 	path = coqpyt
 	url = git@github.com:sr-lab/coqpyt.git
+[submodule "tactician/coq_serapy"]
+	path = tactician/coq_serapy
+	url = git@github.com:HazardousPeach/coq_serapy.git
