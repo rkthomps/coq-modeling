@@ -23,7 +23,7 @@ def compute_idfs(corpus: list[list[str]]) -> dict[str, float]:
     return idfs
 
 
-@functools.lru_cache(10000)
+@functools.lru_cache(1000)
 def compute_doc_tf(doc_str: str) -> dict[str, float]:
     doc = doc_from_hashable(doc_str)
     # doc = tokenize(premise)

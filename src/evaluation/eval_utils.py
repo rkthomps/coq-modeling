@@ -33,12 +33,12 @@ from model_deployment.tactic_gen_client import (
 
 from util.file_queue import FileQueue
 from util.util import get_basic_logger, read_port_map, get_flexible_url
-from util.constants import TMP_LOC, DATA_LOC
+from util.constants import TMP_LOC, SYNTH_DATA_LOC
 
 _logger = get_basic_logger(__name__)
 
 
-PROOF_MAP_LOC = DATA_LOC / "proof_maps"
+PROOF_MAP_LOC = SYNTH_DATA_LOC / "proof_maps"
 QUEUE_LOC = TMP_LOC / "queue"
 
 

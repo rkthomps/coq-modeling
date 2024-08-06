@@ -74,7 +74,6 @@ class SentenceDB:
             return resulting_id
         raise ValueError(f"DB has more than one instance of {sentence}")
 
-
     @functools.cache
     def insert_sentence(self, sentence: DBSentence) -> int:
         found_id = self.find_sentence(sentence)
@@ -102,7 +101,7 @@ class SentenceDB:
             )
         (resulting_id,) = result[0]
         return resulting_id
-    
+
     def size(self) -> int:
         result = self.cursor.execute(
             f"""
@@ -110,19 +109,17 @@ class SentenceDB:
                             """
         ).fetchall()
         if len(result) != 1:
-            raise ValueError(
-                "Problem executing size query."
-            )
+            raise ValueError("Problem executing size query.")
         (count,) = result[0]
         return count
-
 
     @functools.cache
     def retrieve(self, id: int) -> DBSentence:
         result = self.cursor.execute(
             f"""
             SELECT * FROM {self.TABLE_NAME} WHERE id=?
-                            """, (id, )
+                            """,
+            (id,),
         ).fetchall()
         if len(result) != 1:
             raise ValueError(
@@ -130,7 +127,7 @@ class SentenceDB:
             )
         _, text, file_path, module, sentence_type, line = result[0]
         return DBSentence(text, file_path, module, sentence_type, line)
-    
+
     def commit(self) -> None:
         self.connection.commit()
 
@@ -145,7 +142,7 @@ class SentenceDB:
         name = db_path.name
         fast_db_path = Path("/tmp") / name
         if fast_db_path.exists():
-            _logger.info(f"Using local sentence db at {fast_db_path}")
+            _logger.debug(f"Using local sentence db at {fast_db_path}")
             db_path = fast_db_path
         con = connect(
             db_path,

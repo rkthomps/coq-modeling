@@ -713,7 +713,7 @@ class DatasetFile:
 
 
 class DPCache:
-    def __init__(self, cache_size: int = 512):
+    def __init__(self, cache_size: int = 128):
         self.__cached_dps: dict[str, DatasetFile] = {}
         self.__cached_keys: list[str] = []
         self.__cache_size = cache_size

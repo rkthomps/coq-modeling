@@ -19,7 +19,6 @@ from premise_selection.premise_filter import PremiseFilterConf
 from premise_selection.rerank_formatter import (
     RerankFormatterConf,
     BasicRerankFormatterConf,
-    ProofRerankFormatterConf,
 )
 
 from proof_retrieval.proof_retriever import (
@@ -384,15 +383,6 @@ def rerank_formatter_conf_to_client_conf(
             new_rerank_formatter_conf = BasicRerankFormatterConf(
                 clean_premise_conf, conf.consider_num, conf.negatives_per_positive
             )
-        case ProofRerankFormatterConf():
-            new_rerank_formatter_conf = ProofRerankFormatterConf(
-                clean_premise_conf,
-                conf.proof_retriever,
-                conf.consider_num,
-                conf.include_proofs_num,
-                conf.negatives_per_positive,
-            )
-
     return new_rerank_formatter_conf, next_server_num, start_commands
 
 

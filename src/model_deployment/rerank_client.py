@@ -20,7 +20,6 @@ from model_deployment.premise_client import (
     SelectClientConf,
     SelectModelClientConf,
     SelectPremiseClient,
-    TFIdfProofClient,
     select_client_from_conf,
     select_conf_from_yaml,
 )
@@ -187,13 +186,14 @@ class RerankClient:
             conf.rerank_num,
             rerank_formatter_from_conf(conf.rerank_formatter),
         )
-    
+
 
 def close_premise_client(c: PremiseClient):
     match c:
-        case SelectPremiseClient() | TFIdfProofClient():
+        case SelectPremiseClient():
             c.close()
         case _:
             pass
+
 
 PremiseClient = SelectClient | RerankClient

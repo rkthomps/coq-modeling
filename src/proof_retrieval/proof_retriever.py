@@ -316,6 +316,9 @@ class SparseProofRetrieverConf:
         )
 
 
+__logged_deps: set[str] = set()
+
+
 def get_available_proofs(
     key_proof: Proof,
     dp_obj: DatasetFile,
@@ -334,7 +337,9 @@ def get_available_proofs(
         try:
             dep_obj = dp_cache.get_dp(dep, data_loc, sentence_db)
         except FileNotFoundError:
-            _logger.warning(f"Could not find dependency: {dep}")
+            if dep not in __logged_deps:
+                _logger.warning(f"Could not find dependency: {dep}")
+                __logged_deps.add(dep)
             continue
         for proof in dep_obj.proofs:
             available_proofs.append((proof, dep_obj))
@@ -349,6 +354,7 @@ class SparseProofRetriever:
         data_loc: Path,
         sentence_db: SentenceDB,
     ) -> None:
+        self.kind = kind
         self.max_examples = max_examples
         self.data_loc = data_loc
         self.sentence_db = sentence_db
@@ -387,7 +393,11 @@ class SparseProofRetriever:
                 reference_step_idxs.append(step_idx)
                 docs.append(self.get_goal_ids(step.goals))
         assert len(docs) == len(reference_proofs)
-        scores = bm25(query_ids, docs)
+        match self.kind:
+            case SparseKind.TFIDF:
+                scores = tf_idf(query_ids, docs)
+            case SparseKind.BM25:
+                scores = bm25(query_ids, docs)
         arg_sorted_scores = sorted(range(len(scores)), key=lambda idx: -1 * scores[idx])
 
         references = list(
@@ -552,7 +562,9 @@ class DeepProofRetrieverClient:
                     step_hash = self.proof_idx.hash_proof_step(i, p, dep_obj.dp_name)
                     step_idx = self.proof_idx.get_idx(step_hash)
                     available_proof_idxs.append(step_idx)
-                    available_proof_steps.append((p, StepID(dep_obj.dp_name, p.proof_idx, i)))
+                    available_proof_steps.append(
+                        (p, StepID(dep_obj.dp_name, p.proof_idx, i))
+                    )
                 except KeyError:
                     _logger.error(f"Could not find step {i} in {dep_obj.dp_name}")
                     return []

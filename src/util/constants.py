@@ -1,7 +1,7 @@
 from pathlib import Path
 
 TMP_LOC = Path("tmp")
-DATA_LOC = Path("data")
+SYNTH_DATA_LOC = Path("data")
 
 REPOS_NAME = "repos"
 DATA_POINTS_NAME = "data_points"
@@ -21,6 +21,7 @@ CLEAN_CONFIG = "conf.pkl"
 SERVER_LOC = "./servers"
 PORT_MAP_NAME = "port-map"
 QUEUE_NAME = "queue"
+SLURM_NAME = "slurm"
 
 
 PROOF_VECTOR_DB_METADATA = "metadata.pkl"

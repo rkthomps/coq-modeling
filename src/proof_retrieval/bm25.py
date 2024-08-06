@@ -12,7 +12,7 @@ def doc_from_hashable(s: str) -> list[str]:
     return s.split("<DOCSEP>")
 
 
-@functools.lru_cache(10000)
+@functools.lru_cache(1000)
 def bm_compute_term_freqs(doc_str: str) -> dict[str, int]:
     doc = doc_from_hashable(doc_str)
     return compute_term_freqs(doc)

@@ -29,8 +29,8 @@ from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
 from proof_retrieval.bm25 import bm25
 from proof_retrieval.tfidf import tf_idf, compute_idfs
 from proof_retrieval.proof_retriever import (
-    TfIdfProofRetriever,
-    TfIdfProofRetrieverConf,
+    SparseProofRetriever,
+    SparseProofRetrieverConf,
 )
 from coqpyt.coq.structs import TermType
 
@@ -136,31 +136,30 @@ class SelectModelClientConf:
         )
 
 
-@dataclass
-class TFIdfProofClientConf:
-    ALIAS = "tfidf-proof"
-    context_format_alias: str
-    premise_format_alias: str
-    premise_filter_conf: PremiseFilterConf
-    text_proof_retriever_conf: TfIdfProofRetrieverConf
-    nucleus_size: int
+# @dataclass
+# class TFIdfProofClientConf:
+#     ALIAS = "tfidf-proof"
+#     context_format_alias: str
+#     premise_format_alias: str
+#     premise_filter_conf: PremiseFilterConf
+#     text_proof_retriever_conf: TfIdfProofRetrieverConf
+#     nucleus_size: int
 
-    @classmethod
-    def from_yaml(cls, yaml_data: Any) -> TFIdfProofClientConf:
-        return cls(
-            yaml_data["context_format_alias"],
-            yaml_data["premise_format_alias"],
-            PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
-            TfIdfProofRetrieverConf.from_yaml(yaml_data["text_proof_retriever"]),
-            yaml_data["nucleus_size"],
-        )
+#     @classmethod
+#     def from_yaml(cls, yaml_data: Any) -> TFIdfProofClientConf:
+#         return cls(
+#             yaml_data["context_format_alias"],
+#             yaml_data["premise_format_alias"],
+#             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
+#             TfIdfProofRetrieverConf.from_yaml(yaml_data["text_proof_retriever"]),
+#             yaml_data["nucleus_size"],
+#         )
 
 
 SelectClientConf = (
     SelectModelClientConf
     | SelectModelConf
     | TFIdfConf
-    | TFIdfProofClientConf
     | BM250OkapiConf
     | LookupClientConf
 )
@@ -175,8 +174,6 @@ def select_conf_from_yaml(yaml_data: Any) -> SelectClientConf:
             return SelectModelClientConf.from_yaml(yaml_data)
         case TFIdfConf.ALIAS:
             return TFIdfConf.from_yaml(yaml_data)
-        case TFIdfProofClientConf.ALIAS:
-            return TFIdfProofClientConf.from_yaml(yaml_data)
         case BM250OkapiConf.ALIAS:
             return BM250OkapiConf.from_yaml(yaml_data)
         case LookupClientConf.ALIAS:
@@ -298,85 +295,85 @@ class BreakNukeLoop(Exception):
     pass
 
 
-class TFIdfProofClient:
-    def __init__(
-        self,
-        context_format: type[ContextFormat],
-        premise_format: type[PremiseFormat],
-        premise_filter: PremiseFilter,
-        proof_retriever: TfIdfProofRetriever,
-        nucleus_size: int,
-    ):
-        self.context_format = context_format
-        self.premise_format = premise_format
-        self.premise_filter = premise_filter
-        self.proof_retriever = proof_retriever
-        self.nucleus_size = nucleus_size
+# class TFIdfProofClient:
+#     def __init__(
+#         self,
+#         context_format: type[ContextFormat],
+#         premise_format: type[PremiseFormat],
+#         premise_filter: PremiseFilter,
+#         proof_retriever: TfIdfProofRetriever,
+#         nucleus_size: int,
+#     ):
+#         self.context_format = context_format
+#         self.premise_format = premise_format
+#         self.premise_filter = premise_filter
+#         self.proof_retriever = proof_retriever
+#         self.nucleus_size = nucleus_size
 
-    def get_ranked_premise_generator(
-        self,
-        step: FocusedStep,
-        proof: Proof,
-        dp_obj: DatasetFile,
-        premises: list[Sentence],
-    ) -> Iterable[Sentence]:
-        if 0 == len(step.goals) or 0 == len(premises):
-            empty_result: list[Sentence] = []
-            return empty_result
-        similar_proofs = self.proof_retriever.get_similar_proofs(step, proof, dp_obj)
-        # Use the similar proofs to build a nucleus of relevent lemmas
-        # How big should the nucleous be?
-        nucleus_premises: list[Sentence] = []
-        try:
-            for s_proof in similar_proofs:
-                for s_step in s_proof.steps:
-                    for s in s_step.step.context:
-                        if self.nucleus_size <= len(nucleus_premises):
-                            raise BreakNukeLoop
-                        if not self.premise_filter.filter_premise(s):
-                            continue
-                        if s in nucleus_premises:
-                            continue
-                        nucleus_premises.append(s)
-        except BreakNukeLoop:
-            pass
+#     def get_ranked_premise_generator(
+#         self,
+#         step: FocusedStep,
+#         proof: Proof,
+#         dp_obj: DatasetFile,
+#         premises: list[Sentence],
+#     ) -> Iterable[Sentence]:
+#         if 0 == len(step.goals) or 0 == len(premises):
+#             empty_result: list[Sentence] = []
+#             return empty_result
+#         similar_proofs = self.proof_retriever.get_similar_proofs(step, proof, dp_obj)
+#         # Use the similar proofs to build a nucleus of relevent lemmas
+#         # How big should the nucleous be?
+#         nucleus_premises: list[Sentence] = []
+#         try:
+#             for s_proof in similar_proofs:
+#                 for s_step in s_proof.steps:
+#                     for s in s_step.step.context:
+#                         if self.nucleus_size <= len(nucleus_premises):
+#                             raise BreakNukeLoop
+#                         if not self.premise_filter.filter_premise(s):
+#                             continue
+#                         if s in nucleus_premises:
+#                             continue
+#                         nucleus_premises.append(s)
+#         except BreakNukeLoop:
+#             pass
 
-        # Need to normalize tf idf vectors? they're already kind of normalized.
-        docs = [get_ids_from_sentence(p) for p in premises]
-        idfs = compute_idfs(docs)
-        max_scores: Optional[list[float]] = None
-        for n in nucleus_premises:
-            query = get_ids_from_sentence(n)
-            scores = tf_idf(query, docs, idfs)
-            if max_scores is None:
-                max_scores = scores
-            else:
-                max_scores = [max(a, b) for a, b in zip(max_scores, scores)]
+#         # Need to normalize tf idf vectors? they're already kind of normalized.
+#         docs = [get_ids_from_sentence(p) for p in premises]
+#         idfs = compute_idfs(docs)
+#         max_scores: Optional[list[float]] = None
+#         for n in nucleus_premises:
+#             query = get_ids_from_sentence(n)
+#             scores = tf_idf(query, docs, idfs)
+#             if max_scores is None:
+#                 max_scores = scores
+#             else:
+#                 max_scores = [max(a, b) for a, b in zip(max_scores, scores)]
 
-        if max_scores is None:
-            query_hyp_ids, query_goal_ids = get_ids_from_goal(step.goals[0])
-            query_ids = query_hyp_ids + query_goal_ids
-            max_scores = tf_idf(query_ids, docs, idfs)
+#         if max_scores is None:
+#             query_hyp_ids, query_goal_ids = get_ids_from_goal(step.goals[0])
+#             query_ids = query_hyp_ids + query_goal_ids
+#             max_scores = tf_idf(query_ids, docs, idfs)
 
-        assert max_scores is not None
-        arg_sorted_premise_scores = sorted(
-            range(len(max_scores)), key=lambda idx: -1 * max_scores[idx]
-        )
-        for idx in arg_sorted_premise_scores:
-            yield premises[idx]
+#         assert max_scores is not None
+#         arg_sorted_premise_scores = sorted(
+#             range(len(max_scores)), key=lambda idx: -1 * max_scores[idx]
+#         )
+#         for idx in arg_sorted_premise_scores:
+#             yield premises[idx]
 
-    def close(self):
-        self.proof_retriever.close()
+#     def close(self):
+#         self.proof_retriever.close()
 
-    @classmethod
-    def from_conf(cls, conf: TFIdfProofClientConf):
-        return cls(
-            CONTEXT_ALIASES[conf.context_format_alias],
-            PREMISE_ALIASES[conf.premise_format_alias],
-            PremiseFilter.from_conf(conf.premise_filter_conf),
-            TfIdfProofRetriever.from_conf(conf.text_proof_retriever_conf),
-            conf.nucleus_size,
-        )
+#     @classmethod
+#     def from_conf(cls, conf: TFIdfProofClientConf):
+#         return cls(
+#             CONTEXT_ALIASES[conf.context_format_alias],
+#             PREMISE_ALIASES[conf.premise_format_alias],
+#             PremiseFilter.from_conf(conf.premise_filter_conf),
+#             TfIdfProofRetriever.from_conf(conf.text_proof_retriever_conf),
+#             conf.nucleus_size,
+#         )
 
 
 @dataclass
@@ -560,13 +557,7 @@ class BM25OkapiClient:
         )
 
 
-SelectClient = (
-    SelectPremiseClient
-    | TFIdfClient
-    | TFIdfProofClient
-    | BM25OkapiClient
-    | LookupClient
-)
+SelectClient = SelectPremiseClient | TFIdfClient | BM25OkapiClient | LookupClient
 
 
 dp_cache = DPCache()
@@ -580,8 +571,6 @@ def select_client_from_conf(conf: SelectClientConf) -> SelectClient:
             return SelectPremiseClient.from_conf(conf)
         case TFIdfConf():
             return TFIdfClient.from_conf(conf)
-        case TFIdfProofClientConf():
-            return TFIdfProofClient.from_conf(conf)
         case BM250OkapiConf():
             return BM25OkapiClient.from_conf(conf)
         case LookupClientConf():
