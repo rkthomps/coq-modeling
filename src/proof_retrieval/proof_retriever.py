@@ -19,6 +19,7 @@ from data_management.dataset_file import (
     DatasetFile,
     DPCache,
     Goal,
+    StepID,
     get_ids_from_goal,
     get_ids_from_sentence,
 )
@@ -27,7 +28,6 @@ from proof_retrieval.tfidf import tf_idf
 from proof_retrieval.bm25 import bm25
 from proof_retrieval.mine_goals import FileGoals, GoalRecord
 from proof_retrieval.transform_ast import AdjTree
-from proof_retrieval.retrieved_proof_db import StepID
 
 from util.util import FlexibleUrl
 from util.util import get_basic_logger

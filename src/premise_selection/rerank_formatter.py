@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from premise_selection.rerank_example import RerankExample
 from data_management.dataset_file import FocusedStep, Proof, DatasetFile, Sentence
-from model_deployment.premise_client import (
+from premise_selection.premise_client import (
     SelectClient,
     SelectClientConf,
     select_client_from_conf,

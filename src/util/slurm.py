@@ -25,15 +25,15 @@ class SlurmArrayConf:
     slurm_out_loc: Path
     cpus_per_worker: int
     gpus_per_worker: int
-    machine_constraint: str
+    machine_constraint: Optional[str]
 
     ALIAS = "array"
 
     def write_script(self, job_name: str, commands: list[str], script_loc: Path):
         script = (
             f"#!/bin/bash\n"
-            f"SBATCH --partition={self.partition}\n"
-            f"#SBATCH --array=0-{self.num_workers}\n"
+            f"#SBATCH --partition={self.partition}\n"
+            f"#SBATCH --array=0-{self.num_workers - 1}\n"
             f"#SBATCH --time={self.time_limit}\n"
             f"#SBATCH --mem={self.mem_per_node}\n"
             f"#SBATCH --output={self.slurm_out_loc}/{job_name}-%j.out\n"
@@ -41,27 +41,29 @@ class SlurmArrayConf:
             f"#SBATCH --error={self.slurm_out_loc}/{job_name}-%j.err\n"
             f"#SBATCH --cpus-per-task={self.cpus_per_worker}\n"
             f"#SBATCH --gres=gpu:{self.gpus_per_worker}\n"
-            f"#SBATCH --constraint={self.machine_constraint}\n"
         )
+        if self.machine_constraint is not None:
+            script += f"#SBATCH --constraint={self.machine_constraint}\n"
 
         script += "\n".join(commands) + "\n"
         with script_loc.open("w") as fout:
             fout.write(script)
-            fout.write(script)
-            fout.write("\n")
-            fout.write("\n".join(commands))
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SlurmArrayConf:
+        machine_constraint = None
+        if "machine_constraint" in yaml_data:
+            machine_constraint = yaml_data["machine_constraint"]
+
         return cls(
-            yaml_data["num_workers"],
             yaml_data["partition"],
+            yaml_data["num_workers"],
             yaml_data["time_limit"],
             yaml_data["mem_per_node"],
             Path(yaml_data["slurm_out_loc"]),
             yaml_data["cpus_per_worker"],
             yaml_data["gpus_per_worker"],
-            yaml_data["machine_constraint"],
+            machine_constraint,
         )
 
     @classmethod

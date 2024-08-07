@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import DatasetFile, Proof
 from data_management.splits import DataSplit, FileInfo, Split
-from model_deployment.rerank_client import (
+from premise_selection.rerank_client import (
     PremiseConf,
     premise_conf_from_yaml,
     premise_client_from_conf,

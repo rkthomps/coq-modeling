@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime
 
 from data_management.splits import DataSplit, Split
-from model_deployment.premise_client import SelectModelConf
+from premise_selection.premise_client import SelectModelConf
 from evaluation.eval_utils import PremiseEvalConf, initialize_and_fill_queue
 from util.constants import TMP_LOC, QUEUE_NAME
 from util.file_queue import FileQueue

@@ -18,7 +18,7 @@ from data_management.dataset_file import (
 )
 from data_management.splits import FileInfo, info_from_path, Split
 from model_deployment.rerank_client import PremiseClient
-from model_deployment.premise_client import TFIdfClient
+from premise_selection.premise_client import TFIdfClient
 from premise_selection.premise_formatter import BasicPremiseFormat, BasicContextFormat
 from premise_selection.premise_filter import NO_COQ_LEMMA_FILTER
 from model_deployment.prove import get_proof_info, normalize

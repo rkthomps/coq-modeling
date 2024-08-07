@@ -1,5 +1,0 @@
-
-alias: CompleteSample
-data_split_loc: splits/random-split.json
-split: val
-data_loc: /data/benchmarks/coq-dataset

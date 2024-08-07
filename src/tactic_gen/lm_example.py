@@ -20,7 +20,7 @@ from tactic_gen.n_step_sampler import (
     n_step_from_conf,
 )
 from proof_retrieval.mine_goals import GoalRecord
-from model_deployment.rerank_client import (
+from premise_selection.rerank_client import (
     PremiseClient,
     PremiseConf,
     premise_conf_from_yaml,

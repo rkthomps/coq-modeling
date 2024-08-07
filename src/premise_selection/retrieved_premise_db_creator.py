@@ -7,11 +7,12 @@ import yaml
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
-from proof_retrieval.proof_retriever import (
-    ProofRetrieverConf,
-    proof_retriever_conf_from_yaml,
+from premise_selection.rerank_client import (
+    PremiseClient,
+    PremiseConf,
+    premise_conf_from_yaml,
 )
-from proof_retrieval.retrieved_proof_db import RetrievedProofDB
+from premise_selection.retrieved_premise_db import RetrievedPremiseDB
 from concurrent.futures import ProcessPoolExecutor, Future, as_completed
 from data_management.splits import DataSplit, get_all_files
 
@@ -27,21 +28,23 @@ from util.file_queue import FileQueue
 import subprocess
 
 
-WORKER_LOC = Path("src/proof_retrieval/retrieved_proof_db_worker.py")
+WORKER_LOC = Path("src/premise_selection/retrieved_premise_db_worker.py")
 
 
 @dataclass
-class ProofDBCreatorConf:
-    proof_retriever_conf: ProofRetrieverConf
+class PremiseDBCreatorConf:
+    premise_conf: PremiseConf
+    max_num_premises: int
     save_loc: Path
     data_loc: Path
     sentence_db_loc: Path
     data_split_locs: list[Path]
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> ProofDBCreatorConf:
+    def from_yaml(cls, yaml_data: Any) -> PremiseDBCreatorConf:
         return cls(
-            proof_retriever_conf_from_yaml(yaml_data["proof_retriever_conf"]),
+            premise_conf_from_yaml(yaml_data["premise_conf"]),
+            yaml_data["max_num_premises"],
             Path(yaml_data["save_loc"]),
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
@@ -49,12 +52,12 @@ class ProofDBCreatorConf:
         )
 
     @classmethod
-    def load(cls, path: Path) -> ProofDBCreatorConf:
+    def load(cls, path: Path) -> PremiseDBCreatorConf:
         with path.open("r") as fin:
             return cls.from_yaml(yaml.safe_load(fin))
 
 
-def init_and_fill_queue(creator_conf: ProofDBCreatorConf, queue_loc: Path):
+def init_and_fill_queue(creator_conf: PremiseDBCreatorConf, queue_loc: Path):
     q = FileQueue(queue_loc)
     q.initialize()
     splits = [DataSplit.load(loc) for loc in creator_conf.data_split_locs]
@@ -65,7 +68,7 @@ def init_and_fill_queue(creator_conf: ProofDBCreatorConf, queue_loc: Path):
 if __name__ == "__main__":
     job_conf = main_get_conf_slurm_conf()
     assert job_conf.conf_loc.exists()
-    conf = ProofDBCreatorConf.load(job_conf.conf_loc)
+    conf = PremiseDBCreatorConf.load(job_conf.conf_loc)
     if conf.save_loc.exists():
         choice = JobOption.from_user(f"{conf.save_loc} exists")
         match choice:
@@ -74,7 +77,7 @@ if __name__ == "__main__":
             case JobOption.STOP:
                 raise FileExistsError(f"{conf.save_loc} already exists.")
     os.makedirs(conf.save_loc, exist_ok=True)
-    shutil.copy(job_conf.conf_loc, conf.save_loc / RetrievedProofDB.CONF_NAME)
+    shutil.copy(job_conf.conf_loc, conf.save_loc / RetrievedPremiseDB.CONF_NAME)
     conf_loc, queue_loc, slurm_loc = get_conf_queue_slurm_loc(job_conf.conf_loc)
     init_and_fill_queue(conf, queue_loc)
 
@@ -90,6 +93,6 @@ if __name__ == "__main__":
                 worker_command,
             ]
             slurm_conf.write_script(
-                f"proof-ret-db-{conf.save_loc.name}", commands, slurm_loc
+                f"premise-ret-db-{conf.save_loc.name}", commands, slurm_loc
             )
             subprocess.run(["sbatch", str(slurm_loc)])

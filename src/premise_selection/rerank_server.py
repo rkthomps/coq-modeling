@@ -20,7 +20,7 @@ log.setLevel(logging.ERROR)
 from tactic_gen.lm_example import LmExample
 from data_management.dataset_file import Sentence
 from premise_selection.rerank_example import RerankExample
-from model_deployment.premise_model_wrapper import RerankWrapper
+from premise_selection.premise_model_wrapper import RerankWrapper
 from model_deployment.conf_utils import get_ip, get_free_port
 
 wrapper: Optional[RerankWrapper] = None

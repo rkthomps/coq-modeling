@@ -15,7 +15,7 @@ from premise_selection.rerank_formatter import (
     rerank_conf_from_yaml,
 )
 
-from model_deployment.premise_client import (
+from premise_selection.premise_client import (
     SelectClient,
     SelectClientConf,
     SelectModelClientConf,

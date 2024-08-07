@@ -11,7 +11,7 @@ import time
 import functools
 import multiprocessing as mp
 from pathlib import Path
-
+from dataclasses import dataclass
 
 from data_management.sentence_db import SentenceDB, DBSentence
 
@@ -521,6 +521,44 @@ class FileContext:
                 return cls.from_verbose_json(a, sentence_db)
 
 
+@dataclass
+class StepID:
+    file: str
+    proof_idx: int
+    step_idx: int
+
+    def __hash__(self) -> int:
+        return hash((self.file, self.proof_idx, self.step_idx))
+
+    def to_string(self) -> str:
+        return json.dumps(self.to_json())
+
+    def to_json(self) -> Any:
+        return {
+            "file": self.file,
+            "proof_idx": self.proof_idx,
+            "step_idx": self.step_idx,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> StepID:
+        return cls(
+            json_data["file"],
+            json_data["proof_idx"],
+            json_data["step_idx"],
+        )
+
+    @classmethod
+    def from_string(cls, s: str) -> StepID:
+        return cls.from_json(json.loads(s))
+
+    @classmethod
+    def from_step_idx(
+        cls, step_idx: int, proof_idx: int, dset_file: DatasetFile
+    ) -> StepID:
+        return StepID(dset_file.dp_name, proof_idx, step_idx)
+
+
 class DatasetFile:
     def __init__(self, file_context: FileContext, proofs: list[Proof]) -> None:
         # TODO: Turn into list of proofs.
@@ -732,7 +770,7 @@ class DPCache:
         self.__cached_dps[dp_name] = dp_obj
         self.__cached_keys.insert(0, dp_name)
         if self.__cache_size < len(self.__cached_keys):
-            self.__cached_keys.pop()
+            del self.__cached_dps[self.__cached_keys.pop()]
         return dp_obj
 
 

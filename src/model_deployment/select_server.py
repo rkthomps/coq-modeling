@@ -17,7 +17,7 @@ from jsonrpc import JSONRPCResponseManager, dispatcher
 
 from tactic_gen.lm_example import LmExample
 from data_management.dataset_file import Sentence
-from model_deployment.premise_model_wrapper import SelectWrapper
+from premise_selection.premise_model_wrapper import SelectWrapper
 from model_deployment.conf_utils import get_ip, get_free_port
 
 from util.util import get_port_map_loc

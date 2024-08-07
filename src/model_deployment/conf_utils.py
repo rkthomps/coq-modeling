@@ -32,7 +32,7 @@ from tactic_gen.lm_example import (
     GeneralFormatterConf,
     formatter_update_ips,
 )
-from model_deployment.rerank_client import (
+from premise_selection.rerank_client import (
     PremiseConf,
     SelectClientConf,
     SelectModelClientConf,
@@ -40,7 +40,7 @@ from model_deployment.rerank_client import (
     RerankClientConf,
     premise_conf_update_ips,
 )
-from model_deployment.premise_client import SelectModelClientConf, SelectModelConf
+from premise_selection.premise_client import SelectModelClientConf, SelectModelConf
 from model_deployment.tactic_gen_client import (
     TacticGenConf,
     FidTacticGenConf,
@@ -50,8 +50,6 @@ from model_deployment.tactic_gen_client import (
 from model_deployment.observe_premise_selection import PremiseObserveConf
 from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
-from model_deployment.run_whole_proof import TestWholeProofConf
-from model_deployment.run_whole_proofs import TestWholeProofsConf
 from evaluation.eval_utils import EvalConf, PremiseEvalConf
 from util.util import get_basic_logger, read_port_map
 from util.util import FlexibleUrl, get_flexible_url
@@ -70,8 +68,6 @@ TopLevelConf = (
     LmDatasetConf
     | TestProofConf
     | TestProofsConf
-    | TestWholeProofConf
-    | TestWholeProofsConf
     | EvalConf
     | SelectDatasetConf
     | RerankDatasetConf
@@ -592,29 +588,6 @@ def to_client_conf(
                 conf.end_at,
             )
             return new_premise_eval_conf, next_server_num, commands
-        case TestWholeProofConf():
-            tactic_client_conf, next_server_num, commands = tactic_gen_to_client_conf(
-                conf.tactic_conf, start_server_num
-            )
-            new_test_whole_proof_conf = TestWholeProofConf(
-                conf.theorem_location_info, tactic_client_conf, conf.n_attempts
-            )
-            return new_test_whole_proof_conf, next_server_num, commands
-        case TestWholeProofsConf():
-            tactic_client_conf, next_server_num, commands = tactic_gen_to_client_conf(
-                conf.tactic_conf, start_server_num
-            )
-            new_test_whole_proof_conf = TestWholeProofsConf(
-                conf.proofs,
-                conf.n_procs,
-                conf.save_loc,
-                conf.data_loc,
-                conf.sentence_db_loc,
-                conf.data_split_loc,
-                conf.tactic_conf,
-                conf.n_attempts,
-            )
-            return new_test_whole_proof_conf, next_server_num, commands
         case EvalConf():
             tactic_client_conf, next_server_num, commands = tactic_gen_to_client_conf(
                 conf.tactic_conf, start_server_num

@@ -18,7 +18,7 @@ from data_management.splits import FileInfo, DataSplit, Split, str2split, split2
 
 from model_deployment.prove import LocationInfo, RunProofConf
 from model_deployment.searcher import SearcherConf, searcher_conf_from_yaml
-from model_deployment.rerank_client import (
+from premise_selection.rerank_client import (
     PremiseClient,
     PremiseConf,
     premise_conf_from_yaml,
