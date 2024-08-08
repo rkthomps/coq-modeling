@@ -343,22 +343,6 @@ class ClassicalSearcher:
         )
         return new_leaf
 
-    def get_all_recs(
-        self, examples: list[LmExample], current_proof: str
-    ) -> ModelResult:
-        recs_per_example = self.max_branch // len(examples)
-        all_next_tactics: list[str] = []
-        all_next_scores: list[float] = []
-        all_next_num_tokens: list[int] = []
-        for example in examples:
-            result = self.tactic_client.get_recs(
-                example, recs_per_example, current_proof, beam=self.beam_decode
-            )
-            all_next_tactics.extend(result.next_tactic_list)
-            all_next_scores.extend(result.score_list)
-            all_next_num_tokens.extend(result.num_tokens_list)
-        return filter_recs(all_next_tactics, all_next_scores, all_next_num_tokens, [])
-
     def is_only_focusing(self, tactic: str) -> bool:
         stripped_tactic = tactic.strip()
         return all([c in "*-+" for c in stripped_tactic])
@@ -387,8 +371,8 @@ class ClassicalSearcher:
             # print(current_proof)
             print("proof object:")
             print(leaf_subtree.proof.proof_text_to_string(include_theorem=False))
-        leaf_subtree.set_model_input(examples)
         start_time = time.time()
+        recs = self.tactic_client.get_recs()
         result = self.get_all_recs(examples, current_proof)
         end_time = time.time()
         self.total_model_time += end_time - start_time

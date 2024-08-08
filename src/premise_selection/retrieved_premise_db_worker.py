@@ -7,7 +7,11 @@ from premise_selection.retrieved_premise_db import (
     PremiseDBPage,
     StepID,
 )
-from premise_selection.rerank_client import PremiseClient, premise_client_from_conf
+from premise_selection.rerank_client import (
+    PremiseClient,
+    premise_client_from_conf,
+    premise_conf_update_ips,
+)
 from premise_selection.retrieved_premise_db_creator import PremiseDBCreatorConf
 
 from model_deployment.conf_utils import (
@@ -18,7 +22,7 @@ from model_deployment.conf_utils import (
 
 from util.file_queue import FileQueue, EmptyFileQueueError
 from util.slurm import worker_get_conf_queue
-from util.util import get_basic_logger
+from util.util import get_basic_logger, clear_port_map
 
 from data_management.sentence_db import SentenceDB
 from data_management.splits import FileInfo
@@ -45,7 +49,7 @@ def process_f_info(
                 step, proof, file_dp
             )
             premise_generator = premise_client.get_ranked_premise_generator(
-                step, proof, file_dp, filter_result.avail_premises
+                step_idx, proof, file_dp, filter_result.avail_premises, training=False
             )
             retrieved_sentences = list(premise_generator)[:max_num_premises]
             file_page_dict[step_id] = retrieved_sentences
@@ -63,14 +67,14 @@ if __name__ == "__main__":
     queue = FileQueue(queue_loc)
 
     sentence_db = SentenceDB.load(conf.sentence_db_loc)
-    proof_ret_conf, next_num, commands = premise_conf_to_client_conf(
-        conf.premise_conf, 0
-    )
+    premise_conf, next_num, commands = premise_conf_to_client_conf(conf.premise_conf, 0)
     if 0 < len(commands):
+        clear_port_map()
         start_servers(commands)
-        wait_for_servers(next_num)
+        port_map = wait_for_servers(next_num)
+        premise_conf_update_ips(premise_conf, port_map)
 
-    premise_client = premise_client_from_conf(proof_ret_conf)
+    premise_client = premise_client_from_conf(premise_conf)
 
     while True:
         try:

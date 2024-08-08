@@ -281,6 +281,13 @@ class Goal:
     def __init__(self, hyps: list[str], goal: str) -> None:
         self.hyps = hyps
         self.goal = goal
+        self.cached_hyp_ids: Optional[list[str]] = None
+        self.cached_goal_ids: Optional[list[str]] = None
+
+    def get_ids(self) -> tuple[list[str], list[str]]:
+        if self.cached_hyp_ids is None or self.cached_goal_ids is None:
+            self.cached_hyp_ids, self.cached_goal_ids = get_ids_from_goal(self)
+        return self.cached_hyp_ids, self.cached_goal_ids
 
     def to_string(self) -> str:
         return "\n".join(self.hyps) + "\n\n" + self.goal

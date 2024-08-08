@@ -18,9 +18,61 @@ _logger = get_basic_logger(__name__)
 
 @dataclass
 class ShuffledIndex:
-    train_shuffled_idx: list[StepID]
-    val_shuffled_idx: list[StepID]
-    test_shuffled_idx: list[StepID]
+    def __init__(
+        self,
+        train_shuffled_idx: list[StepID],
+        val_shuffled_idx: list[StepID],
+        test_shuffled_idx: list[StepID],
+    ):
+        self.train_shuffled_idx = train_shuffled_idx
+        self.val_shuffled_idx = val_shuffled_idx
+        self.test_shuffled_idx = test_shuffled_idx
+
+        self.reversed_train_idx = {
+            step_id: idx for idx, step_id in enumerate(train_shuffled_idx)
+        }
+        self.reversed_val_idx = {
+            step_id: idx for idx, step_id in enumerate(val_shuffled_idx)
+        }
+        self.reversed_test_idx = {
+            step_id: idx for idx, step_id in enumerate(test_shuffled_idx)
+        }
+
+    def reversed_contains(self, split: Split, step_id: StepID) -> bool:
+        match split:
+            case Split.TRAIN:
+                return step_id in self.reversed_train_idx
+            case Split.VAL:
+                return step_id in self.reversed_val_idx
+            case Split.TEST:
+                return step_id in self.reversed_test_idx
+
+    def get_reversed_idx(self, split: Split, step_id: StepID) -> int:
+        match split:
+            case Split.TRAIN:
+                return self.reversed_train_idx[step_id]
+            case Split.VAL:
+                return self.reversed_val_idx[step_id]
+            case Split.TEST:
+                return self.reversed_test_idx[step_id]
+
+    def split_length(self, split: Split) -> int:
+        match split:
+            case Split.TRAIN:
+                return len(self.train_shuffled_idx)
+            case Split.VAL:
+                return len(self.val_shuffled_idx)
+            case Split.TEST:
+                return len(self.test_shuffled_idx)
+
+    def get_idx(self, split: Split, idx: int) -> StepID:
+        match split:
+            case Split.TRAIN:
+                return self.train_shuffled_idx[idx]
+            case Split.VAL:
+                return self.val_shuffled_idx[idx]
+            case Split.TEST:
+                return self.test_shuffled_idx[idx]
 
     @classmethod
     def __get_shuffled_idx(

@@ -44,7 +44,8 @@ from util.train_utils import (
     GIT_NAME,
 )
 from util.util import get_basic_logger
-from tactic_gen.tactic_data import LmDataset, example_collator_from_conf
+from data_management.splits import Split
+from tactic_gen.tactic_data import LmDatasest, TacticDataConf
 
 _logger = get_basic_logger(__name__)
 
@@ -92,51 +93,13 @@ def get_model(model_name: str) -> PreTrainedModel:
 
 def get_datasets(
     conf: dict[str, Any],
-    tokenizer: PreTrainedTokenizer,
-) -> tuple[LmDataset, LmDataset]:
-    example_collator_conf = get_required_arg("example_collator", conf)
-    data_path = Path(get_required_arg("data_path", conf))
-    num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
-    hard_seq_len = get_required_arg("hard_seq_len", conf)
-    train_path, val_path = get_train_val_path(data_path)
-
-    example_collator = example_collator_from_conf(example_collator_conf)
-    train_dataset = LmDataset(train_path, tokenizer, example_collator, hard_seq_len)
-    val_dataset = LmDataset(
-        val_path,
-        tokenizer,
-        example_collator,
-        hard_seq_len,
-        num_eval_examples,
+) -> tuple[LmDatasest, LmDatasest]:
+    dataset_conf = TacticDataConf.from_yaml(conf["tactic_data"])
+    train_dataset = LmDatasest.from_conf(dataset_conf, Split.TRAIN)
+    val_dataset = LmDatasest.from_conf(
+        dataset_conf, Split.VAL, conf.get("num_eval_examples", None)
     )
     return train_dataset, val_dataset
-
-
-def get_tokenizer(conf: dict[str, Any], add_eos=True) -> PreTrainedTokenizer:
-    model_name = get_required_arg("model_name", conf)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.padding_side = "right"
-    tokenizer.truncation_side = "left"
-    if add_eos:
-        tokenizer.add_eos_token = True
-    else:
-        tokenizer.add_eos_token = False
-    assert tokenizer.pad_token_id != tokenizer.eos_token_id
-    if model_name.startswith("codellama") or model_name.startswith(
-        "openai-community/gpt"
-    ):
-        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-        # print("ADDING PAD TOKEN")
-        # tokenizer.add_eos_token = True
-        # pad_token = "<PRE>"
-        # encoded_ids = tokenizer.encode(pad_token)
-        # assert len(encoded_ids) == 3
-        # assert encoded_ids[0] == tokenizer.bos_token_id
-        # assert encoded_ids[2] == tokenizer.eos_token_id
-
-        # tokenizer.pad_token = pad_token
-        # tokenizer.pad_token_id = encoded_ids[1]
-    return tokenizer
 
 
 # def formatting_func(examples: list[str]) -> list[str]:
@@ -149,8 +112,6 @@ def get_trainer(
 ) -> Trainer:
     print("\n\nBuilding Training Config...")
     training_args = get_training_args(conf, local_rank)
-    print("\n\nRetrieving Tokenizer...")
-    tokenizer = get_tokenizer(conf)
 
     print("\n\nRetrieving Model...")
     model_name = get_required_arg("model_name", conf)
@@ -159,9 +120,9 @@ def get_trainer(
     model = get_peft_model(raw_model, lora_config)
 
     print("\n\nConstructing Dataset...")
-    train_dataset, val_dataset = get_datasets(conf, tokenizer)
+    train_dataset, val_dataset = get_datasets(conf)
 
-    print(tokenizer.decode(train_dataset[0].input_ids))
+    print(train_dataset.tokenizer.decode(train_dataset[0].input_ids))
 
     print("\n\nBuilding Trainer...")
     # trainer = SFTTrainer(
@@ -176,7 +137,7 @@ def get_trainer(
 
     trainer = Trainer(
         model=model,
-        tokenizer=tokenizer,
+        tokenizer=train_dataset.tokenizer,
         args=training_args,
         data_collator=train_dataset.collator,
         train_dataset=train_dataset,

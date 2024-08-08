@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Optional
 import json
 from pathlib import Path
+import functools
 
 import argparse
 from dataclasses import dataclass
@@ -45,6 +46,12 @@ class ProofDBPage:
         )
 
 
+@functools.lru_cache(128)
+def load_page(path: Path) -> ProofDBPage:
+    with open(path, "r") as f:
+        return ProofDBPage.from_json(json.load(f))
+
+
 @dataclass
 class RetrievedProofDB:
     proof_db_loc: Path
@@ -55,7 +62,10 @@ class RetrievedProofDB:
     ) -> Optional[list[StepID]]:
         step_id = StepID.from_step_idx(step_idx, proof_idx, dset_file)
         page_loc = self.proof_db_loc / dset_file.dp_name
-        page = ProofDBPage.load(page_loc)
+        if not page_loc.exists():
+            _logger.warning(f"Page {page_loc} does not exist.")
+            return None
+        page = load_page(page_loc)
         return page.get(step_id)
 
     def add_page(self, page: ProofDBPage, dset_file: DatasetFile):

@@ -53,15 +53,16 @@ def load_config(path: str) -> dict[str, Any]:
 
 def copy_configs(conf_path: Path, conf: dict[str, Any], train_type: TrainType) -> None:
     output_dir = Path(get_required_arg("output_dir", conf))
-    data_path = Path(get_required_arg("data_path", conf))
-    data_conf_loc = data_path / "conf.yaml"
-    assert data_conf_loc.exists()
     match train_type:
         case TrainType.TACTIC:
-            shutil.copy(data_conf_loc, output_dir / DATA_CONF_NAME)
+            pass
         case TrainType.SELECT:
+            data_path = Path(get_required_arg("data_path", conf))
+            data_conf_loc = data_path / "conf.yaml"
             shutil.copy(data_conf_loc, output_dir / PREMISE_DATA_CONF_NAME)
         case TrainType.RERANK:
+            data_path = Path(get_required_arg("data_path", conf))
+            data_conf_loc = data_path / "conf.yaml"
             shutil.copy(data_conf_loc, output_dir / RERANK_DATA_CONF_NAME)
 
     shutil.copy(conf_path, output_dir / TRAINING_CONF_NAME)

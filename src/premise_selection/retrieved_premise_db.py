@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import functools
 from pathlib import Path
 from typing import Optional, Any
 from dataclasses import dataclass
@@ -7,6 +8,10 @@ from data_management.dataset_file import DatasetFile, Sentence
 from data_management.sentence_db import SentenceDB
 
 from proof_retrieval.retrieved_proof_db import StepID
+
+from util.util import get_basic_logger
+
+_logger = get_basic_logger(__name__)
 
 
 @dataclass
@@ -41,6 +46,12 @@ class PremiseDBPage:
         )
 
 
+@functools.lru_cache(128)
+def load_page(path: Path, sentence_db: SentenceDB) -> PremiseDBPage:
+    with open(path, "r") as fin:
+        return PremiseDBPage.from_json(json.load(fin), sentence_db)
+
+
 @dataclass
 class RetrievedPremiseDB:
     premise_db_loc: Path
@@ -55,7 +66,10 @@ class RetrievedPremiseDB:
     ) -> Optional[list[Sentence]]:
         step_id = StepID.from_step_idx(step_idx, proof_idx, dset_file)
         page_loc = self.premise_db_loc / dset_file.dp_name
-        page = PremiseDBPage.load(page_loc, sentence_db)
+        if not page_loc.exists():
+            _logger.warning(f"Premise page not found: {page_loc}")
+            return None
+        page = load_page(page_loc, sentence_db)
         return page.get(step_id)
 
     @classmethod
@@ -63,73 +77,3 @@ class RetrievedPremiseDB:
         assert path.exists()
         assert (path / cls.CONF_NAME).exists()
         return cls(path)
-
-
-if __name__ == "__main__":
-
-    import os
-    import shutil
-    import yaml
-    import argparse
-
-    from concurrent.futures import ProcessPoolExecutor, Future, as_completed
-
-    from model_deployment.conf_utils import (
-        premise_conf_to_client_conf,
-        wait_for_servers,
-        start_servers,
-    )
-
-    from data_management.splits import FileInfo
-    from model_deployment.rerank_client import (
-        PremiseClient,
-        PremiseConf,
-        close_premise_client,
-        premise_client_from_conf,
-    )
-
-    parser = argparse.ArgumentParser("Create a premise retrieval database.")
-    parser.add_argument(
-        "--premise_retriever_conf_loc",
-        type=str,
-        required=True,
-        help="Path of the premise retriever config.",
-    )
-    parser.add_argument(
-        "--save_loc", type=str, required=True, help="Path to save the premise database."
-    )
-    parser.add_argument(
-        "--sentence_db_loc", type=str, required=True, help="Path to sentence database."
-    )
-    parser.add_argument("--premises_per_step", type=int, default=50)
-    parser.add_argument(
-        "--data_split_locs", type=str, nargs="+", help="Path to data splits."
-    )
-    args = parser.parse_args()
-
-    # TODO
-
-    def page_from_f_info(
-        f_info: FileInfo,
-        premise_conf: PremiseConf,
-        data_loc: Path,
-        sentence_db_loc: Path,
-    ):
-        sentence_db = SentenceDB.load(sentence_db_loc)
-        premise_client = premise_client_from_conf(premise_conf)
-        new_page_dict: dict[StepID, list[Sentence]] = {}
-        f_dp = f_info.get_dp(data_loc, sentence_db)
-        for proof_idx, proof in enumerate(f_dp.proofs):
-            for step_idx, step in enumerate(proof.steps):
-                step_id = StepID.from_step_idx(step_idx, proof_idx, f_dp)
-                filter_result = (
-                    premise_client.premise_filter.get_pos_and_avail_premises(
-                        step, proof, f_dp
-                    )
-                )
-                premise_generator = premise_client.get_ranked_premise_generator(
-                    step, proof, f_dp, filter_result.avail_premises
-                )
-
-        sentence_db.close()
-        close_premise_client(premise_client)

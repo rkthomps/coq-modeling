@@ -183,7 +183,7 @@ class ProofManager:
                 goals,
             )
         focused_steps.append(new_step)
-        proof = Proof(theorem, focused_steps)
+        proof = Proof(theorem, focused_steps, len(self.same_file_proofs))
         return proof
 
     def __can_close_proof(self, goals: Optional[GoalAnswer]):
@@ -212,7 +212,15 @@ class ProofManager:
         # TODO ADD PREFIX TO THIS DSET FILE
         initial_proof_result = self.check_proof("", self.proof_info.proof_term)
         assert initial_proof_result.new_proof is not None
-        return DatasetFile(self.file_context, [initial_proof_result.new_proof])
+        return DatasetFile(self.file_context, self.same_file_proofs + [initial_proof_result.new_proof])
+    
+
+    def build_dset_file(self, new_proof: Proof) -> DatasetFile:
+        return DatasetFile(
+            self.file_context,
+            self.same_file_proofs + [new_proof],
+        )
+
 
     def check_valid(self, client: FastLspClient) -> bool:
         for diagnostic in client.lsp_endpoint.diagnostics[self.fast_client.file_uri]:

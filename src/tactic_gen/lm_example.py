@@ -79,6 +79,20 @@ class LmExample:
         self.file_name = file_name
         self.proof_idx = proof_idx
         self.step_idx = step_idx
+    
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, LmExample):
+            return False
+        return (
+            self.proof_script == other.proof_script
+            and self.proof_state == other.proof_state
+            and self.next_steps == other.next_steps
+            and self.proofs == other.proofs
+            and self.premises == other.premises
+            and self.file_name == other.file_name
+            and self.proof_idx == other.proof_idx
+            and self.step_idx == other.step_idx
+        )
 
     def to_json(self) -> Any:
         return {
@@ -200,11 +214,12 @@ class GeneralFormatter:
         step_idx: int,
         proof_idx: int,
         dp_obj: DatasetFile,
-        file_info: FileInfo,
-        key_record: Optional[GoalRecord] = None,
-        cutoff_idx: Optional[int] = None,
-        max_num_nodes: int = 30,
-        max_num_steps: int = 500,
+        training: bool = False,
+        # file_info: FileInfo,
+        # key_record: Optional[GoalRecord] = None,
+        # cutoff_idx: Optional[int] = None,
+        # max_num_nodes: int = 30,
+        # max_num_steps: int = 500,
         **kwargs: Any,
     ) -> LmExample:
         proof = dp_obj.proofs[proof_idx]
@@ -216,11 +231,12 @@ class GeneralFormatter:
                 step_idx,
                 proof,
                 dp_obj,
-                file_info=file_info,
-                key_record=key_record,
-                cutoff_idx=cutoff_idx,
-                max_num_nodes=max_num_nodes,
-                max_num_steps=max_num_steps,
+                training,
+                # file_info=file_info,
+                # key_record=key_record,
+                # cutoff_idx=cutoff_idx,
+                # max_num_nodes=max_num_nodes,
+                # max_num_steps=max_num_steps,
             )[: self.num_proofs]
             similar_proof_strs = [p.proof_text_to_string() for p in simliar_proofs]
         else:
@@ -235,7 +251,7 @@ class GeneralFormatter:
             )
             relevant_premises = list(
                 self.premise_client.get_ranked_premise_generator(
-                    step, proof, dp_obj, filtered_result.avail_premises
+                    step_idx, proof, dp_obj, filtered_result.avail_premises, training
                 )
             )[: self.num_premises]
             relevant_premise_strs = [p.text for p in relevant_premises]

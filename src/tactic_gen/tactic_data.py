@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import os
+import pickle
 import random
 import functools
 from typing import Any, Optional
@@ -11,15 +13,33 @@ from dataclasses import dataclass
 # from datasets import Dataset
 from torch.utils.data import Dataset
 
-from transformers import PreTrainedTokenizer, BatchEncoding
+from transformers import AutoTokenizer, PreTrainedTokenizer, BatchEncoding
 from trl import DataCollatorForCompletionOnlyLM
 import jsonlines
+from data_management.dataset_file import DatasetFile
+from data_management.sentence_db import SentenceDB
 from data_management.jsonl_utils import ExampleDB
 from data_management.line_dict import LineDict
+from data_management.splits import Split
+from data_management.dataset_file import DPCache, StepID
 
-from tactic_gen.lm_example import LmExample
+from model_deployment.conf_utils import (
+    formatter_conf_to_client_conf,
+    start_servers,
+    wait_for_servers,
+)
+
+from tactic_gen.lm_example import (
+    LmExample,
+    LmFormatter,
+    FormatterConf,
+    formatter_conf_from_yaml,
+    formatter_from_conf,
+)
 from util.train_utils import allocate_tokens
 from util.util import get_basic_logger
+from util.shuffled_idx import ShuffledIndex
+from util.constants import DATA_POINTS_NAME
 
 _logger = get_basic_logger(__name__)
 
@@ -80,13 +100,30 @@ def allocate_and_fmt(
 
 
 @dataclass
+class BasicCollatorConf:
+    script_tokens: int
+    state_tokens: int
+    out_tokens: int
+    whole_proof: bool
+    ALIAS = "basic"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> BasicCollatorConf:
+        return cls(
+            yaml_data["script_tokens"],
+            yaml_data["state_tokens"],
+            yaml_data["out_tokens"],
+            yaml_data.get("whole_proof", False),
+        )
+
+
+@dataclass
 class BasicCollator:
     script_tokens: int
     state_tokens: int
     out_tokens: int
     whole_proof: bool
 
-    ALIAS = "basic"
     STATE_SEP = "\n[STATE]\n"
     SCRIPT_SEP = "\n[SCRIPT]\n"
 
@@ -119,22 +156,37 @@ class BasicCollator:
         return combined_str
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> BasicCollator:
-        if "whole_proof" in yaml_data:
-            whole_proof = yaml_data["whole_proof"]
-        else:
-            whole_proof = False
+    def from_conf(cls, conf: BasicCollatorConf) -> BasicCollator:
+        return cls(
+            conf.script_tokens,
+            conf.state_tokens,
+            conf.out_tokens,
+            conf.whole_proof,
+        )
+
+
+@dataclass
+class PremiseCollatorConf:
+    script_tokens: int
+    state_tokens: int
+    premise_tokens: int
+    out_tokens: int
+    whole_proof: bool
+    ALIAS = "premise"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> PremiseCollatorConf:
         return cls(
             yaml_data["script_tokens"],
             yaml_data["state_tokens"],
+            yaml_data["premise_tokens"],
             yaml_data["out_tokens"],
-            whole_proof,
+            yaml_data.get("whole_proof", False),
         )
 
 
 @dataclass
 class PremiseCollator:
-    ALIAS = "premise"
     script_tokens: int
     state_tokens: int
     premise_tokens: int
@@ -177,23 +229,38 @@ class PremiseCollator:
         return combined_str
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> PremiseCollator:
-        if "whole_proof" in yaml_data:
-            whole_proof = yaml_data["whole_proof"]
-        else:
-            whole_proof = False
+    def from_conf(cls, yaml_data: Any) -> PremiseCollator:
         return cls(
             yaml_data["script_tokens"],
             yaml_data["state_tokens"],
             yaml_data["premise_tokens"],
             yaml_data["out_tokens"],
-            whole_proof,
+            yaml_data.get("whole_proof", False),
+        )
+
+
+@dataclass
+class ProofCollatorConf:
+    script_tokens: int
+    state_tokens: int
+    proof_tokens: int
+    out_tokens: int
+    whole_proof: bool
+    ALIAS = "proof"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> ProofCollatorConf:
+        return cls(
+            yaml_data["script_tokens"],
+            yaml_data["state_tokens"],
+            yaml_data["proof_tokens"],
+            yaml_data["out_tokens"],
+            yaml_data.get("whole_proof", False),
         )
 
 
 @dataclass
 class ProofCollator:
-    ALIAS = "proof"
     script_tokens: int
     state_tokens: int
     proof_tokens: int
@@ -236,129 +303,40 @@ class ProofCollator:
         return combined_str
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> ProofCollator:
-        if "whole_proof" in yaml_data:
-            whole_proof = yaml_data["whole_proof"]
-        else:
-            whole_proof = False
+    def from_conf(cls, conf: ProofCollatorConf) -> ProofCollator:
         return cls(
-            yaml_data["script_tokens"],
-            yaml_data["state_tokens"],
-            yaml_data["proof_tokens"],
-            yaml_data["out_tokens"],
-            whole_proof,
+            conf.script_tokens,
+            conf.state_tokens,
+            conf.proof_tokens,
+            conf.out_tokens,
+            conf.whole_proof,
         )
 
 
 @dataclass
-class ProofPremiseNameCollator:
-    ALIAS = "proof-premise-name"
+class ProofPremiseCollatorConf:
     script_tokens: int
     state_tokens: int
     proof_tokens: int
     premise_tokens: int
     out_tokens: int
     whole_proof: bool
-
-    STATE_SEP = "\n[STATE]\n"
-    SCRIPT_SEP = "\n[SCRIPT]\n"
-    PROOF_SEP = "\n[PROOFS]\n"
-    PREMISE_SEP = "\n[PREMISES]\n"
-    NAME_MATCH = re.compile(r"\S+\s+(\S+?)[\[\]\{\}\(\):=,\s]")
-
-    def get_proof_str(self, example: LmExample) -> str:
-        if example.proofs is None:
-            reversed_proofs = []
-        else:
-            reversed_proofs = example.proofs[::-1]
-        return "\n".join(reversed_proofs)
-
-    def get_name(self, premise: str) -> Optional[str]:
-        name = self.NAME_MATCH.search(premise)
-        if name is None:
-            _logger.warning(f"Could not find name in premise: {premise}")
-            return None
-        (premise_name,) = name.groups()
-        return premise_name
-
-    def get_premise_names(self, example: LmExample) -> list[str]:
-        if example.premises is None:
-            return []
-        names: list[str] = []
-        for p in example.premises:
-            p_name = self.get_name(p)
-            if p_name is not None:
-                names.append(p_name)
-        return names
-
-    def get_premise_str(self, example: LmExample) -> str:
-        if example.premises is None:
-            reversed_premise_names = []
-        else:
-            reversed_premises = example.premises[::-1]
-            reversed_premise_names: list[str] = []
-            for p in reversed_premises:
-                p_name = self.get_name(p)
-                if p_name is not None:
-                    reversed_premise_names.append(p_name)
-        return "\n".join(reversed_premise_names)
-
-    def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
-        proof_str = allocate_and_fmt(tokenizer, example.proofs, self.proof_tokens)
-        premise_str = allocate_and_fmt(
-            tokenizer, self.get_premise_names(example), self.premise_tokens
-        )
-
-        state_str, _ = allocate_tokens(
-            tokenizer, example.proof_state, self.state_tokens
-        )
-        script_str, _ = allocate_tokens(
-            tokenizer, example.proof_script, self.script_tokens
-        )
-        combined_str = (
-            self.PREMISE_SEP
-            + premise_str
-            + self.PROOF_SEP
-            + proof_str
-            + self.STATE_SEP
-            + state_str
-            + self.SCRIPT_SEP
-            + script_str
-            + NEWLINE_RESPONSE_TEMPLATE
-        )
-        return combined_str
-
-    def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
-        input_str = self.collate_input(tokenizer, example)
-        if self.whole_proof:
-            target = "".join(example.next_steps)
-        else:
-            target = example.next_steps[0]
-        out_str, _ = allocate_tokens(
-            tokenizer, target, self.out_tokens, truncate_front=False
-        )
-        combined_str = input_str + out_str
-        return combined_str
+    ALIAS = "proof-premise"
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> ProofPremiseNameCollator:
-        if "whole_proof" in yaml_data:
-            whole_proof = yaml_data["whole_proof"]
-        else:
-            whole_proof = False
+    def from_yaml(cls, yaml_data: Any) -> ProofPremiseCollatorConf:
         return cls(
             yaml_data["script_tokens"],
             yaml_data["state_tokens"],
             yaml_data["proof_tokens"],
             yaml_data["premise_tokens"],
             yaml_data["out_tokens"],
-            whole_proof,
+            yaml_data.get("whole_proof", False),
         )
 
 
 @dataclass
 class ProofPremiseCollator:
-    ALIAS = "proof-premise"
     script_tokens: int
     state_tokens: int
     proof_tokens: int
@@ -406,18 +384,14 @@ class ProofPremiseCollator:
         return combined_str
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> ProofPremiseCollator:
-        if "whole_proof" in yaml_data:
-            whole_proof = yaml_data["whole_proof"]
-        else:
-            whole_proof = False
+    def from_conf(cls, conf: ProofPremiseCollatorConf) -> ProofPremiseCollator:
         return cls(
-            yaml_data["script_tokens"],
-            yaml_data["state_tokens"],
-            yaml_data["proof_tokens"],
-            yaml_data["premise_tokens"],
-            yaml_data["out_tokens"],
-            whole_proof,
+            conf.script_tokens,
+            conf.state_tokens,
+            conf.proof_tokens,
+            conf.premise_tokens,
+            conf.out_tokens,
+            conf.whole_proof,
         )
 
 
@@ -428,8 +402,31 @@ def get_file_lines(file: Path) -> list[str]:
 
 
 @dataclass
-class NPrevLineCollator:
+class NPrevLineCollatorConf:
+    script_tokens: int
+    state_tokens: int
+    prefix_tokens: int
+    out_tokens: int
+    data_loc: Path
+    line_dict_loc: Path
+    whole_proof: bool
     ALIAS = "n-prev-line"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> NPrevLineCollatorConf:
+        return cls(
+            yaml_data["script_tokens"],
+            yaml_data["state_tokens"],
+            yaml_data["prefix_tokens"],
+            yaml_data["out_tokens"],
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["line_dict_loc"]),
+            yaml_data.get("whole_proof", False),
+        )
+
+
+@dataclass
+class NPrevLineCollator:
     script_tokens: int
     state_tokens: int
     prefix_tokens: int
@@ -491,20 +488,16 @@ class NPrevLineCollator:
         return combined_str
 
     @classmethod
-    def from_yaml(cls, yaml_data: Any) -> NPrevLineCollator:
-        line_dict = LineDict.load(Path(yaml_data["line_dict_loc"]))
-        if "whole_proof" in yaml_data:
-            whole_proof = yaml_data["whole_proof"]
-        else:
-            whole_proof = False
+    def from_conf(cls, conf: NPrevLineCollatorConf) -> NPrevLineCollator:
+        line_dict = LineDict.load(conf.line_dict_loc)
         return cls(
-            yaml_data["script_tokens"],
-            yaml_data["state_tokens"],
-            yaml_data["prefix_tokens"],
-            yaml_data["out_tokens"],
-            Path(yaml_data["data_loc"]),
+            conf.script_tokens,
+            conf.state_tokens,
+            conf.prefix_tokens,
+            conf.out_tokens,
+            conf.data_loc,
             line_dict,
-            whole_proof,
+            conf.whole_proof,
         )
 
 
@@ -513,31 +506,50 @@ ExampleCollator = (
     | PremiseCollator
     | ProofCollator
     | ProofPremiseCollator
-    | ProofPremiseNameCollator
     | NPrevLineCollator
 )
 
+ExampleCollatorConf = (
+    BasicCollatorConf
+    | PremiseCollatorConf
+    | ProofCollatorConf
+    | ProofPremiseCollatorConf
+    | NPrevLineCollatorConf
+)
 
-def example_collator_from_conf(conf: Any) -> ExampleCollator:
-    attempted_alias = conf["alias"]
+
+def example_collator_conf_from_yaml(yaml_data: Any) -> ExampleCollatorConf:
+    attempted_alias = yaml_data["alias"]
     match attempted_alias:
-        case BasicCollator.ALIAS:
-            return BasicCollator.from_yaml(conf)
-        case PremiseCollator.ALIAS:
-            return PremiseCollator.from_yaml(conf)
-        case ProofCollator.ALIAS:
-            return ProofCollator.from_yaml(conf)
-        case ProofPremiseCollator.ALIAS:
-            return ProofPremiseCollator.from_yaml(conf)
-        case ProofPremiseNameCollator.ALIAS:
-            return ProofPremiseNameCollator.from_yaml(conf)
-        case NPrevLineCollator.ALIAS:
-            return NPrevLineCollator.from_yaml(conf)
+        case BasicCollatorConf.ALIAS:
+            return BasicCollatorConf.from_yaml(yaml_data)
+        case PremiseCollatorConf.ALIAS:
+            return PremiseCollatorConf.from_yaml(yaml_data)
+        case ProofCollatorConf.ALIAS:
+            return ProofCollatorConf.from_yaml(yaml_data)
+        case ProofPremiseCollatorConf.ALIAS:
+            return ProofPremiseCollatorConf.from_yaml(yaml_data)
+        case NPrevLineCollatorConf.ALIAS:
+            return NPrevLineCollatorConf.from_yaml(yaml_data)
         case _:
             raise ValueError(f"Could not find example collator: {attempted_alias}")
 
 
-class LmDataset(Dataset):
+def example_collator_from_conf(conf: ExampleCollatorConf) -> ExampleCollator:
+    match conf:
+        case BasicCollatorConf():
+            return BasicCollator.from_conf(conf)
+        case PremiseCollatorConf():
+            return PremiseCollator.from_conf(conf)
+        case ProofCollatorConf():
+            return ProofCollator.from_conf(conf)
+        case ProofPremiseCollatorConf():
+            return ProofPremiseCollator.from_conf(conf)
+        case NPrevLineCollatorConf():
+            return NPrevLineCollator.from_conf(conf)
+
+
+class LmPreprocessedDataset(Dataset):
     def __init__(
         self,
         data_path: Path,
@@ -546,7 +558,7 @@ class LmDataset(Dataset):
         hard_seq_len: int,
         max_n_examples: Optional[int] = None,
     ) -> None:
-        super(LmDataset, self).__init__()
+        super(LmPreprocessedDataset, self).__init__()
         self.edb = ExampleDB.load(data_path)
         __shuffled_list = list(range(self.edb.size()))
         random.seed(0)
@@ -579,4 +591,199 @@ class LmDataset(Dataset):
             max_length=self.hard_seq_len,
             truncation=True,
             padding="max_length",
+        )
+
+
+@dataclass
+class TacticDataConf:
+    data_loc: Path
+    sentence_db_loc: Path
+    shuffled_index_loc: Path
+    formatter_conf: FormatterConf
+    model_name: str
+    collator_conf: ExampleCollatorConf
+    cache_loc: Path
+    hard_seq_len: int
+    max_n_examples: Optional[int]
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> TacticDataConf:
+        return cls(
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            Path(yaml_data["shuffled_index_loc"]),
+            formatter_conf_from_yaml(yaml_data["formatter_conf"]),
+            yaml_data["model_name"],
+            example_collator_conf_from_yaml(yaml_data["collator_conf"]),
+            Path(yaml_data["cache_loc"]),
+            yaml_data["hard_seq_len"],
+            yaml_data.get("max_n_examples", None),
+        )
+
+
+def get_tokenizer(model_name: str, add_eos=True) -> PreTrainedTokenizer:
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer.padding_side = "right"
+    tokenizer.truncation_side = "left"
+    if add_eos:
+        tokenizer.add_eos_token = True
+    else:
+        tokenizer.add_eos_token = False
+    assert tokenizer.pad_token_id != tokenizer.eos_token_id
+    if model_name.startswith("codellama") or model_name.startswith(
+        "openai-community/gpt"
+    ):
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        # print("ADDING PAD TOKEN")
+        # tokenizer.add_eos_token = True
+        # pad_token = "<PRE>"
+        # encoded_ids = tokenizer.encode(pad_token)
+        # assert len(encoded_ids) == 3
+        # assert encoded_ids[0] == tokenizer.bos_token_id
+        # assert encoded_ids[2] == tokenizer.eos_token_id
+
+        # tokenizer.pad_token = pad_token
+        # tokenizer.pad_token_id = encoded_ids[1]
+    return tokenizer
+
+
+class ExamplePage:
+    def __init__(self, dp_name: str, page: dict[int, dict[int, LmExample]]):
+        self.dp_name = dp_name
+        self.page = page
+
+
+class ExampleCache:
+    def __init__(self, cache_loc: Path):
+        self.cache_loc = cache_loc
+        os.makedirs(self.cache_loc, exist_ok=True)
+        self.num_cached = 0
+
+    def get(
+        self,
+        step_id: StepID,
+        formatter: LmFormatter,
+        data_loc: Path,
+        sentence_db: SentenceDB,
+    ) -> Optional[LmExample]:
+        file_loc = self.cache_loc / step_id.file
+        if file_loc.exists():
+            with file_loc.open("rb") as f:
+                page: ExamplePage = pickle.load(f)
+                if (
+                    step_id.proof_idx in page.page
+                    and step_id.step_idx in page.page[step_id.proof_idx]
+                ):
+                    return page.page[step_id.proof_idx][step_id.step_idx]
+                else:
+                    return None
+        else:
+            dp_loc = data_loc / DATA_POINTS_NAME / step_id.file
+            dp = DatasetFile.load(dp_loc, sentence_db)
+            num_examples = 0
+            new_page_dict: dict[int, dict[int, LmExample]] = {}
+            for proof_idx, proof in enumerate(dp.proofs):
+                new_page_dict[proof_idx] = {}
+                for step_idx, step in enumerate(proof.steps):
+                    example = formatter.example_from_step(
+                        step_idx, proof_idx, dp, training=True
+                    )
+                    new_page_dict[proof_idx][step_idx] = example
+                    num_examples += 1
+            new_page = ExamplePage(step_id.file, new_page_dict)
+            self.num_cached += num_examples
+            with file_loc.open("wb") as f:
+                pickle.dump(new_page, f)
+            if (
+                step_id.proof_idx in new_page_dict
+                and step_id.step_idx in new_page_dict[step_id.proof_idx]
+            ):
+                return new_page_dict[step_id.proof_idx][step_id.step_idx]
+            else:
+                return None
+
+
+class LmDatasest(Dataset):
+    def __init__(
+        self,
+        data_loc: Path,
+        sentence_db: SentenceDB,
+        shuffled_idx: ShuffledIndex,
+        split: Split,
+        formatter: LmFormatter,
+        tokenizer: PreTrainedTokenizer,
+        example_collator: ExampleCollator,
+        cache_loc: Path,
+        hard_seq_len: int,
+        max_n_examples: Optional[int],
+    ) -> None:
+        super(LmDatasest, self).__init__()
+        self.data_loc = data_loc
+        self.sentence_db = sentence_db
+        self.shuffled_idx = shuffled_idx
+        self.split = split
+        self.formatter = formatter
+        self.tokenizer = tokenizer
+        self.example_collator = example_collator
+        self.hard_seq_len = hard_seq_len
+        self.max_n_examples = max_n_examples
+        self.collator = DataCollatorForCompletionOnlyLM(
+            response_template=NEWLINE_RESPONSE_TEMPLATE,
+            tokenizer=tokenizer,
+            mlm=False,
+        )
+        self.example_cache = ExampleCache(cache_loc)
+
+    def __len__(self) -> int:
+        if self.max_n_examples is not None:
+            return self.max_n_examples
+        return self.shuffled_idx.split_length(self.split)
+
+    def __getitem__(self, index: int) -> Any:
+        step_id = self.shuffled_idx.get_idx(self.split, index)
+        get_cached = self.example_cache.get(
+            step_id, self.formatter, self.data_loc, self.sentence_db
+        )
+        if get_cached is not None:
+            example = get_cached
+        else:
+            dp = DatasetFile.load(
+                self.data_loc / DATA_POINTS_NAME / step_id.file, self.sentence_db
+            )
+            example = self.formatter.example_from_step(
+                step_id.step_idx, step_id.proof_idx, dp, training=True
+            )
+
+        clean_example = self.example_collator.collate(self.tokenizer, example)
+        return self.tokenizer(
+            clean_example,
+            max_length=self.hard_seq_len,
+            truncation=True,
+            padding="max_length",
+        )
+
+    @classmethod
+    def from_conf(
+        cls, conf: TacticDataConf, split: Split, max_num_examples: Optional[int] = None
+    ) -> LmDatasest:
+        formatter_client_conf, next_num, commands = formatter_conf_to_client_conf(
+            conf.formatter_conf, 0
+        )
+        if 0 < len(commands):
+            start_servers(commands)
+            wait_for_servers(next_num)
+        formatter = formatter_from_conf(formatter_client_conf)
+        shuffled_idx = ShuffledIndex.load(conf.shuffled_index_loc)
+        sentence_db = SentenceDB.load(conf.sentence_db_loc)
+        return cls(
+            conf.data_loc,
+            sentence_db,
+            shuffled_idx,
+            split,
+            formatter,
+            get_tokenizer(conf.model_name),
+            example_collator_from_conf(conf.collator_conf),
+            conf.cache_loc,
+            conf.hard_seq_len,
+            max_num_examples,
         )

@@ -153,14 +153,16 @@ class RerankClient:
 
     def get_ranked_premise_generator(
         self,
-        step: FocusedStep,
+        step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
         premises: list[Sentence],
+        training: bool,
     ) -> Iterable[Sentence]:
+        step = proof.steps[step_idx]
         rerank_premises: list[Sentence] = []
         for premise in self.select_client.get_ranked_premise_generator(
-            step, proof, dp_obj, premises
+            step_idx, proof, dp_obj, premises, training
         ):
             rerank_premises.append(premise)
             if self.rerank_num <= len(rerank_premises):

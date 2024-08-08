@@ -9,6 +9,7 @@ import random
 import math
 import requests
 from dataclasses import dataclass
+from enum import Enum
 
 from data_management.dataset_file import (
     Goal,
@@ -26,12 +27,9 @@ from premise_selection.premise_formatter import (
     PREMISE_ALIASES,
 )
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
+from premise_selection.retrieved_premise_db import RetrievedPremiseDB
 from proof_retrieval.bm25 import bm25
 from proof_retrieval.tfidf import tf_idf, compute_idfs
-from proof_retrieval.proof_retriever import (
-    SparseProofRetriever,
-    SparseProofRetrieverConf,
-)
 from coqpyt.coq.structs import TermType
 
 from util.util import get_basic_logger, FlexibleUrl
@@ -49,38 +47,6 @@ class SelectModelConf:
 
 
 @dataclass
-class TFIdfConf:
-    ALIAS = "tfidf"
-    context_format_alias: str
-    premise_format_alias: str
-    premise_filter_conf: PremiseFilterConf
-
-    @classmethod
-    def from_yaml(cls, yaml_data: Any) -> TFIdfConf:
-        return cls(
-            yaml_data["context_format_alias"],
-            yaml_data["premise_format_alias"],
-            PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
-        )
-
-
-@dataclass
-class BM250OkapiConf:
-    ALIAS = "bm25"
-    context_format_alias: str
-    premise_format_alias: str
-    premise_filter_conf: PremiseFilterConf
-
-    @classmethod
-    def from_yaml(cls, yaml_data: Any) -> BM250OkapiConf:
-        return cls(
-            yaml_data["context_format_alias"],
-            yaml_data["premise_format_alias"],
-            PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
-        )
-
-
-@dataclass
 class LookupClientConf:
     ALIAS = "lookup"
     context_format_alias: str
@@ -93,6 +59,32 @@ class LookupClientConf:
             yaml_data["context_format_alias"],
             yaml_data["premise_format_alias"],
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
+        )
+
+
+@dataclass
+class SparseConf:
+    ALIAS = "sparse"
+    kind: SparseKind
+    context_format_alias: str
+    premise_format_alias: str
+    premise_filter_conf: PremiseFilterConf
+    sentence_db_loc: Path
+    cached_premise_loc: Optional[Path]
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> SparseConf:
+        if "cached_premise_loc" in yaml_data:
+            cached_premise_loc = Path(yaml_data["cached_premise_loc"])
+        else:
+            cached_premise_loc = None
+        return cls(
+            SparseKind.from_str(yaml_data["kind"]),
+            yaml_data["context_format_alias"],
+            yaml_data["premise_format_alias"],
+            PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
+            Path(yaml_data["sentence_db_loc"]),
+            cached_premise_loc,
         )
 
 
@@ -157,11 +149,7 @@ class SelectModelClientConf:
 
 
 SelectClientConf = (
-    SelectModelClientConf
-    | SelectModelConf
-    | TFIdfConf
-    | BM250OkapiConf
-    | LookupClientConf
+    SelectModelClientConf | SelectModelConf | SparseConf | LookupClientConf
 )
 
 
@@ -172,10 +160,8 @@ def select_conf_from_yaml(yaml_data: Any) -> SelectClientConf:
             return SelectModelConf.from_yaml(yaml_data)
         case SelectModelClientConf.ALIAS:
             return SelectModelClientConf.from_yaml(yaml_data)
-        case TFIdfConf.ALIAS:
-            return TFIdfConf.from_yaml(yaml_data)
-        case BM250OkapiConf.ALIAS:
-            return BM250OkapiConf.from_yaml(yaml_data)
+        case SparseConf.ALIAS:
+            return SparseConf.from_yaml(yaml_data)
         case LookupClientConf.ALIAS:
             return LookupClientConf.from_yaml(yaml_data)
         case _:
@@ -261,11 +247,13 @@ class SelectPremiseClient:
 
     def get_ranked_premise_generator(
         self,
-        step: FocusedStep,
+        step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
         premises: list[Sentence],
+        training: bool,
     ) -> Iterable[Sentence]:
+        step = proof.steps[step_idx]
         formatted_context = self.context_format.format(step, proof)
         premise_scores = self.get_premise_scores_from_strings(
             formatted_context, premises
@@ -291,96 +279,43 @@ class SelectPremiseClient:
         )
 
 
-class BreakNukeLoop(Exception):
-    pass
+class SparseKind(Enum):
+    TFIDF = 0
+    BM25 = 1
+
+    @classmethod
+    def from_str(cls, s: str) -> SparseKind:
+        match s:
+            case "tfidf":
+                return cls.TFIDF
+            case "bm25":
+                return cls.BM25
+            case _:
+                raise ValueError(f"Unknown SparseKind {s}")
 
 
-# class TFIdfProofClient:
-#     def __init__(
-#         self,
-#         context_format: type[ContextFormat],
-#         premise_format: type[PremiseFormat],
-#         premise_filter: PremiseFilter,
-#         proof_retriever: TfIdfProofRetriever,
-#         nucleus_size: int,
-#     ):
-#         self.context_format = context_format
-#         self.premise_format = premise_format
-#         self.premise_filter = premise_filter
-#         self.proof_retriever = proof_retriever
-#         self.nucleus_size = nucleus_size
-
-#     def get_ranked_premise_generator(
-#         self,
-#         step: FocusedStep,
-#         proof: Proof,
-#         dp_obj: DatasetFile,
-#         premises: list[Sentence],
-#     ) -> Iterable[Sentence]:
-#         if 0 == len(step.goals) or 0 == len(premises):
-#             empty_result: list[Sentence] = []
-#             return empty_result
-#         similar_proofs = self.proof_retriever.get_similar_proofs(step, proof, dp_obj)
-#         # Use the similar proofs to build a nucleus of relevent lemmas
-#         # How big should the nucleous be?
-#         nucleus_premises: list[Sentence] = []
-#         try:
-#             for s_proof in similar_proofs:
-#                 for s_step in s_proof.steps:
-#                     for s in s_step.step.context:
-#                         if self.nucleus_size <= len(nucleus_premises):
-#                             raise BreakNukeLoop
-#                         if not self.premise_filter.filter_premise(s):
-#                             continue
-#                         if s in nucleus_premises:
-#                             continue
-#                         nucleus_premises.append(s)
-#         except BreakNukeLoop:
-#             pass
-
-#         # Need to normalize tf idf vectors? they're already kind of normalized.
-#         docs = [get_ids_from_sentence(p) for p in premises]
-#         idfs = compute_idfs(docs)
-#         max_scores: Optional[list[float]] = None
-#         for n in nucleus_premises:
-#             query = get_ids_from_sentence(n)
-#             scores = tf_idf(query, docs, idfs)
-#             if max_scores is None:
-#                 max_scores = scores
-#             else:
-#                 max_scores = [max(a, b) for a, b in zip(max_scores, scores)]
-
-#         if max_scores is None:
-#             query_hyp_ids, query_goal_ids = get_ids_from_goal(step.goals[0])
-#             query_ids = query_hyp_ids + query_goal_ids
-#             max_scores = tf_idf(query_ids, docs, idfs)
-
-#         assert max_scores is not None
-#         arg_sorted_premise_scores = sorted(
-#             range(len(max_scores)), key=lambda idx: -1 * max_scores[idx]
-#         )
-#         for idx in arg_sorted_premise_scores:
-#             yield premises[idx]
-
-#     def close(self):
-#         self.proof_retriever.close()
-
-#     @classmethod
-#     def from_conf(cls, conf: TFIdfProofClientConf):
-#         return cls(
-#             CONTEXT_ALIASES[conf.context_format_alias],
-#             PREMISE_ALIASES[conf.premise_format_alias],
-#             PremiseFilter.from_conf(conf.premise_filter_conf),
-#             TfIdfProofRetriever.from_conf(conf.text_proof_retriever_conf),
-#             conf.nucleus_size,
-#         )
+def get_cached_premises(
+    cached_premises: Optional[RetrievedPremiseDB],
+    step_idx: int,
+    proof: Proof,
+    dset_file: DatasetFile,
+    sentence_db: SentenceDB,
+) -> Optional[list[Sentence]]:
+    if cached_premises is None:
+        return None
+    return cached_premises.get_premises(
+        step_idx, proof.proof_idx, dset_file, sentence_db
+    )
 
 
 @dataclass
-class TFIdfClient:
+class SparseClient:
+    kind: SparseKind
     context_format: type[ContextFormat]
     premise_format: type[PremiseFormat]
     premise_filter: PremiseFilter
+    sentence_db: SentenceDB
+    cached_premises: Optional[RetrievedPremiseDB]
 
     def get_premise_scores(
         self, context: Goal, premises: list[Sentence]
@@ -391,15 +326,25 @@ class TFIdfClient:
         query_ids = query_hyp_ids + query_goal_ids
         # query_ids = query_goal_ids
         # query = tokenize(context_str)
-        return tf_idf(query_ids, premise_docs)
+        match self.kind:
+            case SparseKind.TFIDF:
+                return tf_idf(query_ids, premise_docs)
+            case SparseKind.BM25:
+                return bm25(query_ids, premise_docs)
 
     def get_ranked_premise_generator(
         self,
-        step: FocusedStep,
+        step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
         premises: list[Sentence],
+        training: bool,
     ) -> Iterable[Sentence]:
+        if training:
+            cached_scores = get_cached_premises(
+                self.cached_premises, step_idx, proof, dp_obj, self.sentence_db
+            )
+        step = proof.steps[step_idx]
         if len(step.goals) == 0:
             empty_premises: list[Sentence] = []
             return empty_premises
@@ -414,11 +359,18 @@ class TFIdfClient:
             yield premises[idx]
 
     @classmethod
-    def from_conf(cls, conf: TFIdfConf) -> TFIdfClient:
-        return TFIdfClient(
+    def from_conf(cls, conf: SparseConf) -> SparseClient:
+        if conf.cached_premise_loc is not None:
+            cached_premises = RetrievedPremiseDB.load(conf.cached_premise_loc)
+        else:
+            cached_premises = None
+        return cls(
+            conf.kind,
             CONTEXT_ALIASES[conf.context_format_alias],
             PREMISE_ALIASES[conf.premise_format_alias],
             PremiseFilter.from_conf(conf.premise_filter_conf),
+            SentenceDB.load(conf.sentence_db_loc),
+            cached_premises,
         )
 
 
@@ -453,11 +405,13 @@ class LookupClient:
 
     def get_ranked_premise_generator(
         self,
-        step: FocusedStep,
+        step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
         premises: list[Sentence],
+        training: bool,
     ) -> Iterable[Sentence]:
+        step = proof.steps[step_idx]
         if len(step.goals) == 0:
             empty_premises: list[Sentence] = []
             return empty_premises
@@ -504,60 +458,7 @@ class LookupClient:
         )
 
 
-class BM25OkapiClient:
-    def __init__(
-        self,
-        context_format: type[ContextFormat],
-        premise_format: type[PremiseFormat],
-        premise_filter: PremiseFilter,
-    ):
-        self.context_format = context_format
-        self.premise_format = premise_format
-        self.premise_filter = premise_filter
-        self.k1 = 1.8
-        self.b = 0.75
-
-    def get_premise_scores(
-        self, context: Goal, premises: list[Sentence]
-    ) -> list[float]:
-        # premise_strs = [self.premise_format.format(p) for p in premises]
-        premise_docs = [get_ids_from_sentence(p) for p in premises]
-        query_hyp_ids, query_goal_ids = get_ids_from_goal(context)
-        query_ids = query_hyp_ids + query_goal_ids
-        # query_ids = query_goal_ids
-        # query = tokenize(context_str)
-        return bm25(query_ids, premise_docs)
-
-    def get_ranked_premise_generator(
-        self,
-        step: FocusedStep,
-        proof: Proof,
-        dp_obj: DatasetFile,
-        premises: list[Sentence],
-    ) -> Iterable[Sentence]:
-        if len(step.goals) == 0:
-            empty_premises: list[Sentence] = []
-            return empty_premises
-        focused_goal = step.goals[0]
-        # formatted_context = self.context_format.format(step, proof)
-        premise_scores = self.get_premise_scores(focused_goal, premises)
-        num_premises = len(premise_scores)
-        arg_sorted_premise_scores = sorted(
-            range(num_premises), key=lambda idx: -1 * premise_scores[idx]
-        )
-        for idx in arg_sorted_premise_scores:
-            yield premises[idx]
-
-    @classmethod
-    def from_conf(cls, conf: BM250OkapiConf) -> BM25OkapiClient:
-        return cls(
-            CONTEXT_ALIASES[conf.context_format_alias],
-            PREMISE_ALIASES[conf.premise_format_alias],
-            PremiseFilter.from_conf(conf.premise_filter_conf),
-        )
-
-
-SelectClient = SelectPremiseClient | TFIdfClient | BM25OkapiClient | LookupClient
+SelectClient = SelectPremiseClient | SparseClient | LookupClient
 
 
 dp_cache = DPCache()
@@ -569,9 +470,7 @@ def select_client_from_conf(conf: SelectClientConf) -> SelectClient:
             raise ValueError("Select Conf Cannot be directly converted into a client.")
         case SelectModelClientConf():
             return SelectPremiseClient.from_conf(conf)
-        case TFIdfConf():
-            return TFIdfClient.from_conf(conf)
-        case BM250OkapiConf():
-            return BM25OkapiClient.from_conf(conf)
+        case SparseConf():
+            return SparseClient.from_conf(conf)
         case LookupClientConf():
             return LookupClient.from_conf(conf)

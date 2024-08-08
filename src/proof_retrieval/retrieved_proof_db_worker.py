@@ -37,7 +37,7 @@ def process_f_info(
         for step_idx, step in enumerate(proof.steps):
             step_id = StepID(file_dp.dp_name, proof_idx, step_idx)
             retrieved_steps = proof_retriever.get_similar_proof_steps(
-                step_idx, proof, file_dp
+                step_idx, proof, file_dp, training=False
             )
             retrieved_step_ids = [step_id for _, step_id in retrieved_steps]
             file_page_dict[step_id] = retrieved_step_ids
@@ -66,6 +66,9 @@ if __name__ == "__main__":
     while True:
         try:
             f_info = queue.get()
+            if (conf.save_loc / f_info.dp_name).exists():
+                _logger.info(f"Skipping {f_info.dp_name}")
+                continue
             process_f_info(
                 f_info,
                 conf.data_loc,

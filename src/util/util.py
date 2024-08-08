@@ -3,7 +3,6 @@ from typing import Optional
 from typing import Any
 import logging
 import stat
-import json
 import os
 import re
 from pathlib import Path, Path
@@ -12,44 +11,6 @@ from dataclasses import dataclass
 
 from coqpyt.coq.base_file import CoqFile
 from util.constants import PORT_MAP_NAME, TMP_LOC
-
-
-@dataclass
-class StepID:
-    file: str
-    proof_idx: int
-    step_idx: int
-
-    def __hash__(self) -> int:
-        return hash((self.file, self.proof_idx, self.step_idx))
-
-    def to_string(self) -> str:
-        return json.dumps(self.to_json())
-
-    def to_json(self) -> Any:
-        return {
-            "file": self.file,
-            "proof_idx": self.proof_idx,
-            "step_idx": self.step_idx,
-        }
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> StepID:
-        return cls(
-            json_data["file"],
-            json_data["proof_idx"],
-            json_data["step_idx"],
-        )
-
-    @classmethod
-    def from_string(cls, s: str) -> StepID:
-        return cls.from_json(json.loads(s))
-
-    @classmethod
-    def from_step_idx(
-        cls, step_idx: int, proof_idx: int, dset_file: DatasetFile
-    ) -> StepID:
-        return StepID(dset_file.dp_name, proof_idx, step_idx)
 
 
 @dataclass

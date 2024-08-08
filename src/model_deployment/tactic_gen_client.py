@@ -9,6 +9,8 @@ from pathlib import Path
 from dataclasses import dataclass
 from requests.adapters import Retry, HTTPAdapter
 
+from data_management.dataset_file import Proof, DatasetFile
+
 import openai
 
 openai.api_key = os.environ["OPENAI_API_KEY"]
@@ -28,6 +30,8 @@ from tactic_gen.lm_example import (
     merge_formatters,
 )
 from model_deployment.model_result import ModelResult
+
+from proof_retrieval.proof_retriever import ProofRetriever, ProofRetrieverConf
 
 from util.util import get_basic_logger, FlexibleUrl
 
@@ -102,50 +106,28 @@ class LocalTacticGenClientConf:
         )
 
 
-@dataclass
-class OpenAiCientConf:
-    ALIAS = "openai"
-    model_name: str
-    formatter_conf: FormatterConf
-
-    @classmethod
-    def from_yaml(cls, yaml_data: Any) -> OpenAiCientConf:
-        formatter_conf = formatter_conf_from_yaml(yaml_data["formatter"])
-        return cls(yaml_data["model_name"], formatter_conf)
-
-
-class OpenAiClient:
-    # TODO include system message in this object. Not fomratter
-    def __init__(self, model_name: str, formatter: LmFormatter):
-        self.model_name = model_name
-        self.client = OpenAI(organization=os.environ["OPENAI_ORG_KEY"])
-        self.formatter = formatter
-        self.formatters = [formatter]
+class ModelFreeTacticGenClient:
+    def __init__(self, retriever: ProofRetriever):
+        self.retriever = retriever
 
     def get_recs(
-        self, example: LmExample, n: int, current_proof: str, **kwargs: Any
+        self, step_idx: int, proof: Proof, dset_file: DatasetFile, n: int, **kwargs: Any
     ) -> ModelResult:
-        completion = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {"role": "system", "content": self.formatter.SYSTEM_MSG},
-                {"role": "user", "content": example.input},
-            ],
-            n=n,
+        similar_proof_steps = self.retriever.get_similar_proof_steps(
+            step_idx, proof, dset_file, training=False
         )
-        messages: list[str] = []
-        for choice in completion.choices:
-            messages.append(choice.message.content)
-        print(messages)
-        # messages = [
-        #     "Proof.\n  intro n.\n  unfold binomial.\n  destruct n.\n  - simpl. reflexivity.\n  - simpl. reflexivity.\nQed.  ",
-        # ]
-        return ModelResult(messages, [], [])
+        similar_tactics: list[str] = []
+        scores: list[float] = []
+        lengths: list[int] = []
 
-    @classmethod
-    def from_conf(cls, conf: OpenAiCientConf) -> OpenAiClient:
-        formatter = formatter_from_conf(conf.formatter_conf)
-        return cls(conf.model_name, formatter)
+        for proof, step_id in similar_proof_steps:
+            similar_tactics.append(proof.steps[step_id.step_idx].step.text)
+            scores.append(-1)
+            lengths.append(1)
+            if n <= len(similar_tactics):
+                break
+            assert len(similar_tactics) == len(scores) == len(lengths)
+        return ModelResult(similar_tactics, scores, lengths)
 
 
 class LocalTacticGenClient:
@@ -160,12 +142,27 @@ class LocalTacticGenClient:
         self.urls = urls
 
     def get_recs(
-        self, example: LmExample, n: int, current_proof: str, beam: bool = False
+        self,
+        step_idx: int,
+        proof: Proof,
+        dset_file: DatasetFile,
+        n: int,
+        beam: bool = False,
+        **kwargs: Any,
     ) -> ModelResult:
+        assert 0 < len(self.formatters)
+        example = self.formatters[0].example_from_step(
+            step_idx, proof.proof_idx, dset_file
+        )
         request_id = hash(example)
         request_data = {
             "method": "get_recs",
-            "params": [example.to_json(), n, current_proof, beam],
+            "params": [
+                example.to_json(),
+                n,
+                proof.proof_text_to_string(include_theorem=False),
+                beam,
+            ],
             "jsonrpc": "2.0",
             "id": request_id,
         }
@@ -188,15 +185,13 @@ class LocalTacticGenClient:
         )
 
 
-TacticGenClient = LocalTacticGenClient | OpenAiClient
+TacticGenClient = LocalTacticGenClient
 
 
 def tactic_gen_client_from_conf(conf: TacticGenConf) -> TacticGenClient:
     match conf:
         case LocalTacticGenClientConf():
             return LocalTacticGenClient.from_conf(conf)
-        case OpenAiCientConf():
-            return OpenAiClient.from_conf(conf)
         case _:
             raise ValueError(f"Invalid tactic client config: {str(conf.__class__)}")
 
@@ -209,9 +204,7 @@ def tactic_conf_update_ips(conf: TacticGenConf, port_map: dict[int, tuple[str, i
             pass
 
 
-TacticGenConf = (
-    LocalTacticGenClientConf | FidTacticGenConf | DecoderTacticGenConf | OpenAiCientConf
-)
+TacticGenConf = LocalTacticGenClientConf | FidTacticGenConf | DecoderTacticGenConf
 
 
 def merge_tactic_confs(conf1: TacticGenConf, conf2: TacticGenConf) -> TacticGenConf:
@@ -233,7 +226,5 @@ def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:
             return DecoderTacticGenConf.from_yaml(yaml_data)
         case FidTacticGenConf.ALIAS:
             return FidTacticGenConf.from_yaml(yaml_data)
-        case OpenAiCientConf.ALIAS:
-            return OpenAiCientConf.from_yaml(yaml_data)
         case _:
             raise ValueError(f"Unknown tactic conf: {attempted_alias}")

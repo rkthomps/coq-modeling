@@ -65,11 +65,6 @@ class StraightLineSearcher:
         self.timeout = timeout
         self.print_proofs = print_proofs
         self.initial_proof = initial_proof
-        if 1 < len(self.tactic_client.formatters):
-            _logger.warning(
-                "More than one formatter in straight line searcher using first."
-            )
-        self.formatter = self.tactic_client.formatters[0]
 
         initial_dset_file = proof_manager.get_initial_context()
         if initial_dset_file is None:
@@ -105,12 +100,6 @@ class StraightLineSearcher:
             conf.initial_proof,
         )
 
-    def build_dset_file(self, new_proof: Proof) -> DatasetFile:
-        return DatasetFile(
-            self.proof_manager.file_context,
-            self.proof_manager.same_file_proofs + [new_proof],
-        )
-
     def search(self, **kwargs) -> StraightLineSuccess | StraightLineFailure:
         start_time = time.time()
         attempts: list[str] = []
@@ -140,16 +129,18 @@ class StraightLineSearcher:
             and cur_time < self.timeout
         ):
             assert cur_proof_result.new_proof is not None
-            cur_dset_file = self.build_dset_file(cur_proof_result.new_proof)
+            cur_dset_file = self.proof_manager.build_dset_file(
+                cur_proof_result.new_proof
+            )
             admitted_step = cur_dset_file.proofs[-1].steps[-1]
             cur_proof_script = cur_dset_file.proofs[-1].proof_prefix_to_string(
                 admitted_step, include_theorem=False
             )
-            example = self.proof_manager.get_example(
-                self.formatter, cur_dset_file, cur_proof_result.goal_record
-            )
             start_model_time = time.time()
-            result = self.tactic_client.get_recs(example, 1, cur_proof_script)
+            last_proof = cur_dset_file.proofs[-1]
+            result = self.tactic_client.get_recs(
+                len(last_proof.steps), last_proof, cur_dset_file, 1
+            )
             end_model_time = time.time()
             assert len(result.next_tactic_list) == 1
             next_tactic = result.next_tactic_list[0]
