@@ -55,7 +55,10 @@ def copy_configs(conf_path: Path, conf: dict[str, Any], train_type: TrainType) -
     output_dir = Path(get_required_arg("output_dir", conf))
     match train_type:
         case TrainType.TACTIC:
-            pass
+            if "data_path" in conf:
+                data_path = Path(conf["data_path"])
+                data_conf_loc = data_path / "conf.yaml"
+                shutil.copy(data_conf_loc, output_dir / DATA_CONF_NAME)
         case TrainType.SELECT:
             data_path = Path(get_required_arg("data_path", conf))
             data_conf_loc = data_path / "conf.yaml"

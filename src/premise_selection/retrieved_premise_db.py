@@ -77,3 +77,14 @@ class RetrievedPremiseDB:
         assert path.exists()
         assert (path / cls.CONF_NAME).exists()
         return cls(path)
+
+
+if __name__ == "__main__":
+    sentence_db = SentenceDB.load(Path("raw-data/coq-dataset/sentences.db"))
+    step_idx = 0
+    proof_idx = 36
+    dp = DatasetFile.load(
+        Path("raw-data/coq-dataset/data_points/0918nobita-Coq-basics.v"), sentence_db
+    )
+    prem_db = RetrievedPremiseDB.load(Path("data/select-proj-thm-prem-db"))
+    print(prem_db.get_premises(step_idx, proof_idx, dp, sentence_db))

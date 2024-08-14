@@ -151,17 +151,17 @@ class RerankClient:
         response = self.session.post(request_url, json=request_data).json()
         return response["result"]
 
-    def get_ranked_premise_generator(
+    def get_ranked_premises(
         self,
         step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
         premises: list[Sentence],
         training: bool,
-    ) -> Iterable[Sentence]:
+    ) -> list[Sentence]:
         step = proof.steps[step_idx]
         rerank_premises: list[Sentence] = []
-        for premise in self.select_client.get_ranked_premise_generator(
+        for premise in self.select_client.get_ranked_premises(
             step_idx, proof, dp_obj, premises, training
         ):
             rerank_premises.append(premise)
@@ -177,8 +177,10 @@ class RerankClient:
         arg_sorted_premise_scores = sorted(
             range(num_premises), key=lambda idx: -1 * rerank_scores[idx]
         )
+        ranked_premises: list[Sentence] = []
         for idx in arg_sorted_premise_scores:
-            yield rerank_premises[idx]
+            ranked_premises.append(rerank_premises[idx])
+        return ranked_premises
 
     @classmethod
     def from_conf(cls, conf: RerankClientConf) -> RerankClient:

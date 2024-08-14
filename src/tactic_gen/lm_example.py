@@ -79,7 +79,7 @@ class LmExample:
         self.file_name = file_name
         self.proof_idx = proof_idx
         self.step_idx = step_idx
-    
+
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, LmExample):
             return False
@@ -249,10 +249,8 @@ class GeneralFormatter:
                     step, proof, dp_obj
                 )
             )
-            relevant_premises = list(
-                self.premise_client.get_ranked_premise_generator(
-                    step_idx, proof, dp_obj, filtered_result.avail_premises, training
-                )
+            relevant_premises = self.premise_client.get_ranked_premises(
+                step_idx, proof, dp_obj, filtered_result.avail_premises, training
             )[: self.num_premises]
             relevant_premise_strs = [p.text for p in relevant_premises]
         else:

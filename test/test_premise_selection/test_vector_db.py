@@ -7,7 +7,7 @@ import os
 from util.util import get_fresh_path
 
 from data_management.sentence_db import SentenceDB, DBSentence
-from premise_selection.premise_vector_db import PremiseVectorDB
+from premise_selection.premise_vector_db import VectorDB
 
 
 def encode_fn(db_ss: list[DBSentence]) -> torch.Tensor:
@@ -29,14 +29,14 @@ def get_ordered_sentences(ss: list[DBSentence], db_idxs: list[int]) -> list[DBSe
 
 class TestVectorDB:
     def test_retrieve1(self):
-        vdb = PremiseVectorDB.load(self.vdb_loc)
+        vdb = VectorDB.load(self.vdb_loc)
         exp = encode_fn(self.test_sentences)
         act = vdb.get_embs([1, 2, 3, 4, 5])
         assert act is not None
         assert torch.allclose(act, exp)
 
     def test_retrieve2(self):
-        vdb = PremiseVectorDB.load(self.vdb_loc)
+        vdb = VectorDB.load(self.vdb_loc)
         idxs = [5, 4, 3, 2, 1]
         exp = encode_fn(get_ordered_sentences(self.test_sentences, idxs))
         act = vdb.get_embs(idxs)
@@ -44,7 +44,7 @@ class TestVectorDB:
         assert torch.allclose(act, exp)
 
     def test_retrieve3(self):
-        vdb = PremiseVectorDB.load(self.vdb_loc)
+        vdb = VectorDB.load(self.vdb_loc)
         idxs = [5, 3, 3, 4, 3, 1, 1, 2, 1]
         exp = encode_fn(get_ordered_sentences(self.test_sentences, idxs))
         act = vdb.get_embs(idxs)
@@ -66,7 +66,7 @@ class TestVectorDB:
             sdb.insert_sentence(ts)
 
         cls.vdb_loc = get_fresh_path(Path("."), "test_vdb")
-        vdb = PremiseVectorDB.create(
+        vdb = VectorDB.create_premise_db(
             cls.vdb_loc, 2, "test_vector_db", encode_fn, cls.sdb_loc
         )
         vdb.save()

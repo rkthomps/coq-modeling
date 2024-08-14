@@ -45,7 +45,14 @@ from util.train_utils import (
 )
 from util.util import get_basic_logger
 from data_management.splits import Split
-from tactic_gen.tactic_data import LmDatasest, TacticDataConf
+from tactic_gen.tactic_data import (
+    LmDataset,
+    LmProcessedDataset,
+    TacticDataConf,
+    example_collator_conf_from_yaml,
+    example_collator_from_conf,
+    get_tokenizer,
+)
 
 _logger = get_basic_logger(__name__)
 
@@ -93,13 +100,39 @@ def get_model(model_name: str) -> PreTrainedModel:
 
 def get_datasets(
     conf: dict[str, Any],
-) -> tuple[LmDatasest, LmDatasest]:
-    dataset_conf = TacticDataConf.from_yaml(conf["tactic_data"])
-    train_dataset = LmDatasest.from_conf(dataset_conf, Split.TRAIN)
-    val_dataset = LmDatasest.from_conf(
-        dataset_conf, Split.VAL, conf.get("num_eval_examples", None)
-    )
-    return train_dataset, val_dataset
+) -> tuple[LmDataset | LmProcessedDataset, LmDataset | LmProcessedDataset]:
+    if "data_path" in conf:
+        example_collator_yaml_conf = get_required_arg("example_collator", conf)
+        data_path = Path(get_required_arg("data_path", conf))
+        num_eval_examples = get_optional_arg("num_eval_examples", conf, None)
+        hard_seq_len = get_required_arg("hard_seq_len", conf)
+        train_path, val_path = get_train_val_path(data_path)
+
+        example_collator_conf = example_collator_conf_from_yaml(
+            example_collator_yaml_conf
+        )
+        example_collator = example_collator_from_conf(example_collator_conf)
+        print("EXAMPLE COLLATOR", example_collator)
+        tokenizer = get_tokenizer(get_required_arg("model_name", conf))
+        train_dataset = LmProcessedDataset(
+            train_path, tokenizer, example_collator, hard_seq_len
+        )
+        val_dataset = LmProcessedDataset(
+            val_path,
+            tokenizer,
+            example_collator,
+            hard_seq_len,
+            num_eval_examples,
+        )
+        return train_dataset, val_dataset
+    else:
+        assert "tactic_data" in conf
+        dataset_conf = TacticDataConf.from_yaml(conf["tactic_data"])
+        train_dataset = LmDataset.from_conf(dataset_conf, Split.TRAIN)
+        val_dataset = LmDataset.from_conf(
+            dataset_conf, Split.VAL, conf.get("num_eval_examples", None)
+        )
+        return train_dataset, val_dataset
 
 
 # def formatting_func(examples: list[str]) -> list[str]:

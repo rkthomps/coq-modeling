@@ -48,7 +48,7 @@ def process_f_info(
             filter_result = premise_client.premise_filter.get_pos_and_avail_premises(
                 step, proof, file_dp
             )
-            premise_generator = premise_client.get_ranked_premise_generator(
+            premise_generator = premise_client.get_ranked_premises(
                 step_idx, proof, file_dp, filter_result.avail_premises, training=False
             )
             retrieved_sentences = list(premise_generator)[:max_num_premises]

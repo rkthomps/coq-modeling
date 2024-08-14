@@ -78,7 +78,7 @@ def print_premises(conf: PremiseObserveConf):
     filter_result = premise_client.premise_filter.get_pos_and_avail_premises(
         step, proof, dp_obj
     )
-    ranked_premises = premise_client.get_ranked_premise_generator(
+    ranked_premises = premise_client.get_ranked_premises(
         step, proof, dp_obj, filter_result.avail_premises
     )
     print("Getting premises for proof: ")

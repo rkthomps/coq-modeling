@@ -59,7 +59,7 @@ def tactic_examples_from_step(
 ) -> list[LmExample]:
     formatters = [get_formatter(f) for f in dataset_conf.lm_formatter_confs]
     return [
-        f.example_from_step(step_idx, proof_idx, dset_file, file_info)
+        f.example_from_step(step_idx, proof_idx, dset_file, training=True)
         for f in formatters
     ]
 
@@ -154,11 +154,11 @@ def handle_file(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("dataset_conf_loc", help="Location of dataset configuration.")
-    parser.add_argument("queue_loc", help="Location of the work queue.")
+    parser.add_argument("--conf_loc", help="Location of dataset configuration.")
+    parser.add_argument("--queue_loc", help="Location of the work queue.")
 
     args = parser.parse_args(sys.argv[1:])
-    dataset_conf_loc = Path(args.dataset_conf_loc)
+    dataset_conf_loc = Path(args.conf_loc)
     queue_loc = Path(args.queue_loc)
 
     assert dataset_conf_loc.exists()

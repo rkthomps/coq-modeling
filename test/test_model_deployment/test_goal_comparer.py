@@ -13,7 +13,6 @@ from model_deployment.goal_comparer import (
     compare_expressions_under_substitution,
 )
 
-from tactic_gen.lm_example import BasicFormatter
 from tactic_gen.n_step_sampler import OneStepSampler
 from model_deployment.proof_manager import get_fresh_path, ProofManager
 

@@ -13,7 +13,7 @@ from proof_retrieval.proof_retriever import (
 )
 from proof_retrieval.retrieved_proof_db import RetrievedProofDB
 from concurrent.futures import ProcessPoolExecutor, Future, as_completed
-from data_management.splits import DataSplit, get_all_files
+from data_management.splits import DataSplit, get_all_files, FileInfo
 
 from util.slurm import (
     JobOption,
@@ -59,7 +59,11 @@ def init_and_fill_queue(creator_conf: ProofDBCreatorConf, queue_loc: Path):
     q.initialize()
     splits = [DataSplit.load(loc) for loc in creator_conf.data_split_locs]
     all_files = get_all_files(splits)
-    q.put_all(all_files)
+    files_to_add: list[FileInfo] = []
+    for f in all_files:
+        if not (creator_conf.save_loc / f.dp_name).exists():
+            files_to_add.append(f)
+    q.put_all(files_to_add)
 
 
 if __name__ == "__main__":

@@ -23,8 +23,6 @@ from model_deployment.conf_utils import (
 from model_deployment.observe_premise_selection import PremiseObserveConf
 from model_deployment.run_proof import TestProofConf
 from model_deployment.run_proofs import TestProofsConf
-from model_deployment.run_whole_proof import TestWholeProofConf
-from model_deployment.run_whole_proofs import TestWholeProofsConf
 from util.constants import SERVER_LOC, CLEAN_CONFIG
 from util.util import clear_port_map, read_port_map, get_port_map_loc
 
@@ -38,12 +36,6 @@ class Command:
 COMMANDS = {
     "prove": Command(TestProofConf, Path("src/model_deployment/run_proof.py")),
     "run-dev": Command(TestProofsConf, Path("src/model_deployment/run_proofs.py")),
-    "prove-whole": Command(
-        TestWholeProofConf, Path("src/model_deployment/run_whole_proof.py")
-    ),
-    "run-dev-whole": Command(
-        TestWholeProofsConf, Path("src/model_deployment/run_whole_proofs.py")
-    ),
     "observe-premise": Command(
         PremiseObserveConf, Path("src/model_deployment/observe_premise_selection.py")
     ),

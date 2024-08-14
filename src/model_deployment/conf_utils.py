@@ -30,6 +30,7 @@ from proof_retrieval.proof_retriever import (
 from tactic_gen.lm_example import (
     FormatterConf,
     GeneralFormatterConf,
+    formatter_conf_from_yaml,
     formatter_update_ips,
 )
 from premise_selection.rerank_client import (
@@ -48,8 +49,6 @@ from model_deployment.tactic_gen_client import (
     LocalTacticGenClientConf,
 )
 from model_deployment.observe_premise_selection import PremiseObserveConf
-from model_deployment.run_proof import TestProofConf
-from model_deployment.run_proofs import TestProofsConf
 from evaluation.eval_utils import EvalConf, PremiseEvalConf
 from util.util import get_basic_logger, read_port_map
 from util.util import FlexibleUrl, get_flexible_url
@@ -57,23 +56,12 @@ from util.constants import (
     PREMISE_DATA_CONF_NAME,
     RERANK_DATA_CONF_NAME,
     DATA_CONF_NAME,
+    TRAINING_CONF_NAME,
     CLEAN_CONFIG,
     SERVER_LOC,
 )
 
 _logger = get_basic_logger(__name__)
-
-
-TopLevelConf = (
-    LmDatasetConf
-    | TestProofConf
-    | TestProofsConf
-    | EvalConf
-    | SelectDatasetConf
-    | RerankDatasetConf
-    | PremiseEvalConf
-    | PremiseObserveConf
-)
 
 
 @dataclass
@@ -298,6 +286,7 @@ def premise_conf_to_client_conf(
                 data_conf.premise_format_type_alias,
                 filter_conf,
                 data_conf.sentence_db_loc,
+                conf.cached_premise_loc,
             )
             return new_select_client, next_server_num, [command]
         case RerankConf():
@@ -473,11 +462,20 @@ def tactic_gen_to_client_conf(
                 assert 0 < len(conf.checkpoint_loc.parents)
                 model_loc = conf.checkpoint_loc.parents[0]
                 lm_data_conf = model_loc / DATA_CONF_NAME
-                assert lm_data_conf.exists()
-                with lm_data_conf.open("r") as fin:
-                    yaml_data = yaml.load(fin, Loader=yaml.Loader)
-                data_conf = LmDatasetConf.from_yaml(yaml_data)
-                formatter_confs = data_conf.lm_formatter_confs
+                if lm_data_conf.exists():
+                    with lm_data_conf.open("r") as fin:
+                        yaml_data = yaml.load(fin, Loader=yaml.Loader)
+                    data_conf = LmDatasetConf.from_yaml(yaml_data)
+                    formatter_confs = data_conf.lm_formatter_confs
+                else:
+                    train_conf_loc = model_loc / TRAINING_CONF_NAME
+                    assert train_conf_loc.exists()
+                    with train_conf_loc.open("r") as fin:
+                        yaml_data = yaml.load(fin, Loader=yaml.Loader)
+                    formatter_conf = formatter_conf_from_yaml(
+                        yaml_data["tactic_data"]["formatter_conf"]
+                    )
+                    formatter_confs = [formatter_conf]
             else:
                 formatter_confs = conf.formatter_confs
             all_commands: list[StartModelCommand] = []
@@ -496,145 +494,3 @@ def tactic_gen_to_client_conf(
             return new_tactic_client, next_server_num, all_commands + [tac_command]
         case _:
             return conf, start_server_num, []
-
-
-def update_ips(conf: TopLevelConf, port_map: dict[int, tuple[str, int]]):
-    match conf:
-        case EvalConf():
-            conf.update_ips(port_map)
-        case TestProofConf():
-            conf.update_ips(port_map)
-        case PremiseEvalConf():
-            premise_conf_update_ips(conf.premise_conf, port_map)
-        case PremiseObserveConf():
-            premise_conf_update_ips(conf.premise_conf, port_map)
-        case LmDatasetConf():
-            [formatter_update_ips(f, port_map) for f in conf.lm_formatter_confs]
-        case RerankDatasetConf():
-            premise_conf_update_ips(conf.rerank_formatter_conf.select_conf, port_map)
-        case _:
-            _logger.warning(
-                f"IP updating not implemented for {conf.__class__}. Inter-node communication might not work."
-            )  # TODO
-
-
-def to_client_conf(
-    conf: TopLevelConf,
-    start_server_num: int,
-) -> tuple[TopLevelConf, int, list[StartModelCommand]]:
-    """
-    Given a configuraion, looks for sub-configurations that
-    use a neural model. For each of these, starts a server
-    and replaces the sub-configuration with its client.
-    """
-    match conf:
-        case LmDatasetConf():
-            return lm_dataset_conf_to_client_conf(conf, start_server_num)
-        case TestProofConf():
-            tactic_client_conf, next_server_num, commands = tactic_gen_to_client_conf(
-                conf.tactic_conf, start_server_num
-            )
-            new_proof_conf = TestProofConf(
-                conf.theorem_location_info,
-                conf.search_conf,
-                tactic_client_conf,
-                conf.print_proofs,
-                conf.print_trees,
-            )
-            return new_proof_conf, next_server_num, commands
-        case TestProofsConf():
-            tactic_client_conf, next_server_num, commands = tactic_gen_to_client_conf(
-                conf.tactic_conf, start_server_num
-            )
-            new_proofs_conf = TestProofsConf(
-                conf.proofs,
-                conf.n_procs,
-                conf.save_loc,
-                conf.data_loc,
-                conf.sentence_db_loc,
-                conf.data_split_loc,
-                conf.search_conf,
-                tactic_client_conf,
-            )
-            return new_proofs_conf, next_server_num, commands
-        case SelectDatasetConf():
-            return conf, start_server_num, []
-        case RerankDatasetConf():
-            rerank_formatter_conf, next_server_num, commands = (
-                rerank_formatter_conf_to_client_conf(
-                    conf.rerank_formatter_conf, start_server_num
-                )
-            )
-            reraank_data_conf = RerankDatasetConf(
-                conf.data_split_locs,
-                conf.data_loc,
-                conf.sentence_db_loc,
-                conf.output_dataset_loc,
-                rerank_formatter_conf,
-            )
-            return reraank_data_conf, next_server_num, commands
-        case PremiseEvalConf():
-            premise_conf, next_server_num, commands = premise_conf_to_client_conf(
-                conf.premise_conf, start_server_num
-            )
-            new_premise_eval_conf = PremiseEvalConf(
-                conf.split,
-                conf.save_loc,
-                conf.data_loc,
-                conf.sentence_db_loc,
-                conf.data_split_loc,
-                premise_conf,
-                conf.start_at,
-                conf.end_at,
-            )
-            return new_premise_eval_conf, next_server_num, commands
-        case EvalConf():
-            tactic_client_conf, next_server_num, commands = tactic_gen_to_client_conf(
-                conf.tactic_conf, start_server_num
-            )
-            eval_conf = EvalConf(
-                conf.n_procs,
-                conf.split,
-                conf.save_loc,
-                conf.data_loc,
-                conf.sentence_db_loc,
-                conf.data_split_loc,
-                conf.search_conf,
-                tactic_client_conf,
-                conf.start_at,
-                conf.end_at,
-            )
-            return eval_conf, next_server_num, commands
-        case PremiseObserveConf():
-            premise_conf, next_server_num, commands = premise_conf_to_client_conf(
-                conf.premise_conf, start_server_num
-            )
-            observe_conf = PremiseObserveConf(
-                conf.data_loc,
-                conf.file_loc,
-                conf.data_split_loc,
-                conf.sentence_db_loc,
-                conf.proof_name,
-                conf.step_idx,
-                premise_conf,
-                conf.print_num,
-            )
-            return observe_conf, next_server_num, commands
-
-
-def merge_two(conf1: TopLevelConf, conf2: TopLevelConf) -> TopLevelConf:
-    match conf1:
-        case EvalConf():
-            assert isinstance(conf2, EvalConf)
-            return conf1.merge(conf2)
-        case _:
-            assert conf1 == conf2
-            return conf1
-
-
-def merge(top_level_confs: list[TopLevelConf]) -> TopLevelConf:
-    assert 0 < len(top_level_confs)
-    cur_conf = top_level_confs[0]
-    for next_conf in top_level_confs[1:]:
-        cur_conf = merge_two(cur_conf, next_conf)
-    return cur_conf

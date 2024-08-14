@@ -549,7 +549,7 @@ def example_collator_from_conf(conf: ExampleCollatorConf) -> ExampleCollator:
             return NPrevLineCollator.from_conf(conf)
 
 
-class LmPreprocessedDataset(Dataset):
+class LmProcessedDataset(Dataset):
     def __init__(
         self,
         data_path: Path,
@@ -558,7 +558,7 @@ class LmPreprocessedDataset(Dataset):
         hard_seq_len: int,
         max_n_examples: Optional[int] = None,
     ) -> None:
-        super(LmPreprocessedDataset, self).__init__()
+        super(LmProcessedDataset, self).__init__()
         self.edb = ExampleDB.load(data_path)
         __shuffled_list = list(range(self.edb.size()))
         random.seed(0)
@@ -703,7 +703,7 @@ class ExampleCache:
                 return None
 
 
-class LmDatasest(Dataset):
+class LmDataset(Dataset):
     def __init__(
         self,
         data_loc: Path,
@@ -717,7 +717,7 @@ class LmDatasest(Dataset):
         hard_seq_len: int,
         max_n_examples: Optional[int],
     ) -> None:
-        super(LmDatasest, self).__init__()
+        super(LmDataset, self).__init__()
         self.data_loc = data_loc
         self.sentence_db = sentence_db
         self.shuffled_idx = shuffled_idx
@@ -765,7 +765,7 @@ class LmDatasest(Dataset):
     @classmethod
     def from_conf(
         cls, conf: TacticDataConf, split: Split, max_num_examples: Optional[int] = None
-    ) -> LmDatasest:
+    ) -> LmDataset:
         formatter_client_conf, next_num, commands = formatter_conf_to_client_conf(
             conf.formatter_conf, 0
         )

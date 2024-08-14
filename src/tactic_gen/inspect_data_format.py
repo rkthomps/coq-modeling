@@ -6,7 +6,7 @@ import random
 import yaml
 
 
-from tactic_gen.tactic_data import LmPreprocessedDataset, example_collator_from_conf
+from tactic_gen.tactic_data import LmProcessedDataset, example_collator_from_conf
 from tactic_gen.train_decoder import get_tokenizer, get_datasets
 
 from util.train_utils import get_required_arg

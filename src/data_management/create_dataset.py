@@ -1,169 +1,69 @@
-import sys, os
-import argparse
+from __future__ import annotations
+from typing import Any
+
+import os
 import yaml
 import shutil
 import subprocess
 from pathlib import Path
-from datetime import datetime
-
-from data_management.splits import DataSplit, Split, FileInfo, get_all_files
 from data_management.dataset_utils import DatasetConf, data_conf_from_yaml
-from util.util import make_executable
-from util.constants import TMP_LOC, QUEUE_NAME
+from data_management.splits import DataSplit, get_all_files, FileInfo
+
+from util.slurm import (
+    JobOption,
+    get_conf_queue_slurm_loc,
+    run_local,
+    main_get_conf_slurm_conf,
+    LocalJobConf,
+    SlurmJobConf,
+)
 from util.file_queue import FileQueue
+import subprocess
 
-
-WORKER_SBATCH_LOC = Path("./slurm/jobs/data-worker.sh")
-WORKER_COMMAND_LOC = Path("./slurm/jobs/start-worker.sh")
+WORKER_LOC = Path("src/data_management/dataset_worker.py")
 
 
 def fill_queue(queue_loc: Path, data_conf: DatasetConf) -> None:
     q = FileQueue(queue_loc)
     q.initialize()
     data_splits = [DataSplit.load(loc) for loc in data_conf.data_split_locs]
-    all_files = get_all_files(data_splits)
-    q.put_all(all_files)
-
-
-def write_worker_command(conf_loc: Path, queue_loc: Path) -> None:
-    worker_command = (
-        f"#!/bin/bash\n"
-        f"source venv/bin/activate\n"
-        f"LOG_LEVEL=DEBUG python3 src/data_management/dataset_worker.py {conf_loc} {queue_loc}\n"
-    )
-    with WORKER_COMMAND_LOC.open("w") as fout:
-        fout.write(worker_command)
-    make_executable(WORKER_COMMAND_LOC)
-
-
-def start_workers(
-    data_conf: DatasetConf,
-    timeout: str,
-    n_gpu_nodes: int,
-    n_devices_per_node: int,
-    n_workers: int,
-    n_threads_per_worker: int,
-    conf_loc: Path,
-    queue_loc: Path,
-):
-    total_n_gpus = n_gpu_nodes * n_devices_per_node
-    if 0 < total_n_gpus:
-        print(f"There will be {total_n_gpus} given the nonzero number of gpus.")
-        write_worker_command(conf_loc, queue_loc)
-        worker_sbatch = (
-            "#!/bin/bash\n"
-            f"#SBATCH -p gpu-preempt\n"
-            f"#SBATCH --nodes={n_gpu_nodes}\n"
-            f"#SBATCH --ntasks={total_n_gpus}\n"
-            f"#SBATCH --gpus-per-task=1\n"
-            f"#SBATCH --constraint=2080ti\n"
-            f"#SBATCH --mem-per-cpu=16G\n"
-            f"#SBATCH -t {timeout}\n"
-            f"#SBATCH -o slurm/out/slurm-{data_conf.output_dataset_loc.name}-%j.out\n"
-            f"#SBATCH --job-name={data_conf.output_dataset_loc.name}\n"
-            f"#SBATCH --no-requeue\n"
-            f"sbcast {data_conf.sentence_db_loc} /tmp/sentences.db\n"
-            f"source venv/bin/activate\n"
-            f"srun -l {WORKER_COMMAND_LOC}\n"
-        )
-    else:
-        worker_sbatch = (
-            "#!/bin/bash\n"
-            f"#SBATCH -p cpu\n"
-            f"#SBATCH -c {n_threads_per_worker}\n"
-            f"#SBATCH -t {timeout}\n"
-            f"#SBATCH --array=0-{n_workers - 1}\n"
-            f"#SBATCH --mem=16G\n"
-            f"#SBATCH -o slurm/out/slurm-{data_conf.output_dataset_loc.name}-%j.out\n"
-            f"#SBATCH --job-name={data_conf.output_dataset_loc.name}\n"
-            f"sbcast {data_conf.sentence_db_loc} /tmp/sentences.db\n"
-            f"source venv/bin/activate\n"
-            f"python3 src/data_management/dataset_worker.py {conf_loc} {queue_loc}\n"
-        )
-
-    with WORKER_SBATCH_LOC.open("w") as fout:
-        fout.write(worker_sbatch)
-
-    # Start proof workers
-    subprocess.run(["sbatch", f"{WORKER_SBATCH_LOC}"])
-
-
-def run(
-    data_conf: DatasetConf,
-    conf_loc: Path,
-    timeout: str,
-    n_gpu_nodes: int,
-    n_devices_per_node: int,
-    n_workers: int,
-    n_threads_per_worker: int,
-):
-    time_str = datetime.now().strftime("%m%d%H%M%S")
-    queue_loc = TMP_LOC / (QUEUE_NAME + "-" + time_str)
-    new_conf_loc = TMP_LOC / (conf_loc.name + "-" + time_str)
-    shutil.copy(conf_loc, new_conf_loc)
-    fill_queue(queue_loc, data_conf)
-    start_workers(
-        data_conf,
-        timeout,
-        n_gpu_nodes,
-        n_devices_per_node,
-        n_workers,
-        n_threads_per_worker,
-        new_conf_loc,
-        queue_loc,
-    )
+    add_files: list[FileInfo] = []
+    for f in get_all_files(data_splits):
+        if not (data_conf.output_dataset_loc / f.dp_name).exists():
+            add_files.append(f)
+    q.put_all(add_files)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("conf_loc", help="Location of dataset configuration")
-    parser.add_argument("timeout", help="Timeout for evaluation")
-    parser.add_argument("n_gpu_nodes", type=int, help="Number of gpus nodes to use.")
-    parser.add_argument(
-        "n_devices_per_node",
-        type=int,
-        help="Number of devices required on each gpu node.",
+    job_conf = main_get_conf_slurm_conf()
+    assert job_conf.conf_loc.exists()
+    with job_conf.conf_loc.open("r") as fin:
+        yaml_conf = yaml.safe_load(fin)
+    conf = data_conf_from_yaml(yaml_conf)
+    if conf.output_dataset_loc.exists():
+        choice = JobOption.from_user(f"{conf.output_dataset_loc} exists")
+        match choice:
+            case JobOption.CONTINUE:
+                pass
+            case JobOption.STOP:
+                raise FileExistsError(f"{conf.output_dataset_loc} already exists.")
+    os.makedirs(conf.output_dataset_loc, exist_ok=True)
+    shutil.copy(job_conf.conf_loc, conf.output_dataset_loc / "conf.yaml")
+    conf_loc, queue_loc, slurm_loc = get_conf_queue_slurm_loc(job_conf.conf_loc)
+    fill_queue(queue_loc, conf)
+
+    worker_command = (
+        f"python3 {WORKER_LOC} --conf_loc {conf_loc} --queue_loc {queue_loc}"
     )
-    parser.add_argument("n_workers", type=int, help="Number of workers to use.")
-    parser.add_argument(
-        "n_threads_per_worker", type=int, help="Number of threads per worker."
-    )
-    args = parser.parse_args(sys.argv[1:])
-    os.makedirs(TMP_LOC, exist_ok=True)
-
-    conf_loc = Path(args.conf_loc)
-    timeout = args.timeout
-    n_gpu_nodes = args.n_gpu_nodes
-    n_devices_per_node = args.n_devices_per_node
-    n_workers = args.n_workers
-    n_threads_per_worker = args.n_threads_per_worker
-
-    assert conf_loc.exists()
-    assert isinstance(timeout, str)
-    assert isinstance(n_gpu_nodes, int)
-    assert isinstance(n_devices_per_node, int)
-    assert isinstance(n_workers, int)
-    assert isinstance(n_threads_per_worker, int)
-
-    with conf_loc.open("r") as fin:
-        conf = yaml.load(fin, Loader=yaml.Loader)
-    data_conf = data_conf_from_yaml(conf)
-    if data_conf.output_dataset_loc.exists():
-        answer = input(
-            f"{data_conf.output_dataset_loc} already exists. Overwrite? y/n: "
-        )
-        if answer.lower() != "y":
-            raise FileExistsError(f"{data_conf.output_dataset_loc}")
-        shutil.rmtree(data_conf.output_dataset_loc)
-    os.makedirs(data_conf.output_dataset_loc)
-    shutil.copy(conf_loc, data_conf.output_dataset_loc / "conf.yaml")
-
-    run(
-        data_conf,
-        conf_loc,
-        timeout,
-        n_gpu_nodes,
-        n_devices_per_node,
-        n_workers,
-        n_threads_per_worker,
-    )
+    match job_conf:
+        case LocalJobConf(_, n_workers):
+            run_local(worker_command, n_workers)
+        case SlurmJobConf(_, slurm_conf):
+            commands = [
+                f"cp -r {conf.sentence_db_loc} /tmp/{conf.sentence_db_loc.name}",
+                worker_command,
+            ]
+            slurm_conf.write_script(
+                f"data-{conf.output_dataset_loc.name}", commands, slurm_loc
+            )
+            subprocess.run(["sbatch", str(slurm_loc)])

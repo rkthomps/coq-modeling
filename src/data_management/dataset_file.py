@@ -596,11 +596,13 @@ class DatasetFile:
     def __get_dp_norm_and_unorm_name(
         self, data_file_path: str
     ) -> Optional[tuple[str, str]]:
-        repo_match = re.search(r"repos/(.*?\.v)", data_file_path)
+        repo_match = re.search(r"repos/(.*\.v)", data_file_path)
         if repo_match is None:
             return None
         (dp_unnorm_name,) = repo_match.groups()
         dp_norm_name = dp_unnorm_name.replace("/", "-")
+        if dp_norm_name == "DmxLarchey-Hydra-theories-Hydra.v": # HACK; Not sure why hydra is named with upper case
+            dp_norm_name = "DmxLarchey-Hydra-theories-hydra.v"
         return dp_norm_name, dp_unnorm_name
 
     def __get_dp_dependencies(self) -> list[str]:

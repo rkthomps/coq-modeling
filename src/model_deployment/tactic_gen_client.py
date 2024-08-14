@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Optional
 import os
 import time
+from enum import Enum
 
 import requests
 import random
@@ -31,7 +32,14 @@ from tactic_gen.lm_example import (
 )
 from model_deployment.model_result import ModelResult
 
-from proof_retrieval.proof_retriever import ProofRetriever, ProofRetrieverConf
+from proof_retrieval.proof_retriever import (
+    ProofRetriever,
+    ProofRetrieverConf,
+    proof_retriever_conf_from_yaml,
+    proof_retriever_from_conf,
+    proof_conf_update_ips,
+    merge_proof_confs,
+)
 
 from util.util import get_basic_logger, FlexibleUrl
 
@@ -106,9 +114,50 @@ class LocalTacticGenClientConf:
         )
 
 
+class ScoreType(Enum):
+    DEPTH = 0
+    BREADTH = 1
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> ScoreType:
+        match yaml_data:
+            case "depth":
+                return cls.DEPTH
+            case "breadth":
+                return cls.BREADTH
+            case _:
+                raise ValueError(f"Invalid score type", {yaml_data})
+
+
+@dataclass
+class ModelFreeTacticGenClientConf:
+    ALIAS = "model_free"
+    retriever_conf: ProofRetrieverConf
+    score_type: ScoreType
+
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
+        proof_conf_update_ips(self.retriever_conf, port_map)
+
+    def merge(
+        self, other: ModelFreeTacticGenClientConf
+    ) -> ModelFreeTacticGenClientConf:
+        return ModelFreeTacticGenClientConf(
+            merge_proof_confs(self.retriever_conf, other.retriever_conf),
+            self.score_type,
+        )
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> ModelFreeTacticGenClientConf:
+        return cls(
+            proof_retriever_conf_from_yaml(yaml_data["retriever"]),
+            ScoreType.from_yaml(yaml_data["score_type"]),
+        )
+
+
 class ModelFreeTacticGenClient:
-    def __init__(self, retriever: ProofRetriever):
+    def __init__(self, retriever: ProofRetriever, score_type: ScoreType):
         self.retriever = retriever
+        self.score_type = score_type
 
     def get_recs(
         self, step_idx: int, proof: Proof, dset_file: DatasetFile, n: int, **kwargs: Any
@@ -122,12 +171,20 @@ class ModelFreeTacticGenClient:
 
         for proof, step_id in similar_proof_steps:
             similar_tactics.append(proof.steps[step_id.step_idx].step.text)
-            scores.append(-1)
+            match self.score_type:
+                case ScoreType.DEPTH:
+                    scores.append(1)
+                case ScoreType.BREADTH:
+                    scores.append(-1)
             lengths.append(1)
             if n <= len(similar_tactics):
                 break
             assert len(similar_tactics) == len(scores) == len(lengths)
         return ModelResult(similar_tactics, scores, lengths)
+
+    @classmethod
+    def from_conf(cls, conf: ModelFreeTacticGenClientConf) -> ModelFreeTacticGenClient:
+        return cls(proof_retriever_from_conf(conf.retriever_conf), conf.score_type)
 
 
 class LocalTacticGenClient:
@@ -185,13 +242,15 @@ class LocalTacticGenClient:
         )
 
 
-TacticGenClient = LocalTacticGenClient
+TacticGenClient = LocalTacticGenClient | ModelFreeTacticGenClient
 
 
 def tactic_gen_client_from_conf(conf: TacticGenConf) -> TacticGenClient:
     match conf:
         case LocalTacticGenClientConf():
             return LocalTacticGenClient.from_conf(conf)
+        case ModelFreeTacticGenClientConf():
+            return ModelFreeTacticGenClient.from_conf(conf)
         case _:
             raise ValueError(f"Invalid tactic client config: {str(conf.__class__)}")
 
@@ -204,13 +263,21 @@ def tactic_conf_update_ips(conf: TacticGenConf, port_map: dict[int, tuple[str, i
             pass
 
 
-TacticGenConf = LocalTacticGenClientConf | FidTacticGenConf | DecoderTacticGenConf
+TacticGenConf = (
+    LocalTacticGenClientConf
+    | ModelFreeTacticGenClientConf
+    | FidTacticGenConf
+    | DecoderTacticGenConf
+)
 
 
 def merge_tactic_confs(conf1: TacticGenConf, conf2: TacticGenConf) -> TacticGenConf:
     match conf1:
         case LocalTacticGenClientConf():
             assert isinstance(conf2, LocalTacticGenClientConf)
+            return conf1.merge(conf2)
+        case ModelFreeTacticGenClientConf():
+            assert isinstance(conf2, ModelFreeTacticGenClientConf)
             return conf1.merge(conf2)
         case _:
             assert conf1 == conf2
@@ -222,6 +289,8 @@ def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:
     match attempted_alias:
         case LocalTacticGenClientConf.ALIAS:
             return LocalTacticGenClientConf.from_yaml(yaml_data)
+        case ModelFreeTacticGenClientConf.ALIAS:
+            return ModelFreeTacticGenClientConf.from_yaml(yaml_data)
         case DecoderTacticGenConf.ALIAS:
             return DecoderTacticGenConf.from_yaml(yaml_data)
         case FidTacticGenConf.ALIAS:

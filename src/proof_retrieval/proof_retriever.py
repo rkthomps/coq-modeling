@@ -25,37 +25,12 @@ from proof_retrieval.retrieved_proof_db import RetrievedProofDB
 from proof_retrieval.proof_idx import ProofIdx
 from proof_retrieval.tfidf import tf_idf
 from proof_retrieval.bm25 import bm25
-from proof_retrieval.mine_goals import FileGoals, GoalRecord
-from proof_retrieval.transform_ast import AdjTree
 
 from util.util import FlexibleUrl
 from util.util import get_basic_logger
 from util.constants import PROOF_VECTOR_DB_METADATA
 
 _logger = get_basic_logger(__name__)
-
-
-class ProofCandidate:
-    def __init__(self, distance: int, candidate: GoalRecord, origin: str):
-        self.distance = distance
-        self.candidate = candidate
-        self.origin = origin
-
-    def __lt__(self, other: ProofCandidate) -> bool:
-        return self.distance < other.distance
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ProofCandidate):
-            return False
-        return self.distance == other.distance
-
-
-class ProofCandidateReversed(ProofCandidate):
-    def __init__(self, distance: int, candidate: GoalRecord, origin: str):
-        super(ProofCandidateReversed, self).__init__(distance, candidate, origin)
-
-    def __lt__(self, other: ProofCandidate) -> bool:
-        return other.distance < self.distance
 
 
 class SparseKind(Enum):

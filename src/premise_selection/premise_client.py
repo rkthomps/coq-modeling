@@ -40,10 +40,19 @@ class SelectModelConf:
     ALIAS = "select"
     checkpoint_loc: Path
     vector_db_loc: Optional[Path]
+    cached_premise_loc: Optional[Path]
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectModelConf:
-        return cls(Path(yaml_data["checkpoint_loc"]), Path(yaml_data["vector_db_loc"]))
+        if "cached_premise_loc" in yaml_data:
+            cached_premise_loc = Path(yaml_data["cached_premise_loc"])
+        else:
+            cached_premise_loc = None
+        return cls(
+            Path(yaml_data["checkpoint_loc"]),
+            Path(yaml_data["vector_db_loc"]),
+            cached_premise_loc,
+        )
 
 
 @dataclass
@@ -96,6 +105,7 @@ class SelectModelClientConf:
     premise_format_alias: str
     premise_filter_conf: PremiseFilterConf
     sentence_db_loc: Path
+    cached_premise_loc: Optional[Path]
 
     def merge(self, other: SelectModelClientConf) -> SelectModelClientConf:
         new_urls = self.urls + other.urls
@@ -109,6 +119,7 @@ class SelectModelClientConf:
             self.premise_format_alias,
             self.premise_filter_conf,
             self.sentence_db_loc,
+            self.cached_premise_loc,
         )
 
     def update_ips(self, port_map: dict[int, tuple[str, int]]):
@@ -119,12 +130,17 @@ class SelectModelClientConf:
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> SelectModelClientConf:
+        if "cached_premise_loc" in yaml_data:
+            cached_premise_loc = Path(yaml_data["cached_premise_loc"])
+        else:
+            cached_premise_loc = None
         return cls(
             [FlexibleUrl.from_yaml(u) for u in yaml_data["urls"]],
             yaml_data["context_format_alias"],
             yaml_data["premise_format_alias"],
             PremiseFilterConf.from_yaml(yaml_data["premise_filter"]),
             Path(yaml_data["sentence_db_loc"]),
+            cached_premise_loc,
         )
 
 
@@ -176,11 +192,13 @@ class SelectPremiseClient:
         premise_format: type[PremiseFormat],
         premise_filter: PremiseFilter,
         sentence_db: SentenceDB,
+        cached_premises: Optional[RetrievedPremiseDB],
     ):
         self.context_format = context_format
         self.premise_format = premise_format
         self.premise_filter = premise_filter
         self.sentence_db = sentence_db
+        self.cached_premises = cached_premises
         self.session = requests.Session()
         self.urls = urls
 
@@ -245,14 +263,20 @@ class SelectPremiseClient:
             scores.append(result[new_idx])
         return scores
 
-    def get_ranked_premise_generator(
+    def get_ranked_premises(
         self,
         step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
         premises: list[Sentence],
         training: bool,
-    ) -> Iterable[Sentence]:
+    ) -> list[Sentence]:
+        if training:
+            cached_scores = get_cached_premises(
+                self.cached_premises, step_idx, proof, dp_obj, self.sentence_db
+            )
+            if cached_scores:
+                return cached_scores
         step = proof.steps[step_idx]
         formatted_context = self.context_format.format(step, proof)
         premise_scores = self.get_premise_scores_from_strings(
@@ -262,8 +286,10 @@ class SelectPremiseClient:
         arg_sorted_premise_scores = sorted(
             range(num_premises), key=lambda idx: -1 * premise_scores[idx]
         )
+        ranked_premises: list[Sentence] = []
         for idx in arg_sorted_premise_scores:
-            yield premises[idx]
+            ranked_premises.append(premises[idx])
+        return ranked_premises
 
     def close(self):
         self.sentence_db.close()
@@ -276,6 +302,11 @@ class SelectPremiseClient:
             PREMISE_ALIASES[conf.premise_format_alias],
             PremiseFilter.from_conf(conf.premise_filter_conf),
             SentenceDB.load(conf.sentence_db_loc),
+            (
+                RetrievedPremiseDB.load(conf.cached_premise_loc)
+                if conf.cached_premise_loc is not None
+                else None
+            ),
         )
 
 
@@ -332,18 +363,20 @@ class SparseClient:
             case SparseKind.BM25:
                 return bm25(query_ids, premise_docs)
 
-    def get_ranked_premise_generator(
+    def get_ranked_premises(
         self,
         step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
         premises: list[Sentence],
         training: bool,
-    ) -> Iterable[Sentence]:
+    ) -> list[Sentence]:
         if training:
             cached_scores = get_cached_premises(
                 self.cached_premises, step_idx, proof, dp_obj, self.sentence_db
             )
+            if cached_scores:
+                return cached_scores
         step = proof.steps[step_idx]
         if len(step.goals) == 0:
             empty_premises: list[Sentence] = []
@@ -355,8 +388,10 @@ class SparseClient:
         arg_sorted_premise_scores = sorted(
             range(num_premises), key=lambda idx: -1 * premise_scores[idx]
         )
+        ranked_premises: list[Sentence] = []
         for idx in arg_sorted_premise_scores:
-            yield premises[idx]
+            ranked_premises.append(premises[idx])
+        return ranked_premises
 
     @classmethod
     def from_conf(cls, conf: SparseConf) -> SparseClient:
@@ -403,14 +438,14 @@ class LookupClient:
                 return name
         return None
 
-    def get_ranked_premise_generator(
+    def get_ranked_premises(
         self,
         step_idx: int,
         proof: Proof,
         dp_obj: DatasetFile,
         premises: list[Sentence],
         training: bool,
-    ) -> Iterable[Sentence]:
+    ) -> list[Sentence]:
         step = proof.steps[step_idx]
         if len(step.goals) == 0:
             empty_premises: list[Sentence] = []
@@ -444,10 +479,12 @@ class LookupClient:
         arg_sorted_premise_scores = sorted(
             range(num_premises), key=lambda idx: -1 * premise_scores[idx]
         )
+        ranked_premises: list[Sentence] = []
         for idx in arg_sorted_premise_scores:
             if premise_scores[idx] == 0:
                 break
-            yield premises[idx]
+            ranked_premises.append(premises[idx])
+        return ranked_premises
 
     @classmethod
     def from_conf(cls, conf: LookupClientConf) -> LookupClient:

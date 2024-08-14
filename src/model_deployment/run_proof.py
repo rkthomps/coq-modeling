@@ -1,7 +1,9 @@
 from __future__ import annotations
 import os
 from typing import Any, Optional
+import argparse
 import json
+import yaml
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +11,6 @@ from pathlib import Path
 from data_management.splits import FileInfo, Split, DataSplit
 from data_management.dataset_file import Term, DatasetFile
 from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
-from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
 from model_deployment.prove import run_proof, RunProofConf, LocationInfo
 from model_deployment.straight_line_searcher import (
     StraightLineSuccess,
@@ -26,9 +27,14 @@ from model_deployment.tactic_gen_client import (
     tactic_gen_conf_from_yaml,
     tactic_gen_client_from_conf,
 )
+from model_deployment.conf_utils import (
+    wait_for_servers,
+    start_servers,
+    tactic_gen_to_client_conf,
+)
 
 from data_management.sentence_db import SentenceDB
-from util.util import get_basic_logger
+from util.util import get_basic_logger, clear_port_map
 from util.constants import CLEAN_CONFIG
 
 
@@ -42,7 +48,7 @@ class TheoremLocationInfo:
     data_loc: Path
     sentence_db_loc: Path
     data_split_loc: Path
-    occurance: int=0
+    occurance: int = 0
 
     def get_file_from_split(
         self,
@@ -64,7 +70,9 @@ class TheoremLocationInfo:
                 if num_found == self.occurance:
                     return i
                 num_found += 1
-        raise ValueError(f"Occurance {self.occurance} of {self.theorem_name} not found in {self.test_file}")
+        raise ValueError(
+            f"Occurance {self.occurance} of {self.theorem_name} not found in {self.test_file}"
+        )
 
     def to_location_info(self) -> LocationInfo:
         data_split = DataSplit.load(self.data_split_loc)
@@ -87,7 +95,8 @@ class TheoremLocationInfo:
             Path(yaml_data["test_file"]),
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
-            Path(yaml_data["data_split_loc"]), occurance
+            Path(yaml_data["data_split_loc"]),
+            occurance,
         )
 
 
@@ -133,21 +142,43 @@ def get_term(dp_file: DatasetFile, theorem_str: str) -> Term:
 
 
 if __name__ == "__main__":
-    conf_loc = Path(f"./{CLEAN_CONFIG}")
-    with conf_loc.open("rb") as fin:
-        conf: TestProofConf = pickle.load(fin)
-        assert "TestProofConf" in str(conf.__class__)  # isinstance didn't work
-        result = run_proof(conf.to_run_conf())
-        match result:
-            case ClassicalSuccess():
-                print("".join(result.qed_node.combined_proof_steps))
-            case ClassicalFailure():
-                print("failed")
-            case MCTSSuccess():
-                print(result.successful_proof.proof_text_to_string())
-            case MCTSFailure():
-                print("failed")
-            case StraightLineSuccess():
-                print(result.successful_proof.proof_text_to_string())
-            case StraightLineFailure():
-                print("failed")
+    parser = argparse.ArgumentParser("Run a proof using a proof config.")
+    parser.add_argument(
+        "--conf_loc", required=True, type=str, help="Path to the config."
+    )
+
+    args = parser.parse_args()
+    conf_loc = Path(args.conf_loc)
+    assert conf_loc.exists()
+    with conf_loc.open("r") as fin:
+        yaml_conf = yaml.safe_load(fin)
+    conf = TestProofConf.from_yaml(yaml_conf)
+
+    tactic_client_conf, next_server_num, commands = tactic_gen_to_client_conf(
+        conf.tactic_conf, 0
+    )
+
+    if 0 < len(commands):
+        clear_port_map()
+        start_servers(commands)
+        port_map = wait_for_servers(next_server_num)
+        tactic_conf_update_ips(tactic_client_conf, port_map)
+
+    new_conf = TestProofConf(
+        conf.theorem_location_info,
+        conf.search_conf,
+        tactic_client_conf,
+        conf.print_proofs,
+        conf.print_trees,
+    )
+
+    result = run_proof(new_conf.to_run_conf())
+    match result:
+        case ClassicalSuccess():
+            print(result.successful_candidate.proof_str)
+        case ClassicalFailure():
+            print("failed")
+        case StraightLineSuccess():
+            print(result.successful_proof.proof_text_to_string())
+        case StraightLineFailure():
+            print("failed")

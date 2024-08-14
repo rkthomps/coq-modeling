@@ -14,7 +14,6 @@ from data_management.dataset_file import DatasetFile, Term
 
 from model_deployment.fast_client import FastLspClient, ClientWrapper
 from model_deployment.proof_manager import ProofInfo, ProofManager
-from model_deployment.mcts_searcher import MCTSSuccess, MCTSFailure
 from model_deployment.straight_line_searcher import (
     StraightLineSuccess,
     StraightLineFailure,
@@ -128,111 +127,6 @@ def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
 
 
 @dataclass
-class MCTSSummary:
-    file: Path
-    theorem: str
-    proof_idx: int
-    theorem_id: str
-    success: bool
-    proof: Optional[str]
-    search_time: float | None
-    model_time: float | None
-
-    ALIAS = "mcts"
-
-    def print_detailed_summary(self):
-        print("File:", self.file)
-        print("Theorem:", self.theorem)
-        print("Success:", self.success)
-        if self.success:
-            assert self.proof is not None
-            print("Proof:", self.proof)
-
-    def to_json(self) -> Any:
-        return {
-            "file": str(self.file),
-            "theorem": self.theorem,
-            "proof_idx": self.proof_idx,
-            "theorem_id": self.theorem_id,
-            "success": self.success,
-            "proof": self.proof,
-            "search_time": self.search_time,
-            "model_time": self.model_time,
-        }
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> MCTSSummary:
-        return cls(
-            Path(json_data["file"]),
-            json_data["theorem"],
-            json_data["proof_idx"],
-            json_data["theorem_id"],
-            json_data["success"],
-            json_data["proof"],
-            json_data["search_time"],
-            json_data["model_time"],
-        )
-
-    def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
-        headers = [
-            "file",
-            "theorem",
-            "success",
-            "search_time",
-            "model_time",
-        ]
-        return headers, {
-            "file": str(self.file),
-            "theorem": self.theorem,
-            "success": self.success,
-            "search_time": self.search_time,
-            "model_time": self.model_time,
-        }
-
-    def __lt__(self, other: MCTSSummary) -> bool:
-        if self.file == other.file:
-            return self.theorem < other.theorem
-        return self.file < other.file
-
-    @classmethod
-    def from_search_result(
-        cls,
-        file: Path,
-        theorem: str,
-        proof_idx: int,
-        theorem_id: str,
-        result: MCTSSuccess | MCTSFailure | None,
-    ) -> MCTSSummary:
-        match result:
-            case MCTSSuccess():
-                return cls(
-                    file,
-                    theorem,
-                    proof_idx,
-                    theorem_id,
-                    True,
-                    result.successful_proof.proof_text_to_string(),
-                    result.time,
-                    result.model_time,
-                )
-            case MCTSFailure():
-                return cls(
-                    file,
-                    theorem,
-                    proof_idx,
-                    theorem_id,
-                    False,
-                    None,
-                    result.time,
-                    result.model_time,
-                )
-            case None:
-                return cls(
-                    file, theorem, proof_idx, theorem_id, False, None, None, None
-                )
-
-
-@dataclass
 class ClassicalSummary:
     file: Path
     theorem: str
@@ -241,12 +135,8 @@ class ClassicalSummary:
     success: bool
     proof: Optional[str]
     search_steps: int | None
-    max_depth: int | None
-    num_proofs_attempted: int | None
     search_time: float | None
     model_time: float | None
-    num_tactic_errors: int | None
-    num_nodes_pruned: int | None
 
     ALIAS = "classical"
 
@@ -267,12 +157,8 @@ class ClassicalSummary:
             "success": self.success,
             "proof": self.proof,
             "search_steps": self.search_steps,
-            "max_depth": self.max_depth,
-            "num_proofs_attempted": self.num_proofs_attempted,
             "search_time": self.search_time,
             "model_time": self.model_time,
-            "num_tactic_errors": self.num_tactic_errors,
-            "num_nodes_pruned": self.num_nodes_pruned,
         }
 
     @classmethod
@@ -285,12 +171,8 @@ class ClassicalSummary:
             json_data["success"],
             json_data["proof"],
             json_data["search_steps"],
-            json_data["max_depth"],
-            json_data["num_proofs_attempted"],
             json_data["search_time"],
             json_data["model_time"],
-            json_data["num_tactic_errors"],
-            json_data["num_nodes_pruned"],
         )
 
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
@@ -298,25 +180,17 @@ class ClassicalSummary:
             "file",
             "theorem",
             "success",
+            "search_steps",
             "search_time",
             "model_time",
-            "search_steps",
-            "max_depth",
-            "num_proofs_attempted",
-            "num_tactic_errors",
-            "num_nodes_pruned",
         ]
         return headers, {
             "file": str(self.file),
             "theorem": self.theorem,
             "success": self.success,
             "search_steps": self.search_steps,
-            "max_depth": self.max_depth,
-            "num_proofs_attempted": self.num_proofs_attempted,
             "search_time": self.search_time,
             "model_time": self.model_time,
-            "num_tactic_errors": self.num_tactic_errors,
-            "num_nodes_pruned": self.num_nodes_pruned,
         }
 
     def __lt__(self, other: ClassicalSummary) -> bool:
@@ -344,40 +218,21 @@ class ClassicalSummary:
                 None,
                 None,
                 None,
-                None,
-                None,
-                None,
-                None,
             )
-        search_size = result.search_tree.root.size()
-        num_errors = result.search_tree.root.num_errors()
-        num_pruned = result.search_tree.root.num_pruned()
-        _, max_depth = result.search_tree.root.get_deepest_node()
         match result:
             case ClassicalSuccess():
-                path_to_qed = result.search_tree.root.get_path_to_qed()
-                assert 2 <= len(path_to_qed)
-                assert path_to_qed[-2].expanded is not None
-                expand_num = path_to_qed[-2].expanded
-                search_time = result.total_search_time / 1e9
                 return ClassicalSummary(
                     file,
                     theorem,
                     proof_idx,
                     theorem_id,
                     True,
-                    result.get_proof(),
-                    expand_num,
-                    max_depth,
-                    search_size,
-                    search_time,
-                    result.total_model_time,
-                    num_errors,
-                    num_pruned,
+                    result.successful_candidate.proof_str,
+                    result.search_steps,
+                    result.time,
+                    result.model_time,
                 )
             case ClassicalFailure():
-                expand_num = result.search_tree.root.get_last_node_expanded()
-                search_time = result.total_search_time / 1e9
                 return ClassicalSummary(
                     file,
                     theorem,
@@ -385,13 +240,9 @@ class ClassicalSummary:
                     theorem_id,
                     False,
                     None,
-                    expand_num,
-                    max_depth,
-                    search_size,
-                    search_time,
-                    result.total_model_time,
-                    num_errors,
-                    num_pruned,
+                    result.search_steps,
+                    result.time,
+                    result.model_time,
                 )
 
 
@@ -522,8 +373,6 @@ def summary_from_json(json_data: Any) -> Summary:
             return ClassicalSummary.from_json(json_data)
         case StraightLineSummary.ALIAS:
             return StraightLineSummary.from_json(json_data)
-        case MCTSSummary.ALIAS:
-            return MCTSSummary.from_json(json_data)
         case _:
             raise ValueError(f"Unknown alias {attempted_alias}")
 
@@ -559,7 +408,7 @@ def pretty_print_summary(summary: Summary):
     print(nice_str)
 
 
-Summary = MCTSSummary | ClassicalSummary | StraightLineSummary
+Summary = ClassicalSummary | StraightLineSummary
 
 
 def summary_from_result(
@@ -572,10 +421,6 @@ def summary_from_result(
     match result:
         case ClassicalSuccess() | ClassicalFailure():
             return ClassicalSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, result
-            )
-        case MCTSSuccess() | MCTSFailure():
-            return MCTSSummary.from_search_result(
                 file, theorem, proof_idx, theorem_id, result
             )
         case StraightLineSuccess() | StraightLineFailure():

@@ -92,7 +92,7 @@ class BasicRerankFormatter:
         filtered_result = self.premise_client.premise_filter.get_pos_and_avail_premises(
             step, proof, dp_obj
         )
-        ranked_premises = self.premise_client.get_ranked_premise_generator(
+        ranked_premises = self.premise_client.get_ranked_premises(
             step, proof, dp_obj, filtered_result.avail_premises
         )
         formatted_context = self.get_formatted_context(step, proof, dp_obj)
