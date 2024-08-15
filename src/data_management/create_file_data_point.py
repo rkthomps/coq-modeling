@@ -73,13 +73,13 @@ def proof_file_to_data_point(
                     "type": str(proof.type),
                     "line": proof.ast.range.start.line,
                     "context": get_context(
-                        proof.context, workspace_loc, add_to_dataset, switch_loc
+                        proof.context, workspace, add_to_dataset, switch_loc
                     ),
                 },
                 "step": {
                     "text": step.text,
                     "context": get_context(
-                        proof.context, workspace_loc, add_to_dataset, switch_loc
+                        proof.context, workspace, add_to_dataset, switch_loc
                     ),
                 },
                 "n_step": i + 1,
@@ -103,11 +103,15 @@ def proof_file_to_data_point(
         "file": translate_path(
             Path(proof_file_path), workspace, add_to_dataset, switch_loc
         ),
-        "workspace": str(workspace.resolve()),
-        "repository": str(repository.resolve()),
+        "workspace": translate_path(
+            workspace.resolve(), workspace, add_to_dataset, switch_loc
+        ),
+        "repository": translate_path(
+            workspace.resolve(), workspace, add_to_dataset, switch_loc
+        ),
         "context": get_context(
             list(proof_file.context.terms.values()),
-            workspace_loc,
+            workspace,
             add_to_dataset,
             switch_loc,
         ),
@@ -130,6 +134,7 @@ def get_data_point(
         workspace=str(workspace_loc.resolve()),
         timeout=compile_timeout,
     ) as coq_file:
+        coq_file.run()
         if not coq_file.is_valid:
             raise ValueError(f"Could not compile coq file: {coq_file}")
 
@@ -138,6 +143,8 @@ def get_data_point(
         str(file_loc.resolve()),
         workspace=str(workspace_loc.resolve()),
         timeout=compile_timeout,
+        use_disk_cache=True,
+        error_mode="warning",
     ) as proof_file:
         proof_file.run()
         return proof_file_to_data_point(
@@ -173,58 +180,70 @@ def translate_path(
     return str(to_dataset_format(path, workspace, switch_path))
 
 
+def get_switch_loc() -> Path:
+    opam_loc = Path(
+        subprocess.run("which coqc", shell=True, capture_output=True)
+        .stdout.decode()
+        .strip()
+    ).resolve()
+    assert (opam_loc.parents[1] / COQ_BIN_PATH).exists()
+    switch_loc = opam_loc.parents[1]
+    return switch_loc
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Create data points file for given file.")
-    parser.add_argument("--file_loc", type=str, help="Location of the file.")
-    parser.add_argument(
-        "--workspace_loc", type=str, help="Location of the file's workspace"
-    )
-    parser.add_argument("--sentence_db_loc", help="Location of the sentence_db")
-    parser.add_argument(
-        "--save_loc", type=str, help="Location to save the data point file."
-    )
-    parser.add_argument(
-        "--add_to_dataset",
-        action="store_true",
-        help="Whether to add the data point to a ML dataset.",
-        default=False,
+    DATA_LOC = Path("raw-data/coq-dataset")
+    REPOS_LOC = DATA_LOC / "repos"
+    FILE_LOC = REPOS_LOC / "coq-community-math-classes/theory/categories.v"
+    WORKSPACE_LOC = REPOS_LOC / "coq-community-math-classes"
+    SENTENCE_DB_LOC = DATA_LOC / "sentences.db"
+    switch_loc = get_switch_loc()
+    get_data_point(
+        FILE_LOC, WORKSPACE_LOC, SentenceDB.load(SENTENCE_DB_LOC), True, switch_loc
     )
 
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser("Create data points file for given file.")
+    # parser.add_argument("--file_loc", type=str, help="Location of the file.")
+    # parser.add_argument(
+    #     "--workspace_loc", type=str, help="Location of the file's workspace"
+    # )
+    # parser.add_argument("--sentence_db_loc", help="Location of the sentence_db")
+    # parser.add_argument(
+    #     "--save_loc", type=str, help="Location to save the data point file."
+    # )
+    # parser.add_argument(
+    #     "--add_to_dataset",
+    #     action="store_true",
+    #     help="Whether to add the data point to a ML dataset.",
+    #     default=False,
+    # )
 
-    file_loc = Path(args.file_loc)
-    workspace_loc = Path(args.workspace_loc)
-    sentence_db_loc = Path(args.sentence_db_loc)
-    add_to_dataset = args.add_to_dataset
-    save_loc = Path(args.save_loc)
+    # args = parser.parse_args()
 
-    assert file_loc.exists()
-    assert workspace_loc.exists()
-    assert not save_loc.exists()
+    # file_loc = Path(args.file_loc)
+    # workspace_loc = Path(args.workspace_loc)
+    # sentence_db_loc = Path(args.sentence_db_loc)
+    # add_to_dataset = args.add_to_dataset
+    # save_loc = Path(args.save_loc)
 
-    sentence_db = SentenceDB.load(sentence_db_loc)
+    # assert file_loc.exists()
+    # assert workspace_loc.exists()
+    # assert not save_loc.exists()
 
-    if add_to_dataset:
-        opam_loc = Path(
-            subprocess.run("which coqc", shell=True, capture_output=True)
-            .stdout.decode()
-            .strip()
-        ).resolve()
-        assert (opam_loc.parents[1] / COQ_BIN_PATH).exists()
-        switch_loc = opam_loc.parents[1]
-    else:
-        switch_loc = None
+    # sentence_db = SentenceDB.load(sentence_db_loc)
 
-    print("WORKSPACE", workspace_loc.resolve())
+    # switch_loc = get_switch_loc() if add_to_dataset else None
 
-    dp = get_data_point(
-        file_loc.resolve(),
-        workspace_loc.resolve(),
-        sentence_db,
-        add_to_dataset,
-        switch_loc,
-    )
-    ipdb.set_trace()
+    # print("WORKSPACE", workspace_loc.resolve())
 
-    # if save_loc.exists():
-    #     raise FileExistsError(f"File {save_loc} already exists.")
+    # dp = get_data_point(
+    #     file_loc.resolve(),
+    #     workspace_loc.resolve(),
+    #     sentence_db,
+    #     add_to_dataset,
+    #     switch_loc,
+    # )
+    # ipdb.set_trace()
+
+    # # if save_loc.exists():
+    # #     raise FileExistsError(f"File {save_loc} already exists.")

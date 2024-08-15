@@ -42,6 +42,10 @@ PROOF_MAP_LOC = SYNTH_DATA_LOC / "proof_maps"
 QUEUE_LOC = TMP_LOC / "queue"
 
 
+def get_save_name(f_info: FileInfo, proof_idx: int) -> str:
+    return f"{f_info.dp_name}-{proof_idx}.json"
+
+
 def initialize_and_fill_queue(
     queue_loc: Path,
     conf: EvalConf | PremiseEvalConf,

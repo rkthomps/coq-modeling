@@ -366,6 +366,12 @@ class StraightLineSummary:
                 )
 
 
+def load_summary(file: Path) -> Summary:
+    with file.open("r") as fin:
+        json_data = json.load(fin)
+    return summary_from_json(json_data)
+
+
 def summary_from_json(json_data: Any) -> Summary:
     attempted_alias = json_data["alias"]
     match attempted_alias:
@@ -375,6 +381,10 @@ def summary_from_json(json_data: Any) -> Summary:
             return StraightLineSummary.from_json(json_data)
         case _:
             raise ValueError(f"Unknown alias {attempted_alias}")
+
+
+def errored_summary(summary: Summary) -> bool:
+    return summary.search_time is None
 
 
 def summary_to_json(summary: Summary) -> Any:

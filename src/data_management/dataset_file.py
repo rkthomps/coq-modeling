@@ -379,6 +379,15 @@ class Proof:
         self.proof_idx = proof_idx
         self.__text_id: Optional[str] = None
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Proof):
+            return False
+        return (
+            self.theorem == other.theorem
+            and self.steps == other.steps
+            and self.proof_idx == other.proof_idx
+        )
+
     def is_proof_independent(self) -> bool:
         if 0 == len(self.steps):
             return True
@@ -451,6 +460,16 @@ class FileContext:
         self.workspace = workspace
         self.repository = repository
         self.avail_premises = avail_premises
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FileContext):
+            return False
+        return (
+            self.file == other.file
+            and self.workspace == other.workspace
+            and self.repository == other.repository
+            and self.avail_premises == other.avail_premises
+        )
 
     @classmethod
     def empty_context_from_lines(cls, lines: list[str]) -> FileContext:
@@ -576,6 +595,11 @@ class DatasetFile:
         self.dependencies = self.__get_dp_dependencies()
         self.__cached_dp_name: Optional[str] = None
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DatasetFile):
+            return False
+        return self.file_context == other.file_context and self.proofs == other.proofs
+
     def proofs_to_string(self) -> str:
         proof_strings = [p.proof_text_to_string() for p in self.proofs]
         return "\n\n".join(proof_strings)
@@ -601,7 +625,9 @@ class DatasetFile:
             return None
         (dp_unnorm_name,) = repo_match.groups()
         dp_norm_name = dp_unnorm_name.replace("/", "-")
-        if dp_norm_name == "DmxLarchey-Hydra-theories-Hydra.v": # HACK; Not sure why hydra is named with upper case
+        if (
+            dp_norm_name == "DmxLarchey-Hydra-theories-Hydra.v"
+        ):  # HACK; Not sure why hydra is named with upper case
             dp_norm_name = "DmxLarchey-Hydra-theories-hydra.v"
         return dp_norm_name, dp_unnorm_name
 
@@ -663,12 +689,9 @@ class DatasetFile:
     def get_premises_before(self, proof: Proof) -> list[Sentence]:
         return self.out_of_file_avail_premises + self.get_in_file_premises_before(proof)
 
-    def save(self, path: str, sentence_db: SentenceDB, insert_allowed: bool) -> None:
-        path_dirname = os.path.dirname(path)
-        if 0 < len(path_dirname):
-            os.makedirs(path_dirname, exist_ok=True)
-
-        with open(path, "w") as fout:
+    def save(self, path: Path, sentence_db: SentenceDB, insert_allowed: bool) -> None:
+        os.makedirs(path.parent, exist_ok=True)
+        with path.open("w") as fout:
             fout.write(json.dumps(self.to_json(sentence_db, insert_allowed), indent=2))
 
     def to_json(self, sentence_db: SentenceDB, insert_allowed: bool) -> Any:
