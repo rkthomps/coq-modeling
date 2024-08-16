@@ -394,6 +394,23 @@ def lm_dataset_conf_to_client_conf(
     return new_dataset_conf, next_server_num, formatter_commands
 
 
+def rerank_dataset_conf_to_client_conf(
+    conf: RerankDatasetConf,
+    start_server_num: int,
+) -> tuple[RerankDatasetConf, int, list[StartModelCommand]]:
+    rerank_formatter, next_server_num, commands = rerank_formatter_conf_to_client_conf(
+        conf.rerank_formatter_conf, start_server_num
+    )
+    new_rerank_conf = RerankDatasetConf(
+        conf.data_split_locs,
+        conf.data_loc,
+        conf.sentence_db_loc,
+        conf.output_dataset_loc,
+        rerank_formatter,
+    )
+    return new_rerank_conf, next_server_num, commands
+
+
 def start_servers(commands: list[StartModelCommand]) -> list[subprocess.Popen[bytes]]:
     procs: list[subprocess.Popen[bytes]] = []
     for command in commands:

@@ -139,7 +139,7 @@ class StraightLineSearcher:
             start_model_time = time.time()
             last_proof = cur_dset_file.proofs[-1]
             result = self.tactic_client.get_recs(
-                len(last_proof.steps), last_proof, cur_dset_file, 1
+                len(last_proof.steps) - 1, last_proof, cur_dset_file, 1
             )
             end_model_time = time.time()
             assert len(result.next_tactic_list) == 1

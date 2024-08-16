@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from model_deployment.prove import Summary
 from model_deployment.run_proofs import load_results
-from model_deployment.prove import ClassicalSummary, MCTSSummary, StraightLineSummary
+from model_deployment.prove import ClassicalSummary, StraightLineSummary
 
 
 @dataclass
@@ -50,9 +50,6 @@ class EvalData:
                     case ClassicalSummary():
                         assert r.search_steps is not None
                         num_attempts = r.search_steps
-                    case MCTSSummary():
-                        assert r.search_time is not None
-                        raise ValueError("MCTS does not save number of attempts.")
                     case StraightLineSummary():
                         assert r.attempts is not None
                         num_attempts = len(r.attempts)

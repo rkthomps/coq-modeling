@@ -160,9 +160,11 @@ if __name__ == "__main__":
 
     if 0 < len(commands):
         clear_port_map()
-        start_servers(commands)
+        procs = start_servers(commands)
         port_map = wait_for_servers(next_server_num)
         tactic_conf_update_ips(tactic_client_conf, port_map)
+    else:
+        procs = []
 
     new_conf = TestProofConf(
         conf.theorem_location_info,
@@ -172,13 +174,17 @@ if __name__ == "__main__":
         conf.print_trees,
     )
 
-    result = run_proof(new_conf.to_run_conf())
-    match result:
-        case ClassicalSuccess():
-            print(result.successful_candidate.proof_str)
-        case ClassicalFailure():
-            print("failed")
-        case StraightLineSuccess():
-            print(result.successful_proof.proof_text_to_string())
-        case StraightLineFailure():
-            print("failed")
+    try:
+        result = run_proof(new_conf.to_run_conf())
+        match result:
+            case ClassicalSuccess():
+                print(result.successful_candidate.proof_str)
+            case ClassicalFailure():
+                print("failed")
+            case StraightLineSuccess():
+                print(result.successful_proof.proof_text_to_string())
+            case StraightLineFailure():
+                print("failed")
+    finally:
+        for p in procs:
+            p.kill()

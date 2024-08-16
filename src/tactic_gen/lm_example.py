@@ -80,6 +80,23 @@ class LmExample:
         self.proof_idx = proof_idx
         self.step_idx = step_idx
 
+    def __hash__(self) -> int:
+        next_step_str = "<NEXT_SEP>".join(self.next_steps)
+        proof_str = "<PROOF_SEP>".join(self.proofs) if self.proofs is not None else ""
+        prem_str = "<PREM_SEP>".join(self.premises) if self.premises is not None else ""
+        return hash(
+            (
+                self.proof_script,
+                self.proof_state,
+                next_step_str,
+                proof_str,
+                prem_str,
+                self.file_name,
+                self.proof_idx,
+                self.step_idx,
+            )
+        )
+
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, LmExample):
             return False

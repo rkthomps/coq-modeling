@@ -17,6 +17,7 @@ from data_management.dataset_utils import (
     DatasetConf,
     DatasetExample,
     data_conf_from_yaml,
+    data_conf_update_ips,
 )
 from tactic_gen.lm_example import (
     FormatterConf,
@@ -34,10 +35,10 @@ from premise_selection.rerank_formatter import (
 from premise_selection.rerank_example import RerankExample
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
 from model_deployment.conf_utils import (
-    to_client_conf,
     wait_for_servers,
     start_servers,
-    update_ips,
+    lm_dataset_conf_to_client_conf,
+    rerank_dataset_conf_to_client_conf,
 )
 
 from util.file_queue import FileQueue, EmptyFileQueueError
@@ -168,26 +169,36 @@ if __name__ == "__main__":
         yaml_conf = yaml.safe_load(fin)
 
     dataset_conf = data_conf_from_yaml(yaml_conf)
-    clear_port_map()
-    dataset_client_conf, num_servers, server_commands = to_client_conf(dataset_conf, 0)
-    server_procs = start_servers(server_commands)
-    port_map = wait_for_servers(num_servers)
-    update_ips(dataset_client_conf, port_map)
+    match dataset_conf:
+        case LmDatasetConf():
+            clean_conf, next_num, commands = lm_dataset_conf_to_client_conf(
+                dataset_conf, 0
+            )
+        case SelectDatasetConf():
+            clean_conf = dataset_conf
+            next_num = 0
+            commands = []
+        case RerankDatasetConf():
+            clean_conf, next_num, commands = rerank_dataset_conf_to_client_conf(
+                dataset_conf, 0
+            )
 
-    assert isinstance(dataset_client_conf, DatasetConf)
-    sentence_db = SentenceDB.load(dataset_client_conf.sentence_db_loc)
+    if 0 < len(commands):
+        clear_port_map()
+        start_servers(commands)
+        port_map = wait_for_servers(next_num)
+        data_conf_update_ips(clean_conf, port_map)
+
+    sentence_db = SentenceDB.load(clean_conf.sentence_db_loc)
 
     queue: FileQueue = FileQueue(queue_loc)
     while True:
         try:
             file_info = queue.get()
             worker_process = mp.Process(
-                target=handle_file, args=(file_info, dataset_client_conf, sentence_db)
+                target=handle_file, args=(file_info, clean_conf, sentence_db)
             )
             worker_process.start()
             worker_process.join()
         except EmptyFileQueueError:
             break
-
-    for p in server_procs:
-        p.kill()

@@ -27,7 +27,11 @@ from tactic_gen.train_decoder import (
     get_tokenizer,
     get_model,
 )
-from tactic_gen.tactic_data import ExampleCollator, example_collator_from_conf
+from tactic_gen.tactic_data import (
+    ExampleCollator,
+    example_collator_from_conf,
+    example_collator_conf_from_yaml,
+)
 from tactic_gen.fid_model import FiDT5
 from tactic_gen.fid_data import FidDataset
 from model_deployment.codellama_utils import (
@@ -223,9 +227,13 @@ class DecoderLocalWrapper:
     def from_checkpoint(cls, checkpoint_loc: Path) -> DecoderLocalWrapper:
         training_conf = cls.get_training_conf(checkpoint_loc)
         hard_seq_length = get_required_arg("hard_seq_len", training_conf)
-        example_collator_conf = training_conf["example_collator"]
+        example_collator_conf = example_collator_conf_from_yaml(
+            training_conf["example_collator"]
+        )
         example_collator = example_collator_from_conf(example_collator_conf)
-        tokenizer = get_tokenizer(training_conf, add_eos=False)
+        tokenizer = get_tokenizer(
+            get_required_arg("model_name", training_conf), add_eos=False
+        )
         model = get_model(str(checkpoint_loc.resolve()))
         return cls(model, tokenizer, example_collator, hard_seq_length)
 

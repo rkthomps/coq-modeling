@@ -42,10 +42,6 @@ PROOF_MAP_LOC = SYNTH_DATA_LOC / "proof_maps"
 QUEUE_LOC = TMP_LOC / "queue"
 
 
-def get_save_name(f_info: FileInfo, proof_idx: int) -> str:
-    return f"{f_info.dp_name}-{proof_idx}.json"
-
-
 def initialize_and_fill_queue(
     queue_loc: Path,
     conf: EvalConf | PremiseEvalConf,
@@ -119,7 +115,6 @@ class ProofMap:
 
 @dataclass
 class EvalConf:
-    n_procs: int
     split: Split
     save_loc: Path
     data_loc: Path
@@ -129,6 +124,7 @@ class EvalConf:
     tactic_conf: TacticGenConf
     start_at: Optional[int]
     end_at: Optional[int]
+    rerun_errors: bool
 
     def update_ips(self, port_map: dict[int, tuple[str, int]]):
         tactic_conf_update_ips(self.tactic_conf, port_map)
@@ -158,7 +154,6 @@ class EvalConf:
                 )
 
     def merge(self, other: EvalConf) -> EvalConf:
-        assert self.n_procs == other.n_procs
         assert self.split == other.split
         assert self.save_loc == other.save_loc
         assert self.data_loc == other.data_loc
@@ -168,7 +163,6 @@ class EvalConf:
         assert self.end_at == other.end_at
         new_tactic_conf = merge_tactic_confs(self.tactic_conf, other.tactic_conf)
         return EvalConf(
-            self.n_procs,
             self.split,
             self.save_loc,
             self.data_loc,
@@ -178,6 +172,7 @@ class EvalConf:
             new_tactic_conf,
             self.start_at,
             self.end_at,
+            self.rerun_errors,
         )
 
     @classmethod
@@ -188,9 +183,11 @@ class EvalConf:
         start_at = None
         if "start_at" in yaml_data:
             start_at = yaml_data["start_at"]
+        rerun_errors = False
+        if "rerun_errors" in yaml_data:
+            rerun_errors = yaml_data["rerun_errors"]
 
         return cls(
-            yaml_data["n_procs"],
             str2split(yaml_data["split"]),
             Path(yaml_data["save_loc"]),
             Path(yaml_data["data_loc"]),
@@ -200,6 +197,7 @@ class EvalConf:
             tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
             start_at,
             end_at,
+            rerun_errors,
         )
 
 

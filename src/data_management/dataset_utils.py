@@ -6,9 +6,15 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from premise_selection.premise_example import PremiseTrainingExample
-from tactic_gen.lm_example import FormatterConf, formatter_conf_from_yaml, LmExample
+from tactic_gen.lm_example import (
+    FormatterConf,
+    formatter_conf_from_yaml,
+    LmExample,
+    formatter_update_ips,
+)
 from premise_selection.rerank_example import RerankExample
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
+from premise_selection.rerank_client import premise_conf_update_ips
 from premise_selection.rerank_formatter import (
     RerankFormatter,
     RerankFormatterConf,
@@ -24,6 +30,10 @@ class LmDatasetConf:
     sentence_db_loc: Path
     output_dataset_loc: Path
     lm_formatter_confs: list[FormatterConf]
+
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
+        for f in self.lm_formatter_confs:
+            formatter_update_ips(f, port_map)
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LmDatasetConf:
@@ -74,6 +84,9 @@ class RerankDatasetConf:
     output_dataset_loc: Path
     rerank_formatter_conf: RerankFormatterConf
 
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
+        premise_conf_update_ips(self.rerank_formatter_conf.select_conf, port_map)
+
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RerankDatasetConf:
         return cls(
@@ -87,6 +100,16 @@ class RerankDatasetConf:
 
 DatasetConf = LmDatasetConf | SelectDatasetConf | RerankDatasetConf
 DatasetExample = LmExample | PremiseTrainingExample | RerankExample
+
+
+def data_conf_update_ips(data_conf: DatasetConf, port_map: dict[int, tuple[str, int]]):
+    match data_conf:
+        case LmDatasetConf():
+            data_conf.update_ips(port_map)
+        case SelectDatasetConf():
+            pass
+        case RerankDatasetConf():
+            data_conf.update_ips(port_map)
 
 
 def data_conf_from_yaml(yaml_data: Any) -> DatasetConf:

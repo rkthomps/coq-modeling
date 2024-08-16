@@ -398,8 +398,12 @@ def get_save_loc(summary: Summary, save_dir: Path):
     return save_dir / save_name
 
 
-def save_summary(summary: Summary, save_dir: Path):
-    save_loc = get_save_loc(summary, save_dir)
+def get_save_name(f_info: FileInfo, proof_idx: int) -> str:
+    return f"{f_info.dp_name}-{proof_idx}.json"
+
+
+def save_summary(summary: Summary, file_info: FileInfo, save_dir: Path):
+    save_loc = save_dir / get_save_name(file_info, summary.proof_idx)
     with save_loc.open("w") as fout:
         summary_json = summary_to_json(summary)
         fout.write(json.dumps(summary_json, indent=2))

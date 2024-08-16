@@ -168,8 +168,14 @@ class ClassicalSearcher:
         stripped_tactic = tactic.strip()
         return all([c in "*-+" for c in stripped_tactic])
 
+    def is_only_proof(self, tactic: str) -> bool:
+        # could ensure that the tactic is the first proof tactic
+        return tactic.strip() == "Proof."
+
     def is_redundant(self, candidate: Candidate, candidate_goals: list[Goal]) -> bool:
-        if self.is_only_focusing(candidate.tactic):
+        if self.is_only_focusing(candidate.tactic) or self.is_only_proof(
+            candidate.tactic
+        ):
             return False
         for seen_goals in self.seen_goals:
             if self.comparer.as_hard_as(
@@ -203,6 +209,7 @@ class ClassicalSearcher:
                 assert proof_check_result.new_proof is not None
                 assert proof_check_result.current_goals is not None
                 cur_candidate.proof = proof_check_result.new_proof
+                cur_dset_file = self.proof_manager.build_dset_file(cur_candidate.proof)
                 if self.is_redundant(cur_candidate, proof_check_result.current_goals):
                     return None
                 if self.depth_limit <= cur_candidate.depth:
@@ -213,7 +220,7 @@ class ClassicalSearcher:
                 recs = self.tactic_client.get_recs(
                     len(cur_candidate.proof.steps) - 1,
                     cur_candidate.proof,
-                    self.initial_dset_file,
+                    cur_dset_file,
                     self.max_branch,
                     beam=self.beam_decode,
                 )
