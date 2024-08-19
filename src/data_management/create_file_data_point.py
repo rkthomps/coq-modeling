@@ -18,9 +18,9 @@ from coqpyt.coq.structs import ProofTerm, Term
 from data_management.dataset_file import DatasetFile, FocusedStep, FileContext, Proof
 from data_management.sentence_db import SentenceDB
 
-from util.util import get_basic_logger
+from util.constants import RANGO_LOGGER
 
-_logger = get_basic_logger(__name__)
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 def get_context(
@@ -43,6 +43,10 @@ def get_context(
             }
         )
     return res
+
+
+class NoProofsError(Exception):
+    pass
 
 
 def proof_file_to_data_point(
@@ -88,7 +92,7 @@ def proof_file_to_data_point(
             proof_file_steps.append(data_point)
 
     if len(proof_file.proofs) == 0:
-        raise ValueError(f"No proofs.")
+        raise NoProofsError(f"No proofs.")
 
     proof_steps = [
         FocusedStep.from_json(step, sentence_db) for step in proof_file_steps
@@ -136,7 +140,7 @@ def get_data_point(
     ) as coq_file:
         coq_file.run()
         if not coq_file.is_valid:
-            raise ValueError(f"Could not compile coq file: {coq_file}")
+            raise ValueError(f"Could not compile coq file: {str(file_loc.resolve())}")
 
     _logger.info("Generating proof file...")
     with ProofFile(

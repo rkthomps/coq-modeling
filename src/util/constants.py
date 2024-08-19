@@ -3,6 +3,7 @@ from pathlib import Path
 TMP_LOC = Path("tmp")
 SYNTH_DATA_LOC = Path("data")
 
+
 REPOS_NAME = "repos"
 DATA_POINTS_NAME = "data_points"
 
@@ -25,3 +26,9 @@ SLURM_NAME = "slurm"
 
 
 PROOF_VECTOR_DB_METADATA = "metadata.pkl"
+
+# Logging
+LOG_LOC = Path("logs")
+SRC_LOC = Path("src")
+SCRIPTS_LOC = Path("scripts")
+RANGO_LOGGER = "rango"
