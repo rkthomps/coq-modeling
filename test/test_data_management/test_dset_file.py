@@ -1,34 +1,87 @@
-from data_management.dataset_file import DatasetFile, Proof, Term, FocusedStep
+import os
+import shutil
+from pathlib import Path
+
+from hypothesis import given, strategies as st
+
+from data_management.create_file_data_point import get_data_point, get_switch_loc
+from data_management.dataset_file import (
+    DatasetFile,
+    Proof,
+    Term,
+    FocusedStep,
+    Sentence,
+    Goal,
+)
+from data_management.sentence_db import SentenceDB
 from coqpyt.coq.structs import TermType
+
+from util.test_utils import (
+    build_test_project,
+    get_test_sentence_db,
+    TEST_TMP_LOC,
+    LIST_DEFS_LOC,
+    LIST_THMS_LOC,
+    TEST_PROJET_LOC,
+    SENTENCE_DB_LOC,
+)
 
 
 class TestDsetFile:
-    """Really I should have a test coq file, and assert properties about it."""
+    def test_list_thms_dp(self):
+        assert len(self.list_thms_dp.proofs) == 4
 
-    THM1 = "Theorem prestrict_length p s : length (prestrict p s) = (length s)."
-    THM2 = "Definition cross1 := let p := indexes in let q := ref_list in fold_right (fun x l => (map (fun y => (x, y)) q) ++ l) nil p."
-    TERM1 = Term.from_text(THM1, TermType.THEOREM)
-    TERM2 = Term.from_text(THM2, TermType.DEFINITION)
-    INTRO_STEP = FocusedStep.from_step_text(" intros.")
-    DEF_STEP = FocusedStep.from_step_text(" Defined.")
-    QED_STEP = FocusedStep.from_step_text(" Qed.")
-    PROOF1 = Proof(TERM1, [INTRO_STEP, DEF_STEP], 0)
-    PROOF2 = Proof(TERM1, [INTRO_STEP, QED_STEP], 1)
-    PROOF3 = Proof(TERM2, [INTRO_STEP, DEF_STEP], 2)
+    def test_available_sentence(self):
+        expected_in_file_name = Path(
+            "/coq-dataset/repos/test-project/theories/ListThms.v"
+        )
+        expected_dep_name = Path("/coq-dataset/repos/test-project/theories/ListDefs.v")
 
-    def test_proof_independent(self):
-        assert not self.PROOF1.is_proof_independent()
-        assert self.PROOF2.is_proof_independent()
-        assert self.PROOF1.get_theorem_name() == "prestrict_length"
-        assert self.PROOF3.get_theorem_name() == "cross1"
+        for p in self.list_thms_dp.in_file_avail_premises:
+            assert p.file_path == str(expected_in_file_name)
 
-    def test_theorem_name(self):
-        pass
+        assert all(
+            not p.file_path == str(expected_dep_name)
+            for p in self.list_thms_dp.in_file_avail_premises
+        )
+
+        assert any(
+            p.file_path == str(expected_dep_name)
+            for p in self.list_thms_dp.out_of_file_avail_premises
+        )
+
+        assert all(
+            not p.file_path == str(expected_in_file_name)
+            for p in self.list_thms_dp.out_of_file_avail_premises
+        )
+
+    def test_load_save(self):
+        save_loc = TEST_TMP_LOC / "list_thms_dp.json"
+        self.list_thms_dp.save(save_loc, self.sentence_db, insert_allowed=False)
+        load1 = DatasetFile.load(save_loc, self.sentence_db)
+        os.remove(save_loc)
+        self.list_thms_dp.save(save_loc, self.sentence_db, insert_allowed=True)
+        load2 = DatasetFile.load(save_loc, self.sentence_db)
+        new_sentence_db = SentenceDB.load(SENTENCE_DB_LOC)
+        load3 = DatasetFile.load(save_loc, new_sentence_db)
+        assert self.list_thms_dp == load1
+        assert load1 == load2
+        assert load2 == load3
+        new_sentence_db.close()
 
     @classmethod
     def setup_class(cls) -> None:
-        pass
+        build_test_project()
+        cls.sentence_db = get_test_sentence_db()
+        cls.list_thms_dp = get_data_point(
+            LIST_THMS_LOC,
+            TEST_PROJET_LOC,
+            cls.sentence_db,
+            add_to_dataset=True,
+            switch_loc=get_switch_loc(),
+        )
 
     @classmethod
     def teardown_class(cls) -> None:
-        pass
+        cls.sentence_db.close()
+        shutil.rmtree(TEST_TMP_LOC)

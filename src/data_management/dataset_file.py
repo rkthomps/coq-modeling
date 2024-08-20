@@ -2,16 +2,16 @@ from __future__ import annotations
 from typing import Any, Optional
 from enum import Enum
 import sys, os
-import jsonlines
 import json
 import re
-import ipdb
-import argparse
-import time
+import string
 import functools
 import multiprocessing as mp
 from pathlib import Path
+import hypothesis.strategies as st
 from dataclasses import dataclass
+
+import hypothesis.strategies
 
 from data_management.sentence_db import SentenceDB, DBSentence
 
@@ -26,21 +26,6 @@ _logger = get_basic_logger(__name__)
 
 STEPS_NAME = "steps.jsonl"
 FILE_CONTEXT_NAME = "file_context.jsonl"
-
-
-def data_shape_expected(raw_data_loc: str) -> bool:
-    for project in os.listdir(raw_data_loc):
-        project_loc = os.path.join(raw_data_loc, project)
-        if not os.path.isdir(project_loc):
-            print(f"{project_loc} is not a directory.", file=sys.stderr)
-            exit(1)
-        project_files = set(os.listdir(project_loc))
-        if not ((STEPS_NAME in project_files) and (FILE_CONTEXT_NAME in project_files)):
-            print(
-                f"{project_loc} does not contain files {STEPS_NAME} and {FILE_CONTEXT_NAME}"
-            )
-            exit(1)
-    return True
 
 
 ID_FORM = re.compile(r"[^\[\]\{\}\(\):=,\s]+")
@@ -69,54 +54,25 @@ def get_ids_from_sentence(s: Sentence) -> list[str]:
     return sentence_ids
 
 
+@dataclass
 class Sentence:
-    bad_sentence_endings: set[str] = set()
-
-    def __init__(
-        self,
-        text: str,
-        file_path: str,
-        module: list[str],
-        sentence_type: TermType,
-        line: int,
-        db_idx: Optional[int] = None,
-    ):
-        # try:
-        #     assert text.strip().endswith(".")
-        # except AssertionError:
-        #     if text.strip() not in self.bad_sentence_endings:
-        #         self.bad_sentence_endings.add(text.strip())
-        #         print(f"{file_path}:{line} Not Sentence: {text.strip()}")
-        self.text = text
-        self.file_path = file_path
-        self.module = module
-        self.sentence_type = sentence_type
-        self.line = line
-        self.db_idx = db_idx
+    text: str
+    file_path: str
+    module: list[str]
+    sentence_type: TermType
+    line: int
+    db_idx: Optional[int]
 
     def __hash__(self) -> int:
         tup_module = tuple(self.module)
-        # return hash(
-        #     (self.text, self.file_path, tup_module, self.sentence_type, self.line)
-        # )
-        # The filepaths cause problems because they are different depending on where the
-        # data was collected
-        return hash((self.text, tup_module, self.sentence_type, self.line))
+        return hash(
+            (self.text, self.file_path, tup_module, self.sentence_type, self.line)
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Sentence):
             return False
         return hash(self) == hash(other)
-
-    def is_lemma_or_axiom(self) -> bool:
-        return self.sentence_type in (
-            TermType.COROLLARY,
-            TermType.FACT,
-            TermType.LEMMA,
-            TermType.PROPERTY,
-            TermType.REMARK,
-            TermType.THEOREM,
-        )
 
     def to_db_sentence(self) -> DBSentence:
         return DBSentence(
@@ -136,6 +92,7 @@ class Sentence:
             json.loads(db_sentence.module),
             TermType[db_sentence.sentence_type.split(".")[1]],
             db_sentence.line,
+            None,
         )
 
     def to_json(self, sentence_db: SentenceDB, insert_allowed: bool) -> Any:
@@ -191,20 +148,34 @@ class Sentence:
         module = json_data["module"]
         sentence_type = TermType[json_data["type"].split(".")[1]]
         line = json_data["line"]
-        return cls(text, file_path, module, sentence_type, line)
+        return cls(text, file_path, module, sentence_type, line, None)
 
     @classmethod
     def from_text(cls, text: str, term_type: TermType) -> Sentence:
         file_path = ""
         module = []
         line = -1
-        return cls(text, file_path, module, term_type, line)
+        return cls(text, file_path, module, term_type, line, None)
 
 
+st.register_type_strategy(
+    Sentence,
+    st.builds(
+        Sentence,
+        st.text(),
+        st.text(),
+        st.lists(st.text()),
+        st.from_type(TermType),
+        st.integers(min_value=0, max_value=2**16),
+        st.none(),
+    ),
+)
+
+
+@dataclass
 class Term:
-    def __init__(self, term: Sentence, term_context: list[Sentence]):
-        self.term = term
-        self.term_context = term_context
+    term: Sentence
+    term_context: list[Sentence]
 
     def __hash__(self) -> int:
         """
@@ -243,19 +214,10 @@ class Term:
         return cls(term, context)
 
 
+@dataclass
 class Step:
-    bad_tactic_endings: set[str] = set()
-
-    def __init__(self, text: str, context: list[Sentence]) -> None:
-        tactic_end_pattern = re.compile(r"([{}])|(\.)|([+\-*]+)$")
-        try:
-            assert tactic_end_pattern.search(text.strip()) != None
-        except AssertionError:
-            if text.strip() not in self.bad_tactic_endings:
-                self.bad_tactic_endings.add(text.strip())
-                print("Bad Tactic Ending", text)
-        self.text = text
-        self.context = context
+    text: str
+    context: list[Sentence]
 
     def to_json(self, sentence_db: SentenceDB, insert_allowed: bool) -> Any:
         return {
@@ -299,7 +261,10 @@ class Goal:
     def from_json(cls, json_data: str) -> Goal:
         assert type(json_data) == str
         hyp_goal = json_data.split("\n\n")
-        assert len(hyp_goal) <= 2
+        try:
+            assert len(hyp_goal) <= 2
+        except AssertionError:
+            print(hyp_goal)
         assert len(hyp_goal) > 0
         if len(hyp_goal) == 1:
             return cls([], hyp_goal[0])
@@ -307,18 +272,22 @@ class Goal:
         return cls(hyps, hyp_goal[1])
 
 
+hypothesis.strategies.register_type_strategy(
+    Goal,
+    st.builds(
+        Goal,
+        st.lists(st.text(alphabet=string.ascii_letters), min_size=0),
+        st.text(alphabet=string.ascii_letters),
+    ),
+)
+
+
+@dataclass
 class FocusedStep:
-    def __init__(
-        self,
-        term: Term,
-        step: Step,
-        n_step: int,
-        goals: list[Goal],
-    ) -> None:
-        self.term = term
-        self.step = step
-        self.n_step = n_step
-        self.goals = goals
+    term: Term
+    step: Step
+    n_step: int
+    goals: list[Goal]
 
     def __hash__(self) -> int:
         # Can make more strict. This will do for now
@@ -452,14 +421,23 @@ class Proof:
         return cls(theorem, steps, proof_idx)
 
 
+st.register_type_strategy(
+    Proof,
+    st.builds(
+        Proof,
+        st.from_type(Term),
+        st.lists(st.from_type(FocusedStep), min_size=0),
+        st.integers(),
+    ),
+)
+
+
+@dataclass
 class FileContext:
-    def __init__(
-        self, file: str, workspace: str, repository: str, avail_premises: list[Sentence]
-    ) -> None:
-        self.file = file
-        self.workspace = workspace
-        self.repository = repository
-        self.avail_premises = avail_premises
+    file: str
+    workspace: str
+    repository: str
+    avail_premises: list[Sentence]
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, FileContext):
@@ -547,6 +525,36 @@ class FileContext:
                 return cls.from_verbose_json(a, sentence_db)
 
 
+@st.composite
+def file_contexts_from_project(draw, project_prefix: str) -> FileContext:
+    file_base = draw(st.text(alphabet=string.ascii_letters, min_size=1))
+    file_path = Path(project_prefix) / f"{file_base}.v"
+    return FileContext(
+        str(file_path),
+        project_prefix,
+        project_prefix,
+        draw(st.lists(st.from_type(Sentence), min_size=0)),
+    )
+
+
+@st.composite
+def file_contexts(draw) -> FileContext:
+    workspace = draw(st.text(alphabet=string.ascii_letters, min_size=1))
+    file_path = (
+        Path(workspace)
+        / f"{draw(st.text(alphabet=string.ascii_letters, min_size=1))}.v"
+    )
+    return FileContext(
+        str(file_path),
+        workspace,
+        workspace,
+        draw(st.lists(st.from_type(Sentence), min_size=0)),
+    )
+
+
+st.register_type_strategy(FileContext, file_contexts())
+
+
 @dataclass
 class StepID:
     file: str
@@ -593,7 +601,7 @@ class DatasetFile:
         self.out_of_file_avail_premises = self.__get_oof_avail_premises()
         self.in_file_avail_premises = self.__get_in_file_avail_premises()
         self.dependencies = self.__get_dp_dependencies()
-        self.__cached_dp_name: Optional[str] = None
+        self.__cached_dp_names: dict[str, str] = {}
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DatasetFile):
@@ -606,16 +614,16 @@ class DatasetFile:
 
     @property
     def dp_name(self) -> str:
-        if self.__cached_dp_name is not None:
-            return self.__cached_dp_name
+        if self.file_context.file in self.__cached_dp_names:
+            return self.__cached_dp_names[self.file_context.file]
         dp_names = self.__get_dp_norm_and_unorm_name(self.file_context.file)
         if dp_names is None:
             raise ValueError(
                 f"Expected data path {self.file_context.file} to have subpath starting with 'repos'"
             )
         norm_name, _ = dp_names
-        self.__cached_dp_name = norm_name
-        return self.__cached_dp_name
+        self.__cached_dp_names[self.file_context.file] = norm_name
+        return norm_name
 
     def __get_dp_norm_and_unorm_name(
         self, data_file_path: str
@@ -782,6 +790,22 @@ class DatasetFile:
         return cls(file_context, proofs)
 
 
+@st.composite
+def dataset_file_from_project(draw, project_prefix: str) -> DatasetFile:
+    file_context = draw(file_contexts_from_project(project_prefix))
+    return DatasetFile(file_context, draw(st.lists(st.from_type(Proof), min_size=0)))
+
+
+st.register_type_strategy(
+    DatasetFile,
+    st.builds(
+        DatasetFile,
+        st.from_type(FileContext),
+        st.lists(st.from_type(Proof), min_size=0),
+    ),
+)
+
+
 class DPCache:
     def __init__(self, cache_size: int = 128):
         self.__cached_dps: dict[str, DatasetFile] = {}
@@ -804,68 +828,3 @@ class DPCache:
         if self.__cache_size < len(self.__cached_keys):
             del self.__cached_dps[self.__cached_keys.pop()]
         return dp_obj
-
-
-def process_dp(orig_dp_loc: str, new_dp_loc: str, sentence_db_loc: Path) -> None:
-    sentence_db = SentenceDB.load(sentence_db_loc)
-    t1 = time.time()
-    dp = DatasetFile.from_directory(orig_dp_loc, sentence_db)
-    t2 = time.time()
-    print("Load time: ", t2 - t1)
-    dp.save(new_dp_loc, sentence_db, True)
-    t3 = time.time()
-    print("Save time: ", t3 - t2)
-    sentence_db.close()
-
-
-def process_dps(orig_dp_dir: str, new_dp_dir: str, sentence_db_loc: Path) -> None:
-    sentence_db = SentenceDB.load(sentence_db_loc)
-    for dp_name in os.listdir(orig_dp_dir):
-        old_loc = os.path.join(orig_dp_dir, dp_name)
-        new_loc = os.path.join(new_dp_dir, dp_name)
-        t1 = time.time()
-        dp = DatasetFile.from_directory(old_loc, sentence_db)
-        t2 = time.time()
-        print("Load time: ", t2 - t1)
-        dp.save(new_loc, sentence_db, True)
-        t3 = time.time()
-        print("Save time: ", t3 - t2)
-    sentence_db.close()
-
-
-def get_mp_args(
-    orig_dp_dir: str, new_dp_dir: str, sentence_db_loc: str
-) -> list[tuple[str, str, str]]:
-    transform_args: list[tuple[str, str, str]] = []
-    for dp_name in os.listdir(orig_dp_dir):
-        old_loc = os.path.join(orig_dp_dir, dp_name)
-        new_loc = os.path.join(new_dp_dir, dp_name)
-        transform_args.append((old_loc, new_loc, sentence_db_loc))
-    return transform_args
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        "Convert data-points into a more concise format for faster loading."
-    )
-    parser.add_argument(
-        "orig_dp_dir", help="Directory containing original verbose data points files."
-    )
-    parser.add_argument(
-        "new_dp_dir", help="Directory to save new concise data points files."
-    )
-    parser.add_argument("sentence_db_loc", help="Location of sentence database.")
-
-    args = parser.parse_args(sys.argv[1:])
-    # num_procs = 0
-    # if args.num_procs is not None:
-    #     num_procs = args.num_procs
-
-    if not os.path.exists(args.sentence_db_loc):
-        SentenceDB.create(args.sentence_db_loc)
-
-    process_dps(args.orig_dp_dir, args.new_dp_dir, args.sentence_db_loc)
-
-    # transformation_args = get_mp_args(args.orig_dp_dir, args.new_dp_dir, args.sentence_db_loc)
-    # with mp.Pool(args.num_procs) as pool:
-    #     pool.starmap(process_dp, transformation_args)

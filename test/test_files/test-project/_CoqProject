@@ -1,0 +1,3 @@
+-Q theories RangoTest
+theories/ListDefs.v
+theories/ListThms.v

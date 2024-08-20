@@ -28,6 +28,17 @@ __pycache__
 .lia.cache
 .nia.cache
 .nra.cache
+*.vo
+*.vok
+*.vos
+*.glob
+*.aux
+.Makefile.d
+Makefile.conf
 
 # IDE files
 .vscode
+
+# Testing
+.coverage
+/test/test_files/test-data
