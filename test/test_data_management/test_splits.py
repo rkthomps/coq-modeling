@@ -1,6 +1,7 @@
 import os
 import pdb
 import shutil
+import ipdb
 from pathlib import Path
 
 
@@ -15,11 +16,12 @@ from data_management.splits import (
     DATA_POINTS_NAME,
     REPOS_NAME,
     PredefinedSplitConfig,
+    RandomSplitConfig,
 )
 from data_management.sentence_db import SentenceDB
 from hypothesis import strategies as st
 
-from util.test_utils import TEST_FILES_LOC
+from util.test_utils import TEST_FILES_LOC, TEST_TMP_LOC
 
 from hypothesis import given
 
@@ -52,6 +54,22 @@ class TestSplits:
         for proof in data_point.proofs:
             thms.add(proof.theorem.term.text)
         return thms
+
+    def test_random_data_split(self):
+        config = RandomSplitConfig(0.8, 0.1, 0.1)
+        split = DataSplit.create(config, self.data_loc, self.sentence_db)
+        all_files = self.train_files + self.val_files + self.test_files
+        assert 0.1 * len(all_files) <= len(split.test_files)
+        assert 0.1 * len(all_files) <= len(split.val_files) + 1
+        assert 0.8 * len(all_files) <= len(split.train_files) + 1
+        assert set(split.test_files).isdisjoint(set(split.val_files))
+        assert set(split.test_files).isdisjoint(set(split.train_files))
+        assert set(split.val_files).isdisjoint(set(split.train_files))
+
+        os.makedirs(TEST_TMP_LOC, exist_ok=True)
+        split.save(TEST_TMP_LOC / "split.json")
+        loaded = DataSplit.load(TEST_TMP_LOC / "split.json")
+        assert split == loaded
 
     def test_create_predefined_data_split(self):
         config = PredefinedSplitConfig(
@@ -111,6 +129,11 @@ class TestSplits:
             if not file.dp_name in [f.dp_name for f in split.val_files]:
                 assert not self.__get_dp_thms(file).isdisjoint(test_thms)
 
+        os.makedirs(TEST_TMP_LOC, exist_ok=True)
+        split.save(TEST_TMP_LOC / "split.json")
+        loaded = DataSplit.load(TEST_TMP_LOC / "split.json")
+        assert split == loaded
+
     @staticmethod
     def create_test_data_points(
         projects: list[str],
@@ -119,8 +142,8 @@ class TestSplits:
         sentence_db_loc: Path,
     ):
         dp_names: set[str] = set()
-        sentence_db = SentenceDB.create(sentence_db_loc)
         os.makedirs(data_loc / DATA_POINTS_NAME, exist_ok=True)
+        sentence_db = SentenceDB.create(sentence_db_loc)
         for project in projects:
             os.makedirs(data_loc / REPOS_NAME / project, exist_ok=True)
             project_data_gen = dataset_file_from_project(str(DATASET_PREFIX / project))
@@ -134,6 +157,7 @@ class TestSplits:
 
                 dp_names.add(p.dp_name)
                 p.save(data_loc / DATA_POINTS_NAME / p.dp_name, sentence_db, True)
+        print(len(dp_names))
 
     @staticmethod
     def load_files(data_loc: Path, sentence_db: SentenceDB) -> list[DatasetFile]:
@@ -198,7 +222,9 @@ class TestSplits:
 
         assert len(cls.test_files) == len(cls.test_projects) * cls.files_per_project
         assert len(cls.val_files) == len(cls.val_projects) * cls.files_per_project
-        assert len(cls.train_files) == len(all_projects) * cls.files_per_project
+        assert (len(cls.train_files) + len(cls.test_files) + len(cls.val_files)) == len(
+            all_projects
+        ) * cls.files_per_project
 
     @classmethod
     def teardown_class(cls):
@@ -209,5 +235,6 @@ if __name__ == "__main__":
     TestSplits.setup_class()
     try:
         TestSplits().test_create_predefined_data_split()
+        TestSplits().test_random_data_split()
     finally:
         TestSplits.teardown_class()

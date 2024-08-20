@@ -13,13 +13,6 @@ from data_management.dataset_file import (
     Sentence,
     Goal,
 )
-from tactic_gen.n_step_sampler import (
-    NStepSampler,
-    NStepConf,
-    n_step_conf_from_yaml,
-    n_step_from_conf,
-)
-from proof_retrieval.mine_goals import GoalRecord
 from premise_selection.rerank_client import (
     PremiseClient,
     PremiseConf,

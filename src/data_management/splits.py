@@ -29,7 +29,6 @@ from data_management.create_file_data_point import DATASET_PREFIX
 from data_management.dataset_file import (
     DatasetFile,
     FileContext,
-    FILE_CONTEXT_NAME,
     Proof,
 )
 from data_management.sentence_db import SentenceDB
@@ -238,7 +237,7 @@ class DataSplit:
         cls, data_loc: Path, sentence_db: SentenceDB
     ) -> list[tuple[FileInfo, set[str]]]:
         files: list[tuple[FileInfo, set[str]]] = []
-        for f in data_loc.iterdir():
+        for f in (data_loc / DATA_POINTS_NAME).iterdir():
             f_dp = DatasetFile.load(f, sentence_db, metadata_only=True)
             assert f_dp.file_context.file.startswith(str(DATASET_PREFIX))
             assert f_dp.file_context.workspace.startswith(str(DATASET_PREFIX))

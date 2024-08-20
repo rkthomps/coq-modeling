@@ -1,4 +1,7 @@
 [run]
-omit =
-    /coqpyt/*
-    */__init__.py
+include =
+    src/**
+    scripts/**
+
+omit = 
+    **/__init__.py

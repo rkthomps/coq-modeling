@@ -17,15 +17,11 @@ from data_management.sentence_db import SentenceDB, DBSentence
 
 from coqpyt.coq.structs import TermType
 
-from util.constants import DATA_POINTS_NAME
+from util.constants import DATA_POINTS_NAME, RANGO_LOGGER
 
-from util.util import get_basic_logger
+import logging
 
-_logger = get_basic_logger(__name__)
-
-
-STEPS_NAME = "steps.jsonl"
-FILE_CONTEXT_NAME = "file_context.jsonl"
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 ID_FORM = re.compile(r"[^\[\]\{\}\(\):=,\s]+")
@@ -163,7 +159,7 @@ st.register_type_strategy(
     st.builds(
         Sentence,
         st.text(),
-        st.text(),
+        st.text(alphabet=string.ascii_lowercase, min_size=1),
         st.lists(st.text()),
         st.from_type(TermType),
         st.integers(min_value=0, max_value=2**16),
@@ -261,10 +257,7 @@ class Goal:
     def from_json(cls, json_data: str) -> Goal:
         assert type(json_data) == str
         hyp_goal = json_data.split("\n\n")
-        try:
-            assert len(hyp_goal) <= 2
-        except AssertionError:
-            print(hyp_goal)
+        assert len(hyp_goal) <= 2
         assert len(hyp_goal) > 0
         if len(hyp_goal) == 1:
             return cls([], hyp_goal[0])
@@ -276,8 +269,8 @@ hypothesis.strategies.register_type_strategy(
     Goal,
     st.builds(
         Goal,
-        st.lists(st.text(alphabet=string.ascii_letters), min_size=0),
-        st.text(alphabet=string.ascii_letters),
+        st.lists(st.text(alphabet=string.ascii_letters, min_size=1), min_size=0),
+        st.text(alphabet=string.ascii_letters, min_size=1),
     ),
 )
 
@@ -505,29 +498,10 @@ class FileContext:
                 seen_sentences.add(sentence)
         return cls(file, workspace, repository, avail_premises)
 
-    @classmethod
-    def from_directory(cls, dir_path: str, sentence_db: SentenceDB) -> FileContext:
-        file_context_loc = os.path.join(dir_path, FILE_CONTEXT_NAME)
-        file_context_data: Optional[Any] = None
-        with open(file_context_loc, "r") as fin:
-            for line in fin:
-                match file_context_data:
-                    case None:
-                        file_context_data = json.loads(line)
-                    case _:
-                        raise ValueError(
-                            f"File context data {file_context_loc} has more than one line."
-                        )
-        match file_context_data:
-            case None:
-                raise ValueError(f"File context data {file_context_loc} had no lines")
-            case a:
-                return cls.from_verbose_json(a, sentence_db)
-
 
 @st.composite
 def file_contexts_from_project(draw, project_prefix: str) -> FileContext:
-    file_base = draw(st.text(alphabet=string.ascii_letters, min_size=1))
+    file_base = draw(st.text(alphabet=string.ascii_lowercase, min_size=1))
     file_path = Path(project_prefix) / f"{file_base}.v"
     return FileContext(
         str(file_path),
@@ -539,10 +513,10 @@ def file_contexts_from_project(draw, project_prefix: str) -> FileContext:
 
 @st.composite
 def file_contexts(draw) -> FileContext:
-    workspace = draw(st.text(alphabet=string.ascii_letters, min_size=1))
+    workspace = draw(st.text(alphabet=string.ascii_lowercase, min_size=1))
     file_path = (
         Path(workspace)
-        / f"{draw(st.text(alphabet=string.ascii_letters, min_size=1))}.v"
+        / f"{draw(st.text(alphabet=string.ascii_lowercase, min_size=1))}.v"
     )
     return FileContext(
         str(file_path),
@@ -768,26 +742,6 @@ class DatasetFile:
     def proofs_from_jsonl(cls, jsonl_data: Any, sentence_db: SentenceDB) -> list[Proof]:
         steps = [FocusedStep.from_json(s, sentence_db) for s in jsonl_data]
         return cls.proofs_from_steps(steps)
-
-    @classmethod
-    def get_proofs(cls, dset_loc: str, sentence_db: SentenceDB) -> list[Proof]:
-        steps_loc = os.path.join(dset_loc, STEPS_NAME)
-        steps: list[FocusedStep] = []
-        with open(steps_loc, "r") as fin:
-            for line in fin:
-                json_data = json.loads(line)
-                steps.append(FocusedStep.from_json(json_data, sentence_db))
-
-        if len(steps) == 0:
-            return []
-
-        return cls.proofs_from_steps(steps)
-
-    @classmethod
-    def from_directory(cls, dir_path: str, sentence_db: SentenceDB) -> DatasetFile:
-        file_context = FileContext.from_directory(dir_path, sentence_db)
-        proofs = cls.get_proofs(dir_path, sentence_db)
-        return cls(file_context, proofs)
 
 
 @st.composite

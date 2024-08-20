@@ -25,6 +25,7 @@ __pycache__
 .DS_STORE
 .hypothesis
 .coverage
+.pytest_cache
 
 # Coq Files
 .lia.cache
@@ -43,4 +44,6 @@ Makefile.conf
 
 # Testing
 .coverage
+/htmlcov
 /test/test_files/test-data
+/test/test_files/tmp
