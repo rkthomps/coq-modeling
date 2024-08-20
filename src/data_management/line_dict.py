@@ -20,8 +20,10 @@ from data_management.dataset_file import DatasetFile, Proof, SentenceDB
 from data_management.splits import DataSplit, Split
 from model_deployment.fast_client import FastLspClient, ClientWrapper
 
-from util.util import _logger, get_fresh_path
-from util.constants import TMP_LOC
+from util.constants import TMP_LOC, RANGO_LOGGER
+import logging
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 class LineDict:
@@ -30,7 +32,7 @@ class LineDict:
 
     def to_json(self) -> Any:
         return {"line_num_dict": self.line_num_dict}
-    
+
     def has_file(self, file_name: str) -> bool:
         return file_name in self.line_num_dict
 

@@ -1,10 +1,10 @@
-from typing import Any
+# from typing import Any
 import os
 import shutil
 import ast
 import time
 import pickle
-from typing import TypeVar, Optional
+from typing import TypeVar, Generic, Optional
 from pathlib import Path
 
 
@@ -16,8 +16,10 @@ class QueueNotInitializedError(Exception):
     pass
 
 
-# class FileQueue[T]:
-class FileQueue:
+T = TypeVar("T")
+
+
+class FileQueue(Generic[T]):
     def __init__(self, queue_loc: Path, sleep_time: float = 0.01):
         self.queue_loc = queue_loc
         self.sleep_time = sleep_time
@@ -58,11 +60,11 @@ class FileQueue:
         shutil.rmtree(self.lock_loc)
         assert not self.__has_lock()
 
-    def put_items(self, items: list[Any]):
+    def put_items(self, items: list[T]):
         self.__check_initialized()
         pass
 
-    def put_all(self, items: list[Any]):
+    def put_all(self, items: list[T]):
         self.__check_initialized()
         self.__get_lock()
         try:
@@ -73,7 +75,7 @@ class FileQueue:
         finally:
             self.__release_lock()
 
-    def put(self, item: Any):
+    def put(self, item: T):
         self.__check_initialized()
         self.__get_lock()
         try:
@@ -94,7 +96,7 @@ class FileQueue:
         finally:
             self.__release_lock()
 
-    def peek(self) -> Any:
+    def peek(self) -> T:
         self.__check_initialized()
         self.__get_lock()
         try:
@@ -111,7 +113,7 @@ class FileQueue:
         finally:
             self.__release_lock()
 
-    def get(self) -> Any:
+    def get(self) -> T:
         self.__check_initialized()
         self.__get_lock()
         try:

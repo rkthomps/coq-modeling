@@ -6,10 +6,8 @@ import functools
 import ipdb
 import re
 
-from model_deployment.search_tree import SearchNode
 from model_deployment.fast_client import ClientWrapper
 
-from util.coqpyt_utils import get_all_goals
 from util.util import get_basic_logger
 
 _logger = get_basic_logger(__name__)
@@ -183,16 +181,6 @@ class ParsedObligations:
             if not covered:
                 return False
         return True
-
-    def redundant_to(
-        self,
-        other_obligations: list[ParsedObligations],
-        other_nodes: list[SearchNode],
-    ) -> Optional[SearchNode]:
-        for i, other in enumerate(other_obligations):
-            if self.as_hard_as(other):
-                return other_nodes[i]
-        return None
 
 
 class CoqName:

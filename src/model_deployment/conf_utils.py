@@ -48,7 +48,6 @@ from model_deployment.tactic_gen_client import (
     DecoderTacticGenConf,
     LocalTacticGenClientConf,
 )
-from model_deployment.observe_premise_selection import PremiseObserveConf
 from evaluation.eval_utils import EvalConf, PremiseEvalConf
 from util.util import get_basic_logger, read_port_map
 from util.util import FlexibleUrl, get_flexible_url

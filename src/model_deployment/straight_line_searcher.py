@@ -5,13 +5,7 @@ from dataclasses import dataclass
 import math
 import time
 
-from coqpyt.coq.lsp.structs import Goal
-from tactic_gen.lm_example import LmExample
-
 from data_management.dataset_file import DatasetFile, Proof
-from model_deployment.model_result import ModelResult, filter_recs
-from proof_retrieval.mine_goals import GoalRecord
-from model_deployment.goal_comparer import GoalScorer, AlphaGoalComparer
 from model_deployment.proof_manager import ProofManager, TacticResult
 from model_deployment.tactic_gen_client import TacticGenClient
 

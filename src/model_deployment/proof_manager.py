@@ -29,8 +29,6 @@ from tactic_gen.lm_example import (
 )
 
 from model_deployment.fast_client import FastLspClient, ClientWrapper
-from proof_retrieval.mine_goals import get_goal_record, GoalRecord
-from util.coqpyt_utils import get_all_goals
 from util.util import get_basic_logger
 
 from coqpyt.coq.lsp.client import (
@@ -62,7 +60,6 @@ class ProofCheckResult:
     tactic_result: TacticResult
     attempted_steps: list[str]
     current_goals: Optional[list[Goal]]
-    goal_record: Optional[GoalRecord]
     new_proof: Optional[Proof]
     steps: Optional[list[CStep]]
 
@@ -75,7 +72,6 @@ class ProofCheckResult:
             TacticResult.INVALID,
             attempted_steps,
             current_goals,
-            goal_record,
             new_dataset_file,
             None,
         )
@@ -212,8 +208,9 @@ class ProofManager:
         # TODO ADD PREFIX TO THIS DSET FILE
         initial_proof_result = self.check_proof("", self.proof_info.proof_term)
         assert initial_proof_result.new_proof is not None
-        return DatasetFile(self.file_context, self.same_file_proofs + [initial_proof_result.new_proof])
-    
+        return DatasetFile(
+            self.file_context, self.same_file_proofs + [initial_proof_result.new_proof]
+        )
 
     def build_dset_file(self, new_proof: Proof) -> DatasetFile:
         return DatasetFile(
@@ -221,28 +218,11 @@ class ProofManager:
             self.same_file_proofs + [new_proof],
         )
 
-
     def check_valid(self, client: FastLspClient) -> bool:
         for diagnostic in client.lsp_endpoint.diagnostics[self.fast_client.file_uri]:
             if diagnostic.severity == 1:
                 return False
         return True
-
-    def get_goal_record(self, steps: list[CStep]) -> Optional[GoalRecord]:
-        new_step_idx = len(steps) - 1
-        end_pos = steps[new_step_idx].ast.range.end
-        goal_dict: dict[int, Optional[GoalAnswer]] = {}
-        record, version = get_goal_record(
-            self.goal_client.client,
-            self.goal_client.file_uri,
-            self.goal_client.file_version,
-            end_pos,
-            steps,
-            new_step_idx,
-            goal_dict,
-        )
-        self.goal_client.set_version(version)
-        return record
 
     def gather_steps(self, steps: list[CStep]) -> tuple[list[CStep], list[CStep]]:
         agg_str = ""

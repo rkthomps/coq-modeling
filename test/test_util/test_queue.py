@@ -1,5 +1,3 @@
-
-
 import os
 from pathlib import Path
 
@@ -7,9 +5,10 @@ import pytest
 
 from util.file_queue import FileQueue, EmptyFileQueueError, QueueNotInitializedError
 
+
 class TestQueue:
     def test_get_and_put(self):
-        queue = FileQueue[str](self.queue_loc)
+        queue: FileQueue[str] = FileQueue(self.queue_loc)
         queue.initialize()
         assert queue.is_empty()
         s1 = "hi bob"
@@ -27,9 +26,9 @@ class TestQueue:
         assert s2 == queue.get()
         with pytest.raises(EmptyFileQueueError) as _:
             queue.get()
-    
+
     def test_uninitialized(self):
-        queue = FileQueue[int](Path("test_queue"))
+        queue: FileQueue[int] = FileQueue(Path("test_queue"))
         with pytest.raises(QueueNotInitializedError) as _:
             queue.put(1)
         with pytest.raises(QueueNotInitializedError) as _:
@@ -49,4 +48,3 @@ class TestQueue:
     def teardown_class(cls):
         if cls.queue_loc.exists():
             os.remove(cls.queue_loc)
-        
