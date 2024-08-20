@@ -5,6 +5,7 @@
 /evaluations/
 /reports/
 /docker/
+/logs/
 
 # Slurm
 /slurm/*
@@ -23,6 +24,7 @@
 __pycache__
 .DS_STORE
 .hypothesis
+.coverage
 
 # Coq Files
 .lia.cache

@@ -10,7 +10,14 @@ import datetime
 from dataclasses import dataclass
 
 from coqpyt.coq.base_file import CoqFile
-from util.constants import PORT_MAP_NAME, TMP_LOC
+from util.constants import (
+    PORT_MAP_NAME,
+    TMP_LOC,
+    SRC_LOC,
+    SCRIPTS_LOC,
+    LOG_LOC,
+    RANGO_LOGGER,
+)
 
 
 @dataclass
@@ -96,6 +103,39 @@ def get_log_level() -> int:
             return logging.WARNING
 
 
+def set_rango_logger(main_path: str, level: int):
+    log_p = Path(main_path).resolve()
+    if log_p.resolve().is_relative_to(SRC_LOC.resolve()):
+        log_dir = LOG_LOC / "src" / log_p.relative_to(SRC_LOC.resolve()).with_suffix("")
+    elif log_p.resolve().is_relative_to(SCRIPTS_LOC.resolve()):
+        log_dir = (
+            LOG_LOC
+            / "scripts"
+            / log_p.relative_to(SCRIPTS_LOC.resolve()).with_suffix("")
+        )
+    else:
+        raise ValueError(f"Could not find log location for {log_p}")
+
+    os.makedirs(log_dir, exist_ok=True)
+    logtime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_loc = log_dir / f"{logtime}.log"
+
+    rango_logger = logging.getLogger(RANGO_LOGGER)
+    rango_logger.setLevel(level)
+    assert len(rango_logger.handlers) == 0
+    rango_logger.handlers.clear()
+    fileHandler = logging.FileHandler(log_loc)
+    fileHandler.setFormatter(
+        logging.Formatter("%(asctime)s; %(levelname)s; %(message)s")
+    )
+    rango_logger.addHandler(fileHandler)
+
+    streamHandler = logging.StreamHandler()
+    streamHandler.setFormatter(logging.Formatter("%(levelname)s; %(message)s"))
+    rango_logger.addHandler(streamHandler)
+    rango_logger.propagate = False
+
+
 def get_basic_logger(name: str) -> logging.Logger:
     level = get_log_level()
     logger = logging.Logger(name)
@@ -108,9 +148,6 @@ def get_basic_logger(name: str) -> logging.Logger:
     return logger
 
 
-_logger = get_basic_logger(__name__)
-
-
 def get_simple_steps(proof_text: str) -> list[str]:
     tmp_path = get_fresh_path(Path("."), "tmp.v")
     try:
@@ -120,37 +157,3 @@ def get_simple_steps(proof_text: str) -> list[str]:
             return [s.text for s in coq_file.steps]
     finally:
         os.remove(tmp_path)
-
-
-class LogEntry:
-    log_pattern = re.compile(r"(.*?); (.*?); (.*?); (.*)")
-
-    def __init__(
-        self, time: datetime.datetime, name: str, entry_type: str, message: str
-    ) -> None:
-        self.time = time
-        self.name = name
-        self.entry_type = entry_type
-        self.message = message
-
-    @classmethod
-    def from_line(cls, line: str) -> LogEntry:
-        log_match = cls.log_pattern.match(line)
-        if log_match is None:
-            raise ValueError(f"Could not parse log line {line}")
-        time_str, name, entry_type, message = log_match.groups()
-        time = datetime.datetime.strptime(time_str + "000", r"%Y-%m-%d %H:%M:%S,%f")
-        return cls(time, name, entry_type, message)
-
-
-def get_log_entries(file: str) -> list[LogEntry]:
-    log_entries: list[LogEntry] = []
-    with open(file, "r") as fin:
-        for line in fin:
-            try:
-                log_entry = LogEntry.from_line(line.strip())
-                log_entries.append(log_entry)
-            except ValueError:
-                _logger.debug(f"Could not parse line: {line}")
-                pass
-    return log_entries
