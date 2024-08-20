@@ -23,6 +23,7 @@
 __pycache__
 .DS_STORE
 .hypothesis
+.coverage
 
 # Coq Files
 .lia.cache
