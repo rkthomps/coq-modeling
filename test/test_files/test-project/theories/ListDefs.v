@@ -30,4 +30,21 @@ Fixpoint rev {α : Type} (l : list α): list α :=
     | h :: t    => (rev t) ++ [h]
   end.
 
+
+Fixpoint len {α : Type} (l : list α): nat := 
+  match l with
+    | nil => 0
+    | h :: t => 1 + len t
+  end.
+
+
+Theorem app_len_plus: forall {α : Type} (l1 l2: list α),
+  len (l1 ++ l2) = len l1 + len l2.
+Proof.
+  intros α l1 l2.
+  induction l1.
+  - reflexivity. 
+  - simpl. rewrite IHl1. reflexivity.
+Qed.
+
 End Test.
