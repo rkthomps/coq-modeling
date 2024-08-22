@@ -9,13 +9,35 @@ import sys, os
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
 from coqpyt.coq.structs import TermType
 
-from util.util import get_basic_logger
+from enum import Enum
+from util.constants import RANGO_LOGGER
+import logging
 
-_logger = get_basic_logger(__name__)
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
-@dataclass
+class KnownFilter(Enum):
+    ALL = 0
+    PROJ = 1
+    THM = 2
+    PROJ_THM = 3
+
+    @classmethod
+    def from_str(cls, filter_str: str) -> KnownFilter:
+        if filter_str == "all":
+            return cls.ALL
+        if filter_str == "proj":
+            return cls.PROJ
+        if filter_str == "thm":
+            return cls.THM
+        if filter_str == "proj_thm":
+            return cls.PROJ_THM
+        raise ValueError(f"Unknown filter string {filter_str}")
+
+
+@dataclass(frozen=True)
 class PremiseFilterConf:
+    known_filter: Optional[KnownFilter]
     coq_excludes: list[str]
     non_coq_excludes: list[str]
     general_excludes: list[str]
@@ -23,6 +45,7 @@ class PremiseFilterConf:
     def __hash__(self) -> int:
         return hash(
             (
+                self.known_filter,
                 tuple(self.coq_excludes),
                 tuple(self.non_coq_excludes),
                 tuple(self.general_excludes),
@@ -31,7 +54,11 @@ class PremiseFilterConf:
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseFilterConf:
+        known_filter = None
+        if known_filter in yaml_data:
+            known_filter = KnownFilter.from_str(yaml_data["known_filter"])
         return cls(
+            known_filter,
             yaml_data["coq_excludes"],
             yaml_data["non_coq_excludes"],
             yaml_data["general_excludes"],
@@ -61,26 +88,7 @@ class PremiseFilter:
         self.coq_excludes = coq_excludes
         self.non_coq_excludes = non_coq_excludes
         self.general_excludes = general_excludes
-        # self.__print_warnings()
         self.__oof_cache: Optional[OOFCache] = None
-
-    def __print_warnings(self) -> None:
-        if len(self.coq_excludes) > 0:
-            _logger.info(
-                (
-                    f"Excluding term types {self.coq_excludes} for premise selection "
-                    "if they come from the coq standard library."
-                )
-            )
-        if len(self.non_coq_excludes) > 0:
-            _logger.info(
-                f"Excluding term types {self.non_coq_excludes} for premise selection "
-                "if they do not come from the coq standard library."
-            )
-        if len(self.general_excludes) > 0:
-            _logger.info(
-                f"Excluding term types {self.non_coq_excludes} for premise selection."
-            )
 
     def filter_premise(self, premise: Sentence) -> bool:
         if premise.sentence_type in self.general_excludes:
@@ -162,6 +170,16 @@ class PremiseFilter:
 
     @classmethod
     def from_conf(cls, conf: PremiseFilterConf) -> PremiseFilter:
+        if conf.known_filter is not None:
+            match conf.known_filter:
+                case KnownFilter.ALL:
+                    return NO_FILTER
+                case KnownFilter.PROJ:
+                    return PROJ_FILTER
+                case KnownFilter.THM:
+                    return THM_FILTER
+                case KnownFilter.PROJ_THM:
+                    return PROJ_THM_FILTER
         coq_excludes: list[TermType] = []
         for exclude in conf.coq_excludes:
             coq_excludes.append(TermType[exclude])
@@ -177,7 +195,7 @@ class PremiseFilter:
         return cls(coq_excludes, non_coq_excludes, general_excludes)
 
 
-NO_COQ_LEMMA_FILTER = PremiseFilter(
+PROJ_THM_FILTER = PremiseFilter(
     coq_excludes=[
         TermType.THEOREM,
         TermType.LEMMA,
@@ -225,5 +243,87 @@ NO_COQ_LEMMA_FILTER = PremiseFilter(
         TermType.DERIVE,
         TermType.OTHER,
     ],
+    general_excludes=[],
+)
+
+PROJ_FILTER = PremiseFilter(
+    coq_excludes=[
+        TermType.THEOREM,
+        TermType.LEMMA,
+        TermType.DEFINITION,
+        TermType.NOTATION,
+        TermType.INDUCTIVE,
+        TermType.COINDUCTIVE,
+        TermType.RECORD,
+        TermType.CLASS,
+        TermType.INSTANCE,
+        TermType.FIXPOINT,
+        TermType.COFIXPOINT,
+        TermType.SCHEME,
+        TermType.VARIANT,
+        TermType.FACT,
+        TermType.REMARK,
+        TermType.COROLLARY,
+        TermType.PROPOSITION,
+        TermType.PROPERTY,
+        TermType.OBLIGATION,
+        TermType.TACTIC,
+        TermType.RELATION,
+        TermType.SETOID,
+        TermType.FUNCTION,
+        TermType.DERIVE,
+        TermType.OTHER,
+    ],
+    non_coq_excludes=[],
+    general_excludes=[],
+)
+
+THM_FILTER = PremiseFilter(
+    coq_excludes=[
+        TermType.DEFINITION,
+        TermType.NOTATION,
+        TermType.INDUCTIVE,
+        TermType.COINDUCTIVE,
+        TermType.RECORD,
+        TermType.CLASS,
+        TermType.INSTANCE,
+        TermType.FIXPOINT,
+        TermType.COFIXPOINT,
+        TermType.SCHEME,
+        TermType.VARIANT,
+        TermType.OBLIGATION,
+        TermType.TACTIC,
+        TermType.RELATION,
+        TermType.SETOID,
+        TermType.FUNCTION,
+        TermType.DERIVE,
+        TermType.OTHER,
+    ],
+    non_coq_excludes=[
+        TermType.DEFINITION,
+        TermType.NOTATION,
+        TermType.INDUCTIVE,
+        TermType.COINDUCTIVE,
+        TermType.RECORD,
+        TermType.CLASS,
+        TermType.INSTANCE,
+        TermType.FIXPOINT,
+        TermType.COFIXPOINT,
+        TermType.SCHEME,
+        TermType.VARIANT,
+        TermType.OBLIGATION,
+        TermType.TACTIC,
+        TermType.RELATION,
+        TermType.SETOID,
+        TermType.FUNCTION,
+        TermType.DERIVE,
+        TermType.OTHER,
+    ],
+    general_excludes=[],
+)
+
+NO_FILTER = PremiseFilter(
+    coq_excludes=[],
+    non_coq_excludes=[],
     general_excludes=[],
 )
