@@ -30,7 +30,7 @@ class KnownFilter(Enum):
             return cls.PROJ
         if filter_str == "thm":
             return cls.THM
-        if filter_str == "proj_thm":
+        if filter_str == "proj-thm":
             return cls.PROJ_THM
         raise ValueError(f"Unknown filter string {filter_str}")
 
