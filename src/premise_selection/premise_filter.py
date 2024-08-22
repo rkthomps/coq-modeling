@@ -30,14 +30,13 @@ class KnownFilter(Enum):
             return cls.PROJ
         if filter_str == "thm":
             return cls.THM
-        if filter_str == "proj_thm":
+        if filter_str == "proj-thm":
             return cls.PROJ_THM
         raise ValueError(f"Unknown filter string {filter_str}")
 
 
 @dataclass(frozen=True)
 class PremiseFilterConf:
-    known_filter: Optional[KnownFilter]
     coq_excludes: list[str]
     non_coq_excludes: list[str]
     general_excludes: list[str]
@@ -45,7 +44,6 @@ class PremiseFilterConf:
     def __hash__(self) -> int:
         return hash(
             (
-                self.known_filter,
                 tuple(self.coq_excludes),
                 tuple(self.non_coq_excludes),
                 tuple(self.general_excludes),
@@ -55,10 +53,18 @@ class PremiseFilterConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> PremiseFilterConf:
         known_filter = None
-        if known_filter in yaml_data:
+        if "known_filter" in yaml_data:
             known_filter = KnownFilter.from_str(yaml_data["known_filter"])
+            match known_filter:
+                case KnownFilter.ALL:
+                    return NO_FILTER_CONF
+                case KnownFilter.PROJ:
+                    return PROJ_FILTER_CONF
+                case KnownFilter.THM:
+                    return THM_FILTER_CONF
+                case KnownFilter.PROJ_THM:
+                    return PROJ_THM_FILTER_CONF
         return cls(
-            known_filter,
             yaml_data["coq_excludes"],
             yaml_data["non_coq_excludes"],
             yaml_data["general_excludes"],
@@ -170,16 +176,6 @@ class PremiseFilter:
 
     @classmethod
     def from_conf(cls, conf: PremiseFilterConf) -> PremiseFilter:
-        if conf.known_filter is not None:
-            match conf.known_filter:
-                case KnownFilter.ALL:
-                    return cls.from_conf(NO_FILTER_CONF)
-                case KnownFilter.PROJ:
-                    return cls.from_conf(PROJ_FILTER_CONF)
-                case KnownFilter.THM:
-                    return cls.from_conf(THM_FILTER_CONF)
-                case KnownFilter.PROJ_THM:
-                    return cls.from_conf(PROJ_THM_FILTER_CONF)
         coq_excludes: list[TermType] = []
         for exclude in conf.coq_excludes:
             coq_excludes.append(TermType[exclude])
@@ -196,7 +192,6 @@ class PremiseFilter:
 
 
 PROJ_THM_FILTER_CONF = PremiseFilterConf(
-    known_filter=None,
     coq_excludes=[
         "THEOREM",
         "LEMMA",
@@ -248,7 +243,6 @@ PROJ_THM_FILTER_CONF = PremiseFilterConf(
 )
 
 PROJ_FILTER_CONF = PremiseFilterConf(
-    known_filter=None,
     coq_excludes=[
         "THEOREM",
         "LEMMA",
@@ -281,7 +275,6 @@ PROJ_FILTER_CONF = PremiseFilterConf(
 )
 
 THM_FILTER_CONF = PremiseFilterConf(
-    known_filter=None,
     coq_excludes=[
         "DEFINITION",
         "NOTATION",
@@ -326,7 +319,6 @@ THM_FILTER_CONF = PremiseFilterConf(
 )
 
 NO_FILTER_CONF = PremiseFilterConf(
-    known_filter=None,
     coq_excludes=[],
     non_coq_excludes=[],
     general_excludes=[],
