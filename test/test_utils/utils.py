@@ -8,6 +8,11 @@ TEST_PROJET_LOC = Path("test/test_files/test-project")
 TEST_FILES_LOC = Path("test/test_files")
 TEST_TMP_LOC = Path("test/test_files/tmp")
 
+TEST_MINI_DATASET_LOC = TEST_FILES_LOC / "mini-dataset"
+TEST_MINI_DATASET_SENTENCE_DB = TEST_MINI_DATASET_LOC / "sentences.db"
+LIST_DEFS_DP = "test-project-theories-ListDefs.v"
+LIST_THMS_DP = "test-project-theories-ListThms.v"
+
 LIST_DEFS_LOC = TEST_PROJET_LOC / "theories" / "ListDefs.v"
 LIST_THMS_LOC = TEST_PROJET_LOC / "theories" / "ListThms.v"
 
