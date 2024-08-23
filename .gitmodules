@@ -1,15 +1,3 @@
-[submodule "CPDT"]
-	path = test/test_files/coq-mini-dataset/repos/yalhessi-CPDT
-	url = https://github.com/yalhessi/CPDT
-	ignore = untracked
-
-[submodule "verified-verifier"]
-	path = test/test_files/coq-mini-dataset/repos/yalhessi-verified-verifier
-	url = https://github.com/yalhessi/verified-verifier
-	ignore = untracked
-[submodule "coq-crawler"]
-	path = coq-crawler
-	url = git@github.com:Nfsaavedra/coq-crawler.git
 [submodule "coqpyt"]
 	path = coqpyt
-	url = git@github.com:sr-lab/coqpyt.git
+	url = git@github.com:rkthomps/coqpyt.git
