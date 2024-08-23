@@ -1,11 +1,16 @@
 import shutil
-from util.test_utils import (
+from test_utils.utils import (
     TEST_PROJET_LOC,
     LIST_DEFS_LOC,
     LIST_THMS_LOC,
     TEST_TMP_LOC,
+    TEST_MINI_DATASET_SENTENCE_DB,
+    TEST_MINI_DATASET_LOC,
+    LIST_DEFS_DP,
+    LIST_THMS_DP,
     get_test_sentence_db,
 )
+from test_utils.test_data_utils import setup_project_dataset
 
 from premise_selection.premise_filter import (
     PremiseFilter,
@@ -13,7 +18,9 @@ from premise_selection.premise_filter import (
     PROJ_THM_FILTER_CONF,
 )
 from lemma_gen.lemma_example import LemmaFormatterConf, LemmaFormatter, LemmaExample
+from data_management.splits import DATA_POINTS_NAME
 from data_management.dataset_file import DatasetFile
+from data_management.sentence_db import SentenceDB
 from data_management.create_file_data_point import get_data_point, get_switch_loc
 
 
@@ -54,6 +61,7 @@ class TestLemmaExample:
                 "kind": "tfidf",
                 "context_format_alias": "basic",
                 "premise_format_alias": "basic",
+                "sentence_db_loc": TEST_MINI_DATASET_SENTENCE_DB,
                 "premise_filter": {"known_filter": "proj-thm"},
             },
             "max_num_premises": 50,
@@ -68,17 +76,18 @@ class TestLemmaExample:
 
     @classmethod
     def setup_class(cls):
-        cls.sentence_db = get_test_sentence_db()
-        cls.defs_dp = get_data_point(
-            LIST_DEFS_LOC, TEST_PROJET_LOC, cls.sentence_db, True, get_switch_loc()
+        setup_project_dataset()
+        cls.sentence_db = SentenceDB.load(TEST_MINI_DATASET_SENTENCE_DB)
+        cls.defs_dp = DatasetFile.load(
+            TEST_MINI_DATASET_LOC / DATA_POINTS_NAME / LIST_DEFS_DP, cls.sentence_db
         )
-        cls.thms_dp = get_data_point(
-            LIST_THMS_LOC, TEST_PROJET_LOC, cls.sentence_db, True, get_switch_loc()
+        cls.thms_dp = DatasetFile.load(
+            TEST_MINI_DATASET_LOC / DATA_POINTS_NAME / LIST_THMS_DP, cls.sentence_db
         )
 
     @classmethod
     def teardown_class(cls):
-        shutil.rmtree(TEST_TMP_LOC)
+        cls.sentence_db.close()
 
 
 if __name__ == "__main__":
