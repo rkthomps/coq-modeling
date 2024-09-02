@@ -32,7 +32,7 @@ from proof_retrieval.bm25 import bm25
 from proof_retrieval.tfidf import tf_idf, compute_idfs
 from coqpyt.coq.structs import TermType
 
-from util.util import get_basic_logger, FlexibleUrl
+from util.util import FlexibleUrl
 
 
 @dataclass

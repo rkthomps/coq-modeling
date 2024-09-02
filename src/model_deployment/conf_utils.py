@@ -144,7 +144,7 @@ class StartSelectModelCommand:
 class StartRerankModelCommand:
     checkpoint_loc: Path
     id: int
-    RERANK_SERVER_SCRIPT = Path("src/model_deployment/rerank_server.py")
+    RERANK_SERVER_SCRIPT = Path("src/premise_selection/rerank_server.py")
 
     def to_list(self) -> list[str]:
         return [
@@ -258,6 +258,7 @@ def proof_conf_to_client_conf(
                 conf.sentence_db_loc,
                 conf.data_loc,
                 conf.max_num_proofs,
+                conf.first_step_only,
             )
             return new_retriever_client, start_server_num + 1, [command]
         case _:

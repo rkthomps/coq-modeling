@@ -22,13 +22,16 @@ from model_deployment.conf_utils import (
 
 from util.file_queue import FileQueue, EmptyFileQueueError
 from util.slurm import worker_get_conf_queue
-from util.util import get_basic_logger, clear_port_map
+from util.util import clear_port_map, set_rango_logger
+from util.constants import RANGO_LOGGER
 
 from data_management.sentence_db import SentenceDB
 from data_management.splits import FileInfo
 from data_management.dataset_file import Sentence
 
-_logger = get_basic_logger(__name__)
+import logging
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 def process_f_info(
@@ -65,6 +68,8 @@ if __name__ == "__main__":
     conf_loc, queue_loc = worker_get_conf_queue()
     conf = PremiseDBCreatorConf.load(conf_loc)
     queue = FileQueue(queue_loc)
+
+    set_rango_logger(__file__, logging.DEBUG)
 
     sentence_db = SentenceDB.load(conf.sentence_db_loc)
     premise_conf, next_num, commands = premise_conf_to_client_conf(conf.premise_conf, 0)

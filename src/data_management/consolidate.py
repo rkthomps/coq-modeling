@@ -10,9 +10,12 @@ from data_management.jsonl_utils import ExampleDB
 from data_management.splits import Split, DataSplit, split2str
 from data_management.dataset_utils import DatasetConf, data_conf_from_yaml
 
-from util.util import get_basic_logger
+from util.constants import RANGO_LOGGER
+from util.util import set_rango_logger
 
-_logger = get_basic_logger(__name__)
+import logging
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 def consolidate(
@@ -64,6 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("output_loc", help="Location of the output.")
     args = parser.parse_args(sys.argv[1:])
 
+    set_rango_logger(__file__, logging.DEBUG)
     data_split_loc = Path(args.data_split_loc)
     dataset_loc = Path(args.dataset_loc)
     assert dataset_loc.exists()

@@ -26,7 +26,6 @@ from premise_selection.rerank_client import (
 from proof_retrieval.proof_retriever import (
     ProofRetriever,
     ProofRetrieverConf,
-    merge_proof_confs,
     proof_conf_update_ips,
     proof_retriever_conf_from_yaml,
     proof_retriever_from_conf,
@@ -34,8 +33,6 @@ from proof_retrieval.proof_retriever import (
 )
 
 from util.util import get_basic_logger
-
-_logger = get_basic_logger(__name__)
 
 
 GOAL_SEP = "\n[GOAL]\n"
@@ -155,30 +152,6 @@ class GeneralFormatterConf:
 
     def __hash__(self) -> int:
         return hash(str(self))
-
-    def merge(self, other: GeneralFormatterConf) -> GeneralFormatterConf:
-        if self.premise_client_conf is not None:
-            assert other.premise_client_conf is not None
-            new_premise_client_conf = merge_premise_confs(
-                self.premise_client_conf, other.premise_client_conf
-            )
-        else:
-            new_premise_client_conf = None
-
-        if self.proof_retriever_conf is not None:
-            assert other.proof_retriever_conf is not None
-            new_proof_retriever_conf = merge_proof_confs(
-                self.proof_retriever_conf, other.proof_retriever_conf
-            )
-        else:
-            new_proof_retriever_conf = None
-
-        return GeneralFormatterConf(
-            new_premise_client_conf,
-            new_proof_retriever_conf,
-            self.num_premises,
-            self.num_proofs,
-        )
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> GeneralFormatterConf:
@@ -322,13 +295,6 @@ def formatter_update_ips(f: FormatterConf, port_map: dict[int, tuple[str, int]])
                 premise_conf_update_ips(f.premise_client_conf, port_map)
             if f.proof_retriever_conf is not None:
                 proof_conf_update_ips(f.proof_retriever_conf, port_map)
-
-
-def merge_formatters(f1: FormatterConf, f2: FormatterConf) -> FormatterConf:
-    match f1:
-        case GeneralFormatterConf():
-            assert isinstance(f2, GeneralFormatterConf)
-            return f1.merge(f2)
 
 
 def formatter_conf_from_yaml(yaml_data: Any) -> FormatterConf:

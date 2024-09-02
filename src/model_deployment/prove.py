@@ -383,6 +383,18 @@ def summary_from_json(json_data: Any) -> Summary:
             raise ValueError(f"Unknown alias {attempted_alias}")
 
 
+def load_results(save_dir: Path) -> list[Summary]:
+    summaries: list[Summary] = []
+    for f in os.listdir(save_dir):
+        if not f.endswith(".json"):
+            continue
+        with open(save_dir / f, "r") as fin:
+            summary_data = json.load(fin)
+            summary = summary_from_json(summary_data)
+        summaries.append(summary)
+    return summaries
+
+
 def errored_summary(summary: Summary) -> bool:
     return summary.search_time is None
 

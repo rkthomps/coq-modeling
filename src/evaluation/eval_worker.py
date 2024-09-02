@@ -35,11 +35,14 @@ from model_deployment.tactic_gen_client import (
     tactic_gen_client_from_conf,
     tactic_conf_update_ips,
 )
-from util.constants import CLEAN_CONFIG
-from util.util import get_basic_logger, clear_port_map
+from util.constants import CLEAN_CONFIG, RANGO_LOGGER
+from util.util import set_rango_logger, clear_port_map
 from util.file_queue import FileQueue, EmptyFileQueueError
 
-_logger = get_basic_logger(__name__)
+import logging
+
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 def get_orig_summary(
@@ -87,6 +90,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     conf_loc = Path(args.conf_loc)
     queue_loc = Path(args.queue_loc)
+
+    set_rango_logger(__file__, logging.DEBUG)
 
     assert conf_loc.exists()
     assert queue_loc.exists()

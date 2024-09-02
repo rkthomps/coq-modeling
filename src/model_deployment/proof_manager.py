@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 
 from util.util import get_fresh_path
+from util.coqpyt_utils import get_all_goals
 from util.constants import TMP_LOC, SEARCH_DIR_NAME
 from data_management import dataset_file
 from data_management.splits import DataSplit
@@ -29,7 +30,7 @@ from tactic_gen.lm_example import (
 )
 
 from model_deployment.fast_client import FastLspClient, ClientWrapper
-from util.util import get_basic_logger
+from util.constants import RANGO_LOGGER
 
 from coqpyt.coq.lsp.client import (
     TextDocumentIdentifier,
@@ -45,8 +46,9 @@ from coqpyt.lsp.structs import (
     Range,
 )
 
+import logging
 
-_logger = get_basic_logger(__name__)
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 class TacticResult(Enum):
@@ -66,7 +68,6 @@ class ProofCheckResult:
     @classmethod
     def get_invalid(cls, attempted_steps: list[str]) -> ProofCheckResult:
         current_goals = None
-        goal_record = None
         new_dataset_file = None
         return cls(
             TacticResult.INVALID,
@@ -246,7 +247,6 @@ class ProofManager:
         self,
         partial_proof: str,
         theorem: dataset_file.Term,
-        need_goal_record: bool = True,
     ) -> ProofCheckResult:
         if (
             ("Theorem" in partial_proof)
@@ -302,7 +302,6 @@ class ProofManager:
             return ProofCheckResult.get_invalid(new_step_strs)
 
         if self.__can_close_proof(current_goals):
-            goal_record = None
             must_be_valid = "".join([s.text for s in steps]) + "\nQed."
             steps = self.fast_client.write_and_get_steps(must_be_valid)
             if not self.check_valid(self.fast_client.client):
@@ -314,37 +313,15 @@ class ProofManager:
                 TacticResult.COMPLETE,
                 new_step_strs,
                 get_all_goals(current_goals),
-                goal_record,
                 new_proof,
                 steps,
             )
-
-        try:
-            goal_record = None
-            if need_goal_record:
-                goal_record = self.get_goal_record(steps)
-        except ResponseError as e:
-            _logger.warning(f"Got repsonse getting goal record: {partial_proof[-10:]}")
-            self.__restart_clients()
-            goal_record = None
-        except TimeoutError as t:
-            _logger.warning(
-                f"Got timeout error getting goal record: {partial_proof[-10:]}"
-            )
-            self.__restart_clients()
-            goal_record = None
-        except TypeError as t:
-            _logger.warning(
-                f"Got type error getting goal record: {partial_proof[-10:]}"
-            )
-            goal_record = None
 
         new_proof = self.get_proof_shell(new_step_strs, current_goals, theorem)
         return ProofCheckResult(
             TacticResult.VALID,
             new_step_strs,
             get_all_goals(current_goals),
-            goal_record,
             new_proof,
             None,
         )
@@ -353,7 +330,6 @@ class ProofManager:
         self,
         formatter: LmFormatter,
         dset_file: DatasetFile,
-        goal_record: Optional[GoalRecord],
     ) -> LmExample:
         last_proof_idx = len(dset_file.proofs) - 1
         proof = dset_file.proofs[last_proof_idx]
@@ -366,8 +342,6 @@ class ProofManager:
             split=self.split,
             data_loc=self.data_loc,
             ground_truth_steps=None,  # Not doing this right now
-            key_record=goal_record,
-            cutoff_idx=self.proof_info.proof_point,
         )
         # print(example.input)
         # print(example.passages)

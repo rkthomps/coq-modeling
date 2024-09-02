@@ -196,7 +196,6 @@ class ClassicalSearcher:
         proof_check_result = self.proof_manager.check_proof(
             cur_candidate.proof_str,
             self.initial_dset_file.proofs[-1].theorem,
-            self.need_goal_record,
         )
         match proof_check_result.tactic_result:
             case TacticResult.COMPLETE:

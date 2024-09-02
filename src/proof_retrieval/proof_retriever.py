@@ -27,10 +27,11 @@ from proof_retrieval.tfidf import tf_idf
 from proof_retrieval.bm25 import bm25
 
 from util.util import FlexibleUrl
-from util.util import get_basic_logger
-from util.constants import PROOF_VECTOR_DB_METADATA
+from util.constants import PROOF_VECTOR_DB_METADATA, RANGO_LOGGER
 
-_logger = get_basic_logger(__name__)
+import logging
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 class SparseKind(Enum):
@@ -76,6 +77,7 @@ class SparseProofRetrieverConf:
     data_loc: Path
     sentence_db_loc: Path
     cached_proof_loc: Optional[Path]
+    first_step_only: bool
     ALIAS = "sparse"
 
     @classmethod
@@ -84,12 +86,14 @@ class SparseProofRetrieverConf:
             cached_proof_loc = Path(yaml_data["cached_proof_loc"])
         else:
             cached_proof_loc = None
+
         return cls(
             yaml_data["kind"],
             yaml_data["max_examples"],
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             cached_proof_loc,
+            yaml_data.get("first_step_only", False),
         )
 
 
@@ -131,12 +135,14 @@ class SparseProofRetriever:
         data_loc: Path,
         sentence_db: SentenceDB,
         cached_proofs: Optional[RetrievedProofDB],
+        first_step_only: bool,
     ) -> None:
         self.kind = kind
         self.max_examples = max_examples
         self.data_loc = data_loc
         self.sentence_db = sentence_db
         self.cached_proofs = cached_proofs
+        self.first_step_only = first_step_only
         self.dp_cache = DPCache(cache_size=512)
 
     def get_goal_ids(self, goals: list[Goal]) -> list[str]:
@@ -155,7 +161,8 @@ class SparseProofRetriever:
         training: bool,
         **kwargs: Any,
     ) -> list[tuple[Proof, StepID]]:
-        # TODO: TEST THIS
+        if self.first_step_only:
+            step_idx = 0
         if training:
             cache_result = get_steps_from_cache(
                 self.cached_proofs,
@@ -180,10 +187,10 @@ class SparseProofRetriever:
         reference_step_idxs: list[int] = []
         docs: list[list[str]] = []
         for ref_proof, ref_dp in available_proofs:
-            for step_idx, step in enumerate(ref_proof.steps):
+            for s_idx, step in enumerate(ref_proof.steps):
                 reference_dp_files.append(ref_dp)
                 reference_proofs.append(ref_proof)
-                reference_step_idxs.append(step_idx)
+                reference_step_idxs.append(s_idx)
                 docs.append(self.get_goal_ids(step.goals))
         assert len(docs) == len(reference_proofs)
         match self.kind:
@@ -241,6 +248,7 @@ class SparseProofRetriever:
             conf.data_loc,
             SentenceDB.load(conf.sentence_db_loc),
             cached_proofs,
+            conf.first_step_only,
         )
 
 
@@ -253,6 +261,7 @@ class DeepProofRetrieverConf:
     max_num_proofs: int
     sentence_db_loc: Path
     data_loc: Path
+    first_step_only: bool
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> DeepProofRetrieverConf:
@@ -269,6 +278,7 @@ class DeepProofRetrieverConf:
             yaml_data["max_num_proofs"],
             sentence_db_loc,
             data_loc,
+            yaml_data.get("first_step_only", False),
         )
 
 
@@ -279,18 +289,8 @@ class DeepProofRetrieverClientConf:
     sentence_db_loc: Path
     data_loc: Path
     max_num_proofs: int
+    first_step_only: bool
     ALIAS = "deep-client"
-
-    def merge(
-        self, other: DeepProofRetrieverClientConf
-    ) -> DeepProofRetrieverClientConf:
-        return DeepProofRetrieverClientConf(
-            self.urls + other.urls,
-            self.vector_db_loc,
-            self.sentence_db_loc,
-            self.data_loc,
-            self.max_num_proofs,
-        )
 
     def update_ips(self, port_map: dict[int, tuple[str, int]]):
         for url in self.urls:
@@ -324,12 +324,14 @@ class DeepProofRetrieverClient:
         sentence_db: SentenceDB,
         data_loc: Path,
         max_num_proofs: int,
+        first_step_only: bool,
     ):
         self.urls = urls
         self.proof_idx = proof_idx
         self.data_loc = data_loc
         self.sentence_db = sentence_db
         self.max_num_proofs = max_num_proofs
+        self.first_step_only = first_step_only
         self.dp_cache = DPCache()
         self.session = requests.Session()
 
@@ -348,6 +350,8 @@ class DeepProofRetrieverClient:
         training: bool,
         **kwargs: Any,
     ) -> list[tuple[Proof, StepID]]:
+        if self.first_step_only:
+            step_idx = 0
         hashed_step_idx = self.proof_idx.hash_proof_step(
             step_idx, proof, dp_obj.dp_name
         )
@@ -427,6 +431,7 @@ class DeepProofRetrieverClient:
             sentence_db,
             conf.data_loc,
             conf.max_num_proofs,
+            conf.first_step_only,
         )
 
 
@@ -443,18 +448,6 @@ def proof_conf_update_ips(c: ProofRetrieverConf, port_map: dict[int, tuple[str, 
             c.update_ips(port_map)
         case _:
             pass
-
-
-def merge_proof_confs(
-    c1: ProofRetrieverConf, c2: ProofRetrieverConf
-) -> ProofRetrieverConf:
-    match c1:
-        case DeepProofRetrieverClientConf():
-            assert isinstance(c2, DeepProofRetrieverClientConf)
-            return c1.merge(c2)
-        case _:
-            assert c1 == c2
-            return c1
 
 
 def close_proof_retriever(retriever: ProofRetriever):

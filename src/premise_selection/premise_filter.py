@@ -9,9 +9,10 @@ import sys, os
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
 from coqpyt.coq.structs import TermType
 
-from util.util import get_basic_logger
+from util.constants import RANGO_LOGGER
+import logging
 
-_logger = get_basic_logger(__name__)
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 @dataclass

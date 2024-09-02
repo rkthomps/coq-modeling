@@ -43,7 +43,8 @@ from model_deployment.conf_utils import (
 
 from util.file_queue import FileQueue, EmptyFileQueueError
 from util.constants import TMP_LOC, PORT_MAP_NAME
-from util.util import clear_port_map
+import logging
+from util.util import clear_port_map, set_rango_logger
 
 
 @functools.cache
@@ -157,6 +158,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--conf_loc", help="Location of dataset configuration.")
     parser.add_argument("--queue_loc", help="Location of the work queue.")
+    set_rango_logger(__file__, logging.DEBUG)
 
     args = parser.parse_args(sys.argv[1:])
     dataset_conf_loc = Path(args.conf_loc)

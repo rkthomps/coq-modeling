@@ -1,0 +1,24 @@
+alias: predefined
+test_projects: [
+  "raw-data/coq-dataset/repos/AbsInt-CompCert",
+  "raw-data/coq-dataset/repos/coq-community-coq-ext-lib",
+  "raw-data/coq-dataset/repos/coq-community-fourcolor",
+  "raw-data/coq-dataset/repos/coq-community-math-classes",
+  "raw-data/coq-dataset/repos/coq-community-reglang",
+  "raw-data/coq-dataset/repos/coq-community-buchberger",
+  "raw-data/coq-dataset/repos/coq-community-hoare-tut",
+  "raw-data/coq-dataset/repos/coq-community-zorns-lemma",
+  "raw-data/coq-dataset/repos/coq-community-huffman",
+  "raw-data/coq-dataset/repos/thery-PolTac",
+  "raw-data/coq-dataset/repos/coq-community-dblib",
+  "raw-data/coq-dataset/repos/coq-contribs-zfc",
+]
+
+val_projects: [
+  "raw-data/coq-dataset/repos/coq-community-graph-theory",
+  "raw-data/coq-dataset/repos/coq-community-stalmarck",
+  "raw-data/coq-dataset/repos/coq-community-coqeal",
+  "raw-data/coq-dataset/repos/coq-community-bertrand",
+  "raw-data/coq-dataset/repos/coq-community-sudoku",
+  "raw-data/coq-dataset/repos/coq-community-qarith-stern-brocot",
+]
