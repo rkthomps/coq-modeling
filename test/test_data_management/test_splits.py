@@ -21,7 +21,7 @@ from data_management.splits import (
 from data_management.sentence_db import SentenceDB
 from hypothesis import strategies as st
 
-from util.test_utils import TEST_FILES_LOC, TEST_TMP_LOC
+from test_utils.utils import TEST_FILES_LOC, TEST_TMP_LOC
 
 from hypothesis import given
 

@@ -16,7 +16,7 @@ from data_management.dataset_file import (
 from data_management.sentence_db import SentenceDB
 from coqpyt.coq.structs import TermType
 
-from util.test_utils import (
+from test_utils.utils import (
     build_test_project,
     get_test_sentence_db,
     TEST_TMP_LOC,
