@@ -10,8 +10,7 @@ from edist.sed import standard_sed
 
 from dataclasses import dataclass
 
-from model_deployment.run_proofs import load_results
-from model_deployment.prove import Summary, StraightLineSummary
+from model_deployment.prove import Summary, StraightLineSummary, load_results
 
 
 def remove_proof_qed(s: str) -> str:
@@ -273,9 +272,9 @@ class GeneralResult:
             None,
         )
 
-    @staticmethod
-    def clean_proverbot_path(file_path: Path) -> Path:
-        return Path(file_path.parts[0]) / file_path.name
+    @classmethod
+    def clean_proverbot_path(cls, file_path: Path) -> Path:
+        return cls.strip_path(Path(file_path.parts[0]) / file_path.name)
 
     @classmethod
     def strip_path(cls, path: Path) -> Path:

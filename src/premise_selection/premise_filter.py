@@ -9,10 +9,7 @@ import sys, os
 from data_management.dataset_file import DatasetFile, Proof, FocusedStep, Sentence
 from coqpyt.coq.structs import TermType
 
-<<<<<<< HEAD
-=======
 from enum import Enum
->>>>>>> 0cf79f87206319a5c2c504f4c1cb498142efe99e
 from util.constants import RANGO_LOGGER
 import logging
 

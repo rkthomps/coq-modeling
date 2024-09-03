@@ -19,7 +19,13 @@ from util.slurm import (
     SlurmJobConf,
 )
 from util.file_queue import FileQueue
+from util.constants import RANGO_LOGGER
+from util.util import set_rango_logger
 import subprocess
+
+import logging
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 WORKER_LOC = Path("src/evaluation/eval_worker.py")
 
@@ -34,8 +40,8 @@ def get_proofs_to_add(
         if save_name not in existing_names:
             proofs_to_add.append((f_info, i))
         else:
-            save_loc = save_loc / save_name
-            existing_summary = load_summary(save_loc)
+            summary_loc = save_loc / save_name
+            existing_summary = load_summary(summary_loc)
             if rerun_errors and errored_summary(existing_summary):
                 proofs_to_add.append((f_info, i))
     return proofs_to_add
@@ -56,11 +62,13 @@ def fill_queue(queue_loc: Path, eval_conf: EvalConf) -> None:
     proofs_to_add = get_proofs_to_add(
         eval_conf.save_loc, proofs, eval_conf.rerun_errors
     )
+    _logger.info(f"Adding {len(proofs_to_add)} proofs to queue")
     q.put_all(proofs_to_add)
 
 
 if __name__ == "__main__":
     job_conf = main_get_conf_slurm_conf()
+    set_rango_logger(__file__, logging.DEBUG)
     assert job_conf.conf_loc.exists()
     with job_conf.conf_loc.open("r") as fin:
         yaml_conf = yaml.safe_load(fin)

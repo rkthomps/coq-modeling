@@ -25,11 +25,13 @@ from util.slurm import (
     SlurmJobConf,
 )
 from util.file_queue import FileQueue
+from util.constants import RANGO_LOGGER
 from util.util import set_rango_logger
 
 import subprocess
 import logging
 
+_logger = logging.getLogger(RANGO_LOGGER)
 
 WORKER_LOC = Path("src/premise_selection/retrieved_premise_db_worker.py")
 
@@ -69,7 +71,8 @@ def init_and_fill_queue(creator_conf: PremiseDBCreatorConf, queue_loc: Path):
     for f in all_files:
         if not (creator_conf.save_loc / f.dp_name).exists():
             add_files.append(f)
-    q.put_all(all_files)
+    _logger.info(f"Adding {len(add_files)} files to queue")
+    q.put_all(add_files)
 
 
 if __name__ == "__main__":
