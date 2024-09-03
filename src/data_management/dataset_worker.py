@@ -12,6 +12,7 @@ from data_management.splits import FileInfo
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_utils import (
     LmDatasetConf,
+    LemmaDatasetConf,
     SelectDatasetConf,
     RerankDatasetConf,
     DatasetConf,
@@ -19,6 +20,7 @@ from data_management.dataset_utils import (
     data_conf_from_yaml,
     data_conf_update_ips,
 )
+from lemma_gen.lemma_example import LemmaExample, LemmaFormatter, LemmaFormatterConf
 from tactic_gen.lm_example import (
     FormatterConf,
     LmFormatter,
@@ -39,6 +41,7 @@ from model_deployment.conf_utils import (
     start_servers,
     lm_dataset_conf_to_client_conf,
     rerank_dataset_conf_to_client_conf,
+    lemma_dataset_conf_to_client_conf,
 )
 
 from util.file_queue import FileQueue, EmptyFileQueueError
@@ -63,6 +66,22 @@ def tactic_examples_from_step(
         f.example_from_step(step_idx, proof_idx, dset_file, training=True)
         for f in formatters
     ]
+
+
+@functools.cache
+def get_lemma_formatter(lemma_formatter_conf: LemmaFormatterConf) -> LemmaFormatter:
+    return LemmaFormatter.from_conf(lemma_formatter_conf)
+
+
+def lemma_examples_from_step(
+    dataset_conf: LemmaDatasetConf,
+    dset_file: DatasetFile,
+    proof_idx: int,
+    step_idx: int,
+) -> list[LemmaExample]:
+    lemma_formatter = get_lemma_formatter(dataset_conf.lemma_formatter_conf)
+    proof = dset_file.proofs[proof_idx]
+    return lemma_formatter.examples_from_step(step_idx, proof, dset_file, training=True)
 
 
 @functools.cache
@@ -125,6 +144,10 @@ def examples_from_file(
                             file_info, dataset_conf, file_dp, i, j
                         )
                     )
+                case LemmaDatasetConf():
+                    examples.extend(
+                        lemma_examples_from_step(dataset_conf, file_dp, i, j)
+                    )
                 case SelectDatasetConf():
                     examples.extend(
                         select_examples_from_step(dataset_conf, file_dp, i, j)
@@ -172,6 +195,10 @@ if __name__ == "__main__":
     match dataset_conf:
         case LmDatasetConf():
             clean_conf, next_num, commands = lm_dataset_conf_to_client_conf(
+                dataset_conf, 0
+            )
+        case LemmaDatasetConf():
+            clean_conf, next_num, commands = lemma_dataset_conf_to_client_conf(
                 dataset_conf, 0
             )
         case SelectDatasetConf():

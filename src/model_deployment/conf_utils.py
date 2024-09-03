@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from data_management.dataset_utils import (
     LmDatasetConf,
+    LemmaDatasetConf,
     SelectDatasetConf,
     RerankDatasetConf,
 )
@@ -26,6 +27,8 @@ from proof_retrieval.proof_retriever import (
     DeepProofRetrieverClientConf,
     DeepProofRetrieverConf,
 )
+
+from lemma_gen.lemma_example import LemmaFormatterConf
 
 from tactic_gen.lm_example import (
     FormatterConf,
@@ -354,6 +357,24 @@ def formatter_conf_to_client_conf(
             )
 
 
+def lemma_formatter_conf_to_client_conf(
+    conf: LemmaFormatterConf, start_server_num: int
+) -> tuple[LemmaFormatterConf, int, list[StartModelCommand]]:
+    if conf.premise_conf is None:
+        return conf, start_server_num, []
+    premise_conf, next_num, commands = premise_conf_to_client_conf(
+        conf.premise_conf, start_server_num
+    )
+    new_conf = LemmaFormatterConf(
+        conf.premise_filter_conf, premise_conf, conf.max_num_premises
+    )
+    return (
+        new_conf,
+        next_num,
+        commands,
+    )
+
+
 def rerank_formatter_conf_to_client_conf(
     conf: RerankFormatterConf,
     start_server_num: int,
@@ -391,6 +412,25 @@ def lm_dataset_conf_to_client_conf(
         lm_confs,
     )
     return new_dataset_conf, next_server_num, formatter_commands
+
+
+def lemma_dataset_conf_to_client_conf(
+    conf: LemmaDatasetConf, start_server_num: int
+) -> tuple[LemmaDatasetConf, int, list[StartModelCommand]]:
+    formatter_conf, next_server_num, commands = lemma_formatter_conf_to_client_conf(
+        conf.lemma_formatter_conf, start_server_num
+    )
+    return (
+        LemmaDatasetConf(
+            conf.data_split_locs,
+            conf.data_loc,
+            conf.sentence_db_loc,
+            conf.output_dataset_loc,
+            formatter_conf,
+        ),
+        next_server_num,
+        commands,
+    )
 
 
 def rerank_dataset_conf_to_client_conf(

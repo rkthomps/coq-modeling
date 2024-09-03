@@ -12,6 +12,9 @@ from tactic_gen.lm_example import (
     LmExample,
     formatter_update_ips,
 )
+
+from lemma_gen.lemma_example import LemmaExample, LemmaFormatter, LemmaFormatterConf
+
 from premise_selection.rerank_example import RerankExample
 from premise_selection.premise_filter import PremiseFilter, PremiseFilterConf
 from premise_selection.rerank_client import premise_conf_update_ips
@@ -44,6 +47,26 @@ class LmDatasetConf:
             Path(yaml_data["sentence_db_loc"]),
             Path(yaml_data["output_dataset_loc"]),
             [formatter_conf_from_yaml(f) for f in yaml_data["lm_formatters"]],
+        )
+
+
+@dataclass
+class LemmaDatasetConf:
+    ALIAS = "lemma"
+    data_split_locs: list[Path]
+    data_loc: Path
+    sentence_db_loc: Path
+    output_dataset_loc: Path
+    lemma_formatter_conf: LemmaFormatterConf
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> LemmaDatasetConf:
+        return cls(
+            [Path(p) for p in yaml_data["data_split_locs"]],
+            Path(yaml_data["data_loc"]),
+            Path(yaml_data["sentence_db_loc"]),
+            Path(yaml_data["output_dataset_loc"]),
+            LemmaFormatterConf.from_yaml(yaml_data["lemma_formatter"]),
         )
 
 
@@ -98,14 +121,16 @@ class RerankDatasetConf:
         )
 
 
-DatasetConf = LmDatasetConf | SelectDatasetConf | RerankDatasetConf
-DatasetExample = LmExample | PremiseTrainingExample | RerankExample
+DatasetConf = LmDatasetConf | SelectDatasetConf | RerankDatasetConf | LemmaDatasetConf
+DatasetExample = LmExample | PremiseTrainingExample | RerankExample | LemmaExample
 
 
 def data_conf_update_ips(data_conf: DatasetConf, port_map: dict[int, tuple[str, int]]):
     match data_conf:
         case LmDatasetConf():
             data_conf.update_ips(port_map)
+        case LemmaDatasetConf():
+            pass
         case SelectDatasetConf():
             pass
         case RerankDatasetConf():
@@ -117,6 +142,8 @@ def data_conf_from_yaml(yaml_data: Any) -> DatasetConf:
     match attempted_alias:
         case LmDatasetConf.ALIAS:
             return LmDatasetConf.from_yaml(yaml_data)
+        case LemmaDatasetConf.ALIAS:
+            return LemmaDatasetConf.from_yaml(yaml_data)
         case SelectDatasetConf.ALIAS:
             return SelectDatasetConf.from_yaml(yaml_data)
         case RerankDatasetConf.ALIAS:

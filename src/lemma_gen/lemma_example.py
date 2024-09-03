@@ -26,12 +26,32 @@ class LemmaExample:
     current_script: str
     relevant_lemmas: Optional[list[str]]
 
+    def to_json(self) -> Any:
+        return {
+            "target": self.target,
+            "current_state": self.current_state,
+            "current_script": self.current_script,
+            "relevant_lemmas": self.relevant_lemmas,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> LemmaExample:
+        return cls(
+            json_data["target"],
+            json_data["current_state"],
+            json_data["current_script"],
+            json_data["relevant_lemmas"],
+        )
+
 
 @dataclass
 class LemmaFormatterConf:
     premise_filter_conf: PremiseFilterConf
     premise_conf: Optional[PremiseConf]
     max_num_premises: Optional[int]
+
+    def __hash__(self) -> int:
+        return hash(str(self))
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LemmaFormatterConf:
