@@ -2505,7 +2505,7 @@
   "coq-contribs/miniml": "22a570e57f9e8d1b971d0a7a9e6fdd8d3f053b44",
   "lastland/ClairvoyanceMonad": "707f98a6871a3cbfa63db45dc7a4fdbe2bd7323c",
   "aa755/SquiggleEq": "d78583e28d7dc87bd5b2de29cfc439dc96385ce1",
-  "AbsInt/CompCert": "5f761eb8456609d102acd8bc780b6fd3481131ef",
+  "AbsInt/CompCert": "98323527abda4f6b01ca6a23518907a1272c9021",
   "renatoleme/Grupo_Coq": "f17f6bd5844aea142309d54b43af33f7d50a6c65",
   "477972324wlx/Coq": "1dacd108df9995ff7f6194148e47fb7821e90b17",
   "coq-contribs/checker": "07c048f263a2d3dd818d0810b01519d827d74993",
@@ -2950,5 +2950,8 @@
   "braibant/Synthesis": "922982aaddb8a7a16101ff304c45d24a6265dc2e",
   "k-qy/thesis": "51bf3bac68af9a70ab3bfbbafa7bb53ef4d83877",
   "tlringer/proof-demos": "cf2ab87596c1bf10c7d00c7de396de23ba29fdcc",
-  "duinomaker/LearningStuff": "73410047a0d9ee36e54580ee9d22460037b7459c"
+  "duinomaker/LearningStuff": "73410047a0d9ee36e54580ee9d22460037b7459c",
+  "coq-community/coqeal": "fb2ecaf4cf99d91351e2a18418d14bea8f24ca60",
+  "coq-community/graph-theory": "cf3c785f4ed961bbab913598db5ef542727c1233",
+  "coq-community/reglang": "db8be63ec40349e529b6a57c8bcee1acb3f90ceb"
 }
