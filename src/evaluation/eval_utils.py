@@ -28,7 +28,6 @@ from model_deployment.tactic_gen_client import (
     tactic_conf_update_ips,
     tactic_gen_client_from_conf,
     tactic_gen_conf_from_yaml,
-    merge_tactic_confs,
 )
 
 from util.file_queue import FileQueue
@@ -152,28 +151,6 @@ class EvalConf:
                     self.search_conf,
                     self.tactic_conf,
                 )
-
-    def merge(self, other: EvalConf) -> EvalConf:
-        assert self.split == other.split
-        assert self.save_loc == other.save_loc
-        assert self.data_loc == other.data_loc
-        assert self.sentence_db_loc == other.sentence_db_loc
-        assert self.data_split_loc == other.data_split_loc
-        assert self.search_conf == other.search_conf
-        assert self.end_at == other.end_at
-        new_tactic_conf = merge_tactic_confs(self.tactic_conf, other.tactic_conf)
-        return EvalConf(
-            self.split,
-            self.save_loc,
-            self.data_loc,
-            self.sentence_db_loc,
-            self.data_split_loc,
-            self.search_conf,
-            new_tactic_conf,
-            self.start_at,
-            self.end_at,
-            self.rerun_errors,
-        )
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> EvalConf:

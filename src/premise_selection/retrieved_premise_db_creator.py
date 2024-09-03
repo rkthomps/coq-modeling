@@ -14,7 +14,7 @@ from premise_selection.rerank_client import (
 )
 from premise_selection.retrieved_premise_db import RetrievedPremiseDB
 from concurrent.futures import ProcessPoolExecutor, Future, as_completed
-from data_management.splits import DataSplit, get_all_files
+from data_management.splits import DataSplit, get_all_files, FileInfo
 
 from util.slurm import (
     JobOption,
@@ -25,8 +25,13 @@ from util.slurm import (
     SlurmJobConf,
 )
 from util.file_queue import FileQueue
-import subprocess
+from util.constants import RANGO_LOGGER
+from util.util import set_rango_logger
 
+import subprocess
+import logging
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 WORKER_LOC = Path("src/premise_selection/retrieved_premise_db_worker.py")
 
@@ -62,11 +67,17 @@ def init_and_fill_queue(creator_conf: PremiseDBCreatorConf, queue_loc: Path):
     q.initialize()
     splits = [DataSplit.load(loc) for loc in creator_conf.data_split_locs]
     all_files = get_all_files(splits)
-    q.put_all(all_files)
+    add_files: list[FileInfo] = []
+    for f in all_files:
+        if not (creator_conf.save_loc / f.dp_name).exists():
+            add_files.append(f)
+    _logger.info(f"Adding {len(add_files)} files to queue")
+    q.put_all(add_files)
 
 
 if __name__ == "__main__":
     job_conf = main_get_conf_slurm_conf()
+    set_rango_logger(__file__, logging.DEBUG)
     assert job_conf.conf_loc.exists()
     conf = PremiseDBCreatorConf.load(job_conf.conf_loc)
     if conf.save_loc.exists():

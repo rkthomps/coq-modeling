@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import functools
 import yaml
 from pathlib import Path
+from tqdm import tqdm
 
 import ipdb
 import argparse
@@ -34,11 +35,12 @@ from data_management.dataset_file import (
 from data_management.sentence_db import SentenceDB
 
 from coqpyt.coq.structs import TermType
-from util.util import get_basic_logger
-from util.constants import DATA_POINTS_NAME, REPOS_NAME
+from util.constants import DATA_POINTS_NAME, REPOS_NAME, RANGO_LOGGER
+from util.util import set_rango_logger
 
-_logger = get_basic_logger(__name__)
+import logging
 
+_logger = logging.getLogger(RANGO_LOGGER)
 
 RANDOM_SEED = 0
 
@@ -237,6 +239,7 @@ class DataSplit:
         cls, data_loc: Path, sentence_db: SentenceDB
     ) -> list[tuple[FileInfo, set[str]]]:
         files: list[tuple[FileInfo, set[str]]] = []
+        _logger.info("Indexing files.")
         for f in (data_loc / DATA_POINTS_NAME).iterdir():
             f_dp = DatasetFile.load(f, sentence_db, metadata_only=True)
             assert f_dp.file_context.file.startswith(str(DATASET_PREFIX))
@@ -246,10 +249,14 @@ class DataSplit:
             for proof in f_dp.proofs:
                 dp_thms.add(proof.theorem.term.text)
             f_info_file = str(
-                Path(f_dp.file_context.file).resolve().relative_to(DATASET_PREFIX)
+                REPOS_NAME
+                / Path(f_dp.file_context.file).resolve().relative_to(DATASET_PREFIX)
             )
             f_info_workspace = str(
-                Path(f_dp.file_context.workspace).resolve().relative_to(DATASET_PREFIX)
+                REPOS_NAME
+                / Path(f_dp.file_context.workspace)
+                .resolve()
+                .relative_to(DATASET_PREFIX)
             )
             f_info = FileInfo(
                 f_dp.dp_name,
@@ -258,6 +265,8 @@ class DataSplit:
                 f_info_workspace,
             )
             files.append((f_info, dp_thms))
+            if 0 < len(files) and len(files) % 500 == 0:
+                _logger.info(f"Indexed {len(files)} files.")
         return files
 
     @classmethod
@@ -364,9 +373,9 @@ class RandomSplitConfig:
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RandomSplitConfig:
-        train_prop = yaml_data["train"]
-        val_prop = yaml_data["val"]
-        test_prop = yaml_data["test"]
+        train_prop = yaml_data["train_prop"]
+        val_prop = yaml_data["val_prop"]
+        test_prop = yaml_data["test_prop"]
         assert train_prop + val_prop + test_prop == 1
         return cls(train_prop, val_prop, test_prop)
 
@@ -390,15 +399,14 @@ SplitConfig = RandomSplitConfig | PredefinedSplitConfig
 
 
 def split_config_from_yaml(yaml_data: Any) -> SplitConfig:
-    match yaml_data["attempted_alias"]:
+    attempted_alias = yaml_data["alias"]
+    match attempted_alias:
         case RandomSplitConfig.ALIAS:
             return RandomSplitConfig.from_yaml(yaml_data)
         case PredefinedSplitConfig.ALIAS:
             return PredefinedSplitConfig.from_yaml(yaml_data)
         case _:
-            raise ValueError(
-                f"Invalid split config alias {yaml_data['attempted_alias']}."
-            )
+            raise ValueError(f"Invalid split config alias {attempted_alias}.")
 
 
 if __name__ == "__main__":
@@ -415,6 +423,7 @@ if __name__ == "__main__":
         help="yaml file containing the split configuration.",
     )
     parser.add_argument("--save_loc", required=True, help="Location to save the split.")
+    set_rango_logger(__file__, logging.DEBUG)
 
     args = parser.parse_args()
     data_loc = Path(args.data_loc)
@@ -434,4 +443,5 @@ if __name__ == "__main__":
     split_config = split_config_from_yaml(split_config_yaml)
     sentence_db = SentenceDB.load(sentence_db_loc)
     split = DataSplit.create(split_config, data_loc, sentence_db)
+    _logger.info(f"Saving split to {save_loc}.")
     split.save(save_loc)

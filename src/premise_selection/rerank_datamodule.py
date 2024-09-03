@@ -10,10 +10,6 @@ import torch
 from pathlib import Path
 
 
-from data_management.splits import (
-    Split,
-    split_file_path,
-)
 from data_management.jsonl_utils import ExampleDB
 from premise_selection.rerank_example import RerankExample
 

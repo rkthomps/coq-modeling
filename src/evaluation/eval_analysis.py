@@ -5,9 +5,12 @@ import functools
 from pathlib import Path
 from dataclasses import dataclass
 
-from model_deployment.prove import Summary
-from model_deployment.run_proofs import load_results
-from model_deployment.prove import ClassicalSummary, StraightLineSummary
+from model_deployment.prove import (
+    Summary,
+    load_results,
+    ClassicalSummary,
+    StraightLineSummary,
+)
 
 
 @dataclass

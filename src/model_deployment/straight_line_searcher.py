@@ -9,9 +9,10 @@ from data_management.dataset_file import DatasetFile, Proof
 from model_deployment.proof_manager import ProofManager, TacticResult
 from model_deployment.tactic_gen_client import TacticGenClient
 
-from util.util import get_basic_logger
+import logging
+from util.constants import RANGO_LOGGER
 
-_logger = get_basic_logger(__name__)
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 @dataclass
@@ -72,7 +73,7 @@ class StraightLineSearcher:
 
         self.initial_proof_obj = self.initial_dset_file.proofs[-1]
         self.initial_check_result = proof_manager.check_proof(
-            initial_proof, self.initial_proof_obj.theorem, self.need_goal_record
+            initial_proof, self.initial_proof_obj.theorem
         )
         # print(initial_check_result)
         assert self.initial_check_result.tactic_result == TacticResult.VALID
@@ -142,7 +143,6 @@ class StraightLineSearcher:
             proof_check_result = self.proof_manager.check_proof(
                 cur_proof_script + next_tactic,
                 cur_proof_result.new_proof.theorem,
-                False,
             )
             last_proof_script = cur_proof_script + next_tactic
             cur_proof_result = proof_check_result

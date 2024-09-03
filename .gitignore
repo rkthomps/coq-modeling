@@ -6,6 +6,7 @@
 /reports/
 /docker/
 /logs/
+/scratch/
 
 # Slurm
 /slurm/*

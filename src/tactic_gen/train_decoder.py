@@ -43,7 +43,8 @@ from util.train_utils import (
     REQS_NAME,
     GIT_NAME,
 )
-from util.util import get_basic_logger
+from util.util import set_rango_logger
+from util.constants import RANGO_LOGGER
 from data_management.splits import Split
 from tactic_gen.tactic_data import (
     LmDataset,
@@ -54,7 +55,9 @@ from tactic_gen.tactic_data import (
     get_tokenizer,
 )
 
-_logger = get_basic_logger(__name__)
+import logging
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 # This doc details how to finetune codellama:
@@ -193,6 +196,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("yaml_config", help="yaml config file to use for training.")
     args = parser.parse_args(sys.argv[1:])
+    set_rango_logger(__file__, logging.DEBUG)
     conf = load_config(args.yaml_config)
     train_from_checkpoint = (
         conf["checkpoint_name"] if "checkpoint_name" in conf else None

@@ -1,0 +1,4 @@
+alias: random
+train_prop: 0.8
+val_prop: 0.1
+test_prop: 0.1

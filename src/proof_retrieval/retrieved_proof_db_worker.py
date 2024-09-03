@@ -15,12 +15,15 @@ from model_deployment.conf_utils import (
 
 from util.file_queue import FileQueue, EmptyFileQueueError
 from util.slurm import worker_get_conf_queue
-from util.util import get_basic_logger
 
 from data_management.sentence_db import SentenceDB
 from data_management.splits import FileInfo
 
-_logger = get_basic_logger(__name__)
+from util.util import set_rango_logger
+from util.constants import RANGO_LOGGER
+import logging
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 def process_f_info(
@@ -49,6 +52,7 @@ def process_f_info(
 
 
 if __name__ == "__main__":
+    set_rango_logger(__file__, logging.DEBUG)
     conf_loc, queue_loc = worker_get_conf_queue()
     conf = ProofDBCreatorConf.load(conf_loc)
     queue = FileQueue(queue_loc)

@@ -18,13 +18,16 @@ from util.slurm import (
     SlurmJobConf,
 )
 from util.file_queue import FileQueue
+from util.util import set_rango_logger
 import subprocess
+
+import logging
 
 WORKER_LOC = Path("src/data_management/dataset_worker.py")
 
 
 def fill_queue(queue_loc: Path, data_conf: DatasetConf) -> None:
-    q = FileQueue(queue_loc)
+    q: FileQueue[FileInfo] = FileQueue(queue_loc)
     q.initialize()
     data_splits = [DataSplit.load(loc) for loc in data_conf.data_split_locs]
     add_files: list[FileInfo] = []
@@ -36,6 +39,7 @@ def fill_queue(queue_loc: Path, data_conf: DatasetConf) -> None:
 
 if __name__ == "__main__":
     job_conf = main_get_conf_slurm_conf()
+    set_rango_logger(__file__, logging.DEBUG)
     assert job_conf.conf_loc.exists()
     with job_conf.conf_loc.open("r") as fin:
         yaml_conf = yaml.safe_load(fin)

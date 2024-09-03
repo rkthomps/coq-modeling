@@ -28,7 +28,6 @@ from tactic_gen.lm_example import (
     formatter_update_ips,
     formatter_conf_from_yaml,
     formatter_from_conf,
-    merge_formatters,
 )
 from model_deployment.model_result import ModelResult
 
@@ -38,7 +37,6 @@ from proof_retrieval.proof_retriever import (
     proof_retriever_conf_from_yaml,
     proof_retriever_from_conf,
     proof_conf_update_ips,
-    merge_proof_confs,
 )
 
 from util.util import get_basic_logger, FlexibleUrl
@@ -97,15 +95,6 @@ class LocalTacticGenClientConf:
             url.port = new_port
         [formatter_update_ips(f, port_map) for f in self.formatter_confs]
 
-    def merge(self, other: LocalTacticGenClientConf) -> LocalTacticGenClientConf:
-        new_urls = self.urls + other.urls
-        assert len(self.formatter_confs) == len(other.formatter_confs)
-        new_formatter_confs = [
-            merge_formatters(f1, f2)
-            for f1, f2 in zip(self.formatter_confs, other.formatter_confs)
-        ]
-        return LocalTacticGenClientConf(new_urls, new_formatter_confs)
-
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> LocalTacticGenClientConf:
         return cls(
@@ -137,14 +126,6 @@ class ModelFreeTacticGenClientConf:
 
     def update_ips(self, port_map: dict[int, tuple[str, int]]):
         proof_conf_update_ips(self.retriever_conf, port_map)
-
-    def merge(
-        self, other: ModelFreeTacticGenClientConf
-    ) -> ModelFreeTacticGenClientConf:
-        return ModelFreeTacticGenClientConf(
-            merge_proof_confs(self.retriever_conf, other.retriever_conf),
-            self.score_type,
-        )
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> ModelFreeTacticGenClientConf:
@@ -269,19 +250,6 @@ TacticGenConf = (
     | FidTacticGenConf
     | DecoderTacticGenConf
 )
-
-
-def merge_tactic_confs(conf1: TacticGenConf, conf2: TacticGenConf) -> TacticGenConf:
-    match conf1:
-        case LocalTacticGenClientConf():
-            assert isinstance(conf2, LocalTacticGenClientConf)
-            return conf1.merge(conf2)
-        case ModelFreeTacticGenClientConf():
-            assert isinstance(conf2, ModelFreeTacticGenClientConf)
-            return conf1.merge(conf2)
-        case _:
-            assert conf1 == conf2
-            return conf1
 
 
 def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:
