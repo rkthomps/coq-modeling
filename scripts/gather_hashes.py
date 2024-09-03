@@ -5,6 +5,12 @@ import argparse
 import subprocess
 from pathlib import Path
 
+import logging
+
+from util.constants import RANGO_LOGGER
+
+_logger = logging.getLogger(RANGO_LOGGER)
+
 
 def fmt_remote(remote: str) -> str:
     remote_match = re.search(r"[:/]([^\/]*\/[^\/]*?)(\.git)?$", remote)
@@ -17,21 +23,27 @@ def gather_hashes(repos_dir: Path) -> dict[str, str]:
     commits: dict[str, str] = {}
     orig_dir = Path.cwd().resolve()
     for dir in os.listdir(repos_dir):
-        os.chdir(repos_dir / dir)
-        dir_commit = (
-            subprocess.run(["git", "rev-parse", "HEAD"], stdout=subprocess.PIPE)
-            .stdout.decode("utf-8")
-            .strip()
-        )
-        dir_url = (
-            subprocess.run(
-                ["git", "config", "--get", "remote.origin.url"], stdout=subprocess.PIPE
+        try:
+            os.chdir(repos_dir / dir)
+            dir_commit = (
+                subprocess.run(["git", "rev-parse", "HEAD"], stdout=subprocess.PIPE)
+                .stdout.decode("utf-8")
+                .strip()
             )
-            .stdout.decode("utf-8")
-            .strip()
-        )
-        os.chdir(orig_dir)
-        commits[fmt_remote(dir_url)] = dir_commit
+            dir_url = (
+                subprocess.run(
+                    ["git", "config", "--get", "remote.origin.url"],
+                    stdout=subprocess.PIPE,
+                )
+                .stdout.decode("utf-8")
+                .strip()
+            )
+            commits[fmt_remote(dir_url)] = dir_commit
+        except PermissionError:
+            _logger.error(f"Permission error for {dir}.")
+            continue
+        finally:
+            os.chdir(orig_dir)
     return commits
 
 
