@@ -11,6 +11,7 @@ from premise_selection.rerank_client import (
     PremiseClient,
     premise_client_from_conf,
     premise_conf_from_yaml,
+    close_premise_client,
 )
 
 from util.constants import RANGO_LOGGER
@@ -106,6 +107,10 @@ class LemmaFormatter:
             example = LemmaExample(target, goals, script, relevant_lemma_texts)
             examples.append(example)
         return examples
+
+    def close(self) -> None:
+        if self.premise_client is not None:
+            close_premise_client(self.premise_client)
 
     @classmethod
     def from_conf(cls, conf: LemmaFormatterConf) -> LemmaFormatter:

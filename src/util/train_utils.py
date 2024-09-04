@@ -19,6 +19,7 @@ from util.constants import (
     REQS_NAME,
     GIT_NAME,
     TRAINING_CONF_NAME,
+    LEMMA_DATA_CONF_NAME,
     TMP_LOC,
 )
 from util.util import get_basic_logger
@@ -30,6 +31,7 @@ class TrainType(Enum):
     TACTIC = 1
     SELECT = 2
     RERANK = 3
+    LEMMA = 4
 
 
 def allocate_tokens(
@@ -67,6 +69,10 @@ def copy_configs(conf_path: Path, conf: dict[str, Any], train_type: TrainType) -
             data_path = Path(get_required_arg("data_path", conf))
             data_conf_loc = data_path / "conf.yaml"
             shutil.copy(data_conf_loc, output_dir / RERANK_DATA_CONF_NAME)
+        case TrainType.LEMMA:
+            data_path = Path(get_required_arg("data_path", conf))
+            data_conf_loc = data_path / "conf.yaml"
+            shutil.copy(data_conf_loc, output_dir / LEMMA_DATA_CONF_NAME)
 
     shutil.copy(conf_path, output_dir / TRAINING_CONF_NAME)
     reqs = subprocess.check_output([sys.executable, "-m", "pip", "freeze"])

@@ -15,6 +15,8 @@ DATA_CONF_NAME = "lm-example-conf.yaml"
 GOAL_DATA_CONF_NAME = "goal-data-conf.yaml"
 PREMISE_DATA_CONF_NAME = "premise-data-config.yaml"
 RERANK_DATA_CONF_NAME = "rerank-data-config.yaml"
+LEMMA_DATA_CONF_NAME = "lemma-data-config.yaml"
+
 
 SEARCH_DIR_NAME = ".cm-search"
 

@@ -83,7 +83,7 @@ def proof_file_to_data_point(
                 "step": {
                     "text": step.text,
                     "context": get_context(
-                        proof.context, workspace, add_to_dataset, switch_loc
+                        step.context, workspace, add_to_dataset, switch_loc
                     ),
                 },
                 "n_step": i + 1,
