@@ -15,6 +15,7 @@ from proof_retrieval.retrieved_proof_db import RetrievedProofDB
 from concurrent.futures import ProcessPoolExecutor, Future, as_completed
 from data_management.splits import DataSplit, get_all_files, FileInfo
 
+from util.constants import RANGO_LOGGER
 from util.slurm import (
     JobOption,
     get_conf_queue_slurm_loc,
@@ -26,6 +27,9 @@ from util.slurm import (
 from util.file_queue import FileQueue
 import subprocess
 
+import logging
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 WORKER_LOC = Path("src/proof_retrieval/retrieved_proof_db_worker.py")
 
@@ -61,6 +65,7 @@ def init_and_fill_queue(creator_conf: ProofDBCreatorConf, queue_loc: Path):
     all_files = get_all_files(splits)
     files_to_add: list[FileInfo] = []
     for f in all_files:
+        _logger.debug(f"Checking path: {creator_conf.save_loc / f.dp_name}")
         if not (creator_conf.save_loc / f.dp_name).exists():
             files_to_add.append(f)
     q.put_all(files_to_add)
@@ -96,4 +101,4 @@ if __name__ == "__main__":
             slurm_conf.write_script(
                 f"proof-ret-db-{conf.save_loc.name}", commands, slurm_loc
             )
-            subprocess.run(["sbatch", str(slurm_loc)])
+            # subprocess.run(["sbatch", str(slurm_loc)])

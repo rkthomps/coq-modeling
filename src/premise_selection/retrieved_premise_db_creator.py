@@ -69,9 +69,9 @@ def init_and_fill_queue(creator_conf: PremiseDBCreatorConf, queue_loc: Path):
     all_files = get_all_files(splits)
     add_files: list[FileInfo] = []
     for f in all_files:
-        if not (creator_conf.save_loc / f.dp_name).exists():
+        if not ((creator_conf.save_loc / f.dp_name).exists()):
             add_files.append(f)
-    _logger.info(f"Adding {len(add_files)} files to queue")
+    _logger.info(f"Adding {len(add_files)}/{len(all_files)} files to queue")
     q.put_all(add_files)
 
 
