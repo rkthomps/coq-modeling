@@ -15,13 +15,19 @@ from model_deployment.straight_line_searcher import (
     StraightLineSuccess,
     StraightLineFailure,
 )
+from model_deployment.whole_proof_searcher import (
+    WholeProofSearcherConf,
+    WholeProofSearcher,
+    WholeProofSuccess,
+    WholeProofFailure,
+)
 
-SuccessfulSearch = ClassicalSuccess | StraightLineSuccess
-FailedSearch = ClassicalFailure | StraightLineFailure
+SuccessfulSearch = ClassicalSuccess | StraightLineSuccess | WholeProofSuccess
+FailedSearch = ClassicalFailure | StraightLineFailure | WholeProofFailure
 SearchResult = SuccessfulSearch | FailedSearch
 
-Searcher = ClassicalSearcher | StraightLineSearcher
-SearcherConf = ClassicalSearchConf | StraightLineSearcherConf
+Searcher = ClassicalSearcher | StraightLineSearcher | WholeProofSearcher
+SearcherConf = ClassicalSearchConf | StraightLineSearcherConf | WholeProofSearcherConf
 
 
 def searcher_conf_from_yaml(yaml_data: Any) -> SearcherConf:
@@ -31,6 +37,8 @@ def searcher_conf_from_yaml(yaml_data: Any) -> SearcherConf:
             return ClassicalSearchConf.from_yaml(yaml_data)
         case StraightLineSearcherConf.ALIAS:
             return StraightLineSearcherConf.from_yaml(yaml_data)
+        case WholeProofSearcherConf.ALIAS:
+            return WholeProofSearcherConf.from_yaml(yaml_data)
         case _:
             raise ValueError("Searcher not found.")
 
@@ -43,3 +51,5 @@ def searcher_from_conf(
             return ClassicalSearcher.from_conf(conf, tactic_gen, manager)
         case StraightLineSearcherConf():
             return StraightLineSearcher.from_conf(conf, tactic_gen, manager)
+        case WholeProofSearcherConf():
+            return WholeProofSearcher.from_conf(conf, tactic_gen, manager)

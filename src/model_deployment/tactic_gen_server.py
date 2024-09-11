@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 import sys, os
 import time
 import argparse
@@ -28,10 +28,16 @@ wrapper: ModelWrapper = StubWrapper()
 
 
 @dispatcher.add_method
-def get_recs(example_json: Any, n: int, current_proof: str, beam: bool) -> ModelResult:
+def get_recs(
+    example_json: Any,
+    n: int,
+    current_proof: str,
+    beam: bool,
+    token_mask: Optional[str],
+) -> ModelResult:
     example = LmExample.from_json(example_json)
     start = time.time()
-    result = wrapper.get_recs(example, n, current_proof, beam).to_json()
+    result = wrapper.get_recs(example, n, current_proof, beam, token_mask).to_json()
     end = time.time()
     return result
 

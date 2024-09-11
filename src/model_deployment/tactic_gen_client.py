@@ -168,6 +168,43 @@ class ModelFreeTacticGenClient:
         return cls(proof_retriever_from_conf(conf.retriever_conf), conf.score_type)
 
 
+@dataclass
+class PrevProofTacticGenClientConf:
+    ALIAS = "prev_proof"
+    retriever_conf: ProofRetrieverConf
+
+    def update_ips(self, port_map: dict[int, tuple[str, int]]):
+        proof_conf_update_ips(self.retriever_conf, port_map)
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> PrevProofTacticGenClientConf:
+        return cls(proof_retriever_conf_from_yaml(yaml_data["retriever"]))
+
+
+class PrevProofTacticGenClient:
+    def __init__(self, retriever: ProofRetriever):
+        self.retriever = retriever
+
+    def get_recs(
+        self, step_idx: int, proof: Proof, dset_file: DatasetFile, n: int, **kwargs: Any
+    ) -> ModelResult:
+        similar_proof_steps = self.retriever.get_similar_proof_steps(
+            step_idx, proof, dset_file, training=False
+        )
+        similar_proofs: set[str] = set()
+        for proof, _ in similar_proof_steps:
+            similar_proofs.add(proof.proof_text_to_string(include_theorem=False))
+            if n <= len(similar_proofs):
+                break
+        return ModelResult(
+            list(similar_proofs), [1] * len(similar_proofs), [1] * len(similar_proofs)
+        )
+
+    @classmethod
+    def from_conf(cls, conf: PrevProofTacticGenClientConf) -> PrevProofTacticGenClient:
+        return cls(proof_retriever_from_conf(conf.retriever_conf))
+
+
 class LocalTacticGenClient:
     def __init__(self, urls: list[str], formatters: list[LmFormatter]) -> None:
         self.formatters = formatters
@@ -186,6 +223,7 @@ class LocalTacticGenClient:
         dset_file: DatasetFile,
         n: int,
         beam: bool = False,
+        token_mask: Optional[str] = None,
         **kwargs: Any,
     ) -> ModelResult:
         assert 0 < len(self.formatters)
@@ -200,6 +238,7 @@ class LocalTacticGenClient:
                 n,
                 proof.proof_text_to_string(include_theorem=False),
                 beam,
+                token_mask,
             ],
             "jsonrpc": "2.0",
             "id": request_id,
@@ -223,7 +262,9 @@ class LocalTacticGenClient:
         )
 
 
-TacticGenClient = LocalTacticGenClient | ModelFreeTacticGenClient
+TacticGenClient = (
+    LocalTacticGenClient | ModelFreeTacticGenClient | PrevProofTacticGenClient
+)
 
 
 def tactic_gen_client_from_conf(conf: TacticGenConf) -> TacticGenClient:
@@ -232,13 +273,19 @@ def tactic_gen_client_from_conf(conf: TacticGenConf) -> TacticGenClient:
             return LocalTacticGenClient.from_conf(conf)
         case ModelFreeTacticGenClientConf():
             return ModelFreeTacticGenClient.from_conf(conf)
+        case PrevProofTacticGenClientConf():
+            return PrevProofTacticGenClient.from_conf(conf)
         case _:
             raise ValueError(f"Invalid tactic client config: {str(conf.__class__)}")
 
 
 def tactic_conf_update_ips(conf: TacticGenConf, port_map: dict[int, tuple[str, int]]):
     match conf:
-        case LocalTacticGenClientConf():
+        case (
+            LocalTacticGenClientConf()
+            | ModelFreeTacticGenClientConf()
+            | PrevProofTacticGenClientConf()
+        ):
             conf.update_ips(port_map)
         case _:
             pass
@@ -247,6 +294,7 @@ def tactic_conf_update_ips(conf: TacticGenConf, port_map: dict[int, tuple[str, i
 TacticGenConf = (
     LocalTacticGenClientConf
     | ModelFreeTacticGenClientConf
+    | PrevProofTacticGenClientConf
     | FidTacticGenConf
     | DecoderTacticGenConf
 )
@@ -259,6 +307,8 @@ def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:
             return LocalTacticGenClientConf.from_yaml(yaml_data)
         case ModelFreeTacticGenClientConf.ALIAS:
             return ModelFreeTacticGenClientConf.from_yaml(yaml_data)
+        case PrevProofTacticGenClientConf.ALIAS:
+            return PrevProofTacticGenClientConf.from_yaml(yaml_data)
         case DecoderTacticGenConf.ALIAS:
             return DecoderTacticGenConf.from_yaml(yaml_data)
         case FidTacticGenConf.ALIAS:

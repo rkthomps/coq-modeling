@@ -10,6 +10,7 @@ from model_deployment.prove import (
     load_results,
     ClassicalSummary,
     StraightLineSummary,
+    WholeProofSummary,
 )
 
 
@@ -43,17 +44,19 @@ class EvalData:
             ]
         )
 
-    def get_successful_searches(self) -> list[SuccessfulSummary]:
+    def get_successful_searches(self, timeout: float = 600) -> list[SuccessfulSummary]:
         successes: list[SuccessfulSummary] = []
         for r in self.results:
-            if r.success:
-                assert r.search_time is not None
+            if r.success and r.search_time is not None and r.search_time < timeout:
                 assert r.model_time is not None
                 match r:
                     case ClassicalSummary():
                         assert r.search_steps is not None
                         num_attempts = r.search_steps
                     case StraightLineSummary():
+                        assert r.attempts is not None
+                        num_attempts = len(r.attempts)
+                    case WholeProofSummary(): 
                         assert r.attempts is not None
                         num_attempts = len(r.attempts)
 

@@ -18,6 +18,7 @@ from model_deployment.conf_utils import (
 )
 from model_deployment.classical_searcher import ClassicalSearchConf
 from model_deployment.straight_line_searcher import StraightLineSearcherConf
+from model_deployment.whole_proof_searcher import WholeProofSearcherConf
 from model_deployment.prove import (
     LocationInfo,
     RunProofConf,
@@ -29,6 +30,7 @@ from model_deployment.prove import (
     pretty_print_summary,
     ClassicalSummary,
     StraightLineSummary,
+    WholeProofSummary,
     Summary,
 )
 from model_deployment.tactic_gen_client import (
@@ -55,6 +57,10 @@ def get_orig_summary(
             )
         case StraightLineSearcherConf():
             return StraightLineSummary.from_search_result(
+                file, theorem, proof_idx, theorem_id, None
+            )
+        case WholeProofSearcherConf():
+            return WholeProofSummary.from_search_result(
                 file, theorem, proof_idx, theorem_id, None
             )
 
