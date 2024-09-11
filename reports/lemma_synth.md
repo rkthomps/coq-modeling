@@ -1,5 +1,72 @@
 # Lemma Synthesis
 
+
+## 09/11/2024
+### Generating lemmas for a simple Coq File works when other lemmas are not included in the context during training. This file is very "in-distribution" i.e. the model would have seen a lot of lemmas like these.
+```
+------ State -------
+α: Type
+l2: Test.list α
+
+Test.rev l2 ++ [ ] = Test.rev l2
+
+------ Script -------
+Theorem rev_app: forall {α : Type} (l1 l2: Test.list α), Test.rev l2 ++ Test.rev l1 = Test.rev (l1 ++ l2).
+  intros α l1 l2.
+  induction l1.
+  - simpl.
+
+------ Generated Lemma ------
+Theorem app_nil_r : forall (X:Type), forall l : list X, l ++ [] = l.
+
+------ Target ------
+Theorem app_nil_r: forall {α : Type} (l : Test.list α), l ++ [] = l.
+```
+
+```
+------ State -------
+α: Type
+n: α
+l1, l2: Test.list α
+IHl1: Test.rev l2 ++ Test.rev l1 = Test.rev (l1 ++ l2)
+
+Test.rev l2 ++ Test.rev l1 ++ [n] = (Test.rev l2 ++ Test.rev l1) ++ [n]
+
+------ Script -------
+Theorem rev_app: forall {α : Type} (l1 l2: Test.list α), Test.rev l2 ++ Test.rev l1 = Test.rev (l1 ++ l2).
+  intros α l1 l2.
+  induction l1.
+  - simpl. rewrite app_nil_r. reflexivity.
+  - simpl. rewrite <- IHl1. auto.
+
+------ Generated Lemma ------
+Theorem app_assoc : forall A (l m n:list A), l ++ m ++ n = (l ++ m) ++ n.
+
+------ Target ------
+Theorem app_assoc: forall {α : Type} (l1 l2 l3 : Test.list α ), l1 ++ l2 ++ l3 = (l1 ++ l2) ++ l3.
+```
+
+```
+------ State -------
+α: Type
+n: α
+l: Test.list α
+IHl: Test.rev (Test.rev l) = l
+
+Test.rev (Test.rev l ++ [n]) = n :: l
+------ Script -------
+Theorem rev_involutive: forall {α: Type} (l: Test.list α), Test.rev (Test.rev l) = l.
+Proof.
+  intros α l.
+  induction l.
+  - reflexivity.
+  - simpl.
+------ Generated Lemma ------
+Theorem rev_app: forall {α: Type} (l1 l2: Test.list α), Test.rev (l1 ++ l2) = (Test.rev l2) ++ (Test.rev l1).
+------ Target ------
+Theorem rev_app: forall {α : Type} (l1 l2: Test.list α), Test.rev l2 ++ Test.rev l1 = Test.rev (l1 ++ l2).
+```
+
 ## 09/04/2024
 
 ### Procedure:

@@ -28,7 +28,7 @@ class LemmaDecoderWrapper:
     collator: ExampleCollator
     hard_seq_len: int
 
-    def get_lemma(self, example: LemmaExample) -> str:
+    def get_lemmas(self, example: LemmaExample, n: int) -> list[str]:
         collated_input = self.collator.collate_input(self.tokenizer, example)
         inputs = self.tokenizer(
             collated_input,
@@ -40,6 +40,7 @@ class LemmaDecoderWrapper:
             outputs = self.model.generate(
                 inputs["input_ids"],
                 max_new_tokens=1024,
+                num_return_sequences=n,
                 return_dict_in_generate=True,
                 output_scores=True,
                 length_penalty=0,
@@ -51,7 +52,7 @@ class LemmaDecoderWrapper:
             lemmas = self.tokenizer.batch_decode(
                 generated_seqs, skip_special_tokens=True
             )
-        return lemmas[0]
+        return lemmas
 
     @classmethod
     def get_training_conf(cls, checkpoint_loc: Path) -> Any:
