@@ -35,6 +35,7 @@ class StraightLineSearcherConf:
     timeout: int
     print_proofs: bool
     initial_proof: Optional[str]
+    token_mask: Optional[str]
     ALIAS = "straight_line"
 
     @classmethod
@@ -43,6 +44,7 @@ class StraightLineSearcherConf:
             yaml_data["timeout"],
             yaml_data["print_proofs"],
             yaml_data.get("initial_proof", None),
+            yaml_data.get("token_mask", None),
         )
 
 
@@ -53,13 +55,15 @@ class StraightLineSearcher:
         proof_manager: ProofManager,
         timeout: int,
         print_proofs: bool,
-        initial_proof: Optional[str] = None,
+        initial_proof: Optional[str],
+        token_mask: Optional[str],
     ):
         self.tactic_client = tactic_client
         self.proof_manager = proof_manager
         self.timeout = timeout
         self.print_proofs = print_proofs
         self.initial_proof = initial_proof
+        self.token_mask = token_mask
 
         initial_dset_file = proof_manager.get_initial_context()
         if initial_dset_file is None:
@@ -93,6 +97,7 @@ class StraightLineSearcher:
             conf.timeout,
             conf.print_proofs,
             conf.initial_proof,
+            conf.token_mask,
         )
 
     def search(self, **kwargs) -> StraightLineSuccess | StraightLineFailure:
@@ -134,7 +139,11 @@ class StraightLineSearcher:
             start_model_time = time.time()
             last_proof = cur_dset_file.proofs[-1]
             result = self.tactic_client.get_recs(
-                len(last_proof.steps) - 1, last_proof, cur_dset_file, 1
+                len(last_proof.steps) - 1,
+                last_proof,
+                cur_dset_file,
+                1,
+                token_mask=self.token_mask,
             )
             end_model_time = time.time()
             assert len(result.next_tactic_list) == 1

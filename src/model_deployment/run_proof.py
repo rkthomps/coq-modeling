@@ -16,6 +16,10 @@ from model_deployment.straight_line_searcher import (
     StraightLineSuccess,
     StraightLineFailure,
 )
+from model_deployment.whole_proof_searcher import (
+    WholeProofSuccess,
+    WholeProofFailure,
+)
 from model_deployment.searcher import (
     SearcherConf,
     searcher_conf_from_yaml,
@@ -34,11 +38,12 @@ from model_deployment.conf_utils import (
 )
 
 from data_management.sentence_db import SentenceDB
-from util.util import get_basic_logger, clear_port_map
-from util.constants import CLEAN_CONFIG
+from util.util import get_basic_logger, clear_port_map, set_rango_logger
+from util.constants import CLEAN_CONFIG, RANGO_LOGGER
 
+import logging
 
-_logger = get_basic_logger(__name__)
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 @dataclass
@@ -146,6 +151,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--conf_loc", required=True, type=str, help="Path to the config."
     )
+    set_rango_logger(__file__, logging.DEBUG)
 
     args = parser.parse_args()
     conf_loc = Path(args.conf_loc)
@@ -154,6 +160,7 @@ if __name__ == "__main__":
         yaml_conf = yaml.safe_load(fin)
     conf = TestProofConf.from_yaml(yaml_conf)
 
+    _logger.info(f"Starting tactic client.")
     tactic_client_conf, next_server_num, commands = tactic_gen_to_client_conf(
         conf.tactic_conf, 0
     )
@@ -174,6 +181,7 @@ if __name__ == "__main__":
         conf.print_trees,
     )
 
+    _logger.info(f"Running proof.")
     try:
         result = run_proof(new_conf.to_run_conf())
         match result:
@@ -184,6 +192,10 @@ if __name__ == "__main__":
             case StraightLineSuccess():
                 print(result.successful_proof.proof_text_to_string())
             case StraightLineFailure():
+                print("failed")
+            case WholeProofSuccess():
+                print(result.successful_proof.proof_text_to_string())
+            case WholeProofFailure():
                 print("failed")
     finally:
         for p in procs:

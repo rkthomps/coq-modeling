@@ -229,13 +229,13 @@ class PremiseCollator:
         return combined_str
 
     @classmethod
-    def from_conf(cls, yaml_data: Any) -> PremiseCollator:
+    def from_conf(cls, conf: PremiseCollatorConf) -> PremiseCollator:
         return cls(
-            yaml_data["script_tokens"],
-            yaml_data["state_tokens"],
-            yaml_data["premise_tokens"],
-            yaml_data["out_tokens"],
-            yaml_data.get("whole_proof", False),
+            conf.script_tokens,
+            conf.state_tokens,
+            conf.premise_tokens,
+            conf.out_tokens,
+            conf.whole_proof,
         )
 
 

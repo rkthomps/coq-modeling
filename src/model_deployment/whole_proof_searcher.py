@@ -1,8 +1,11 @@
+from __future__ import annotations
+from typing import Optional, Any
 import time
+from enum import Enum
 from dataclasses import dataclass
 
 from tactic_gen.lm_example import LmExample
-from data_management.dataset_file import DatasetFile
+from data_management.dataset_file import DatasetFile, Proof
 
 from model_deployment.tactic_gen_client import TacticGenClient
 from model_deployment.proof_manager import ProofManager
@@ -10,11 +13,49 @@ from model_deployment.proof_manager import TacticResult
 
 
 @dataclass
-class WholeProofResult:
-    prompt_example: LmExample
-    successes: list[str]
-    failures: list[str]
+class WholeProofSuccess:
     time: float
+    model_time: float
+    successful_proof: Proof
+    attempted_proofs: list[str]
+
+
+@dataclass
+class WholeProofFailure:
+    time: float
+    model_time: float
+    attempted_proofs: list[str]
+
+
+class RecType(Enum):
+    ALL_AT_ONCE = 0
+    ONE_BY_ONE = 1
+
+    @classmethod
+    def from_string(cls, s: str) -> RecType:
+        if s == "all_at_once":
+            return cls.ALL_AT_ONCE
+        elif s == "one_by_one":
+            return cls.ONE_BY_ONE
+        else:
+            raise ValueError(f"Unknown rec type {s}")
+
+
+@dataclass
+class WholeProofSearcherConf:
+    n_attempts: int
+    print_proofs: bool
+    rectype: RecType
+    timeout =  600
+    ALIAS = "whole_proof"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> WholeProofSearcherConf:
+        return cls(
+            yaml_data["n_attempts"],
+            yaml_data["print_proofs"],
+            RecType.from_string(yaml_data["rectype"]),
+        )
 
 
 class WholeProofSearcher:
@@ -23,51 +64,142 @@ class WholeProofSearcher:
         tactic_gen_client: TacticGenClient,
         proof_manager: ProofManager,
         n_attempts: int,
+        print_proofs: bool,
+        rec_type: RecType,
     ):
         self.tactic_gen_client = tactic_gen_client
         self.proof_manager = proof_manager
         self.n_attempts = n_attempts
-        assert len(self.tactic_gen_client.formatters) == 1
-        self.formatter = self.tactic_gen_client.formatters[0]
+        self.print_proofs = print_proofs
+        self.rec_type = rec_type
+
+        initial_dset_file = proof_manager.get_initial_context()
+        if initial_dset_file is None:
+            raise ValueError("Could not get initial datasetfile")
+        self.initial_dset_file = initial_dset_file
+
+        initial_proof = ""
+        self.total_model_time = 0
+
+        self.initial_proof_obj = self.initial_dset_file.proofs[-1]
+        self.initial_check_result = proof_manager.check_proof(
+            initial_proof, self.initial_proof_obj.theorem
+        )
+        # print(initial_check_result)
+        assert self.initial_check_result.tactic_result == TacticResult.VALID
+        assert self.initial_check_result.current_goals is not None
+        assert self.initial_check_result.new_proof is not None
+        self.cur_dset_file = self.proof_manager.build_dset_file(
+            self.initial_check_result.new_proof
+        )
+
+    @classmethod
+    def from_conf(
+        cls,
+        conf: WholeProofSearcherConf,
+        tactic_gen_client: TacticGenClient,
+        proof_manager: ProofManager,
+    ) -> WholeProofSearcher:
+        return cls(
+            tactic_gen_client,
+            proof_manager,
+            conf.n_attempts,
+            conf.print_proofs,
+            conf.rectype,
+        )
 
     @property
     def need_goal_record(self) -> bool:
         return False
 
-    def search(self) -> WholeProofResult:
-        initial_proof = ""
-        initial_dset_file = self.proof_manager.get_initial_context()
-        if initial_dset_file is None:
-            raise ValueError("Could not get initial datasetfile")
-        initial_proof_obj = initial_dset_file.proofs[-1]
-        initial_check_result = self.proof_manager.check_proof(
-            initial_proof, initial_proof_obj.theorem, self.need_goal_record
-        )
-        assert initial_check_result.tactic_result == TacticResult.VALID
-        assert initial_check_result.current_goals is not None
-        assert initial_check_result.new_proof is not None
-        print(initial_check_result)
+    def search(self, **kwargs: Any) -> WholeProofSuccess | WholeProofFailure:
+        match self.rec_type:
+            case RecType.ALL_AT_ONCE:
+                return self.search_all_at_once()
+            case RecType.ONE_BY_ONE:
+                return self.search_one_by_one()
 
-        start = time.time()
-        example = self.proof_manager.get_example(
-            self.formatter, initial_dset_file, initial_check_result.goal_record
+    def search_all_at_once(self) -> WholeProofSuccess | WholeProofFailure:
+        start_time = time.time()
+        last_proof = self.cur_dset_file.proofs[-1]
+        admitted_step = last_proof.steps[-1]
+        cur_proof_script = last_proof.proof_prefix_to_string(
+            admitted_step, include_theorem=False
         )
-        model_result = self.tactic_gen_client.get_recs(
-            example, self.n_attempts, initial_proof
+        start_model_time = time.time()
+        result = self.tactic_gen_client.get_recs(
+            len(last_proof.steps) - 1,
+            last_proof,
+            self.cur_dset_file,
+            self.n_attempts,
         )
+        end_model_time = time.time()
+        self.total_model_time += end_model_time - start_model_time
 
-        successes: list[str] = []
-        failures: list[str] = []
-        for proof in model_result.next_tactic_list:
-            added_newline_proof = f"\n{proof}"
-            check_result = self.proof_manager.check_proof(
-                added_newline_proof, initial_proof_obj.theorem, False
+        attempts: list[str] = []
+        for attempt in result.next_tactic_list:
+            if self.print_proofs:
+                print(cur_proof_script + attempt)
+            proof_check_result = self.proof_manager.check_proof(
+                cur_proof_script + attempt, last_proof.theorem
             )
-            print(check_result)
-            match check_result.tactic_result:
+            attempts.append(cur_proof_script + attempt)
+            match proof_check_result.tactic_result:
                 case TacticResult.COMPLETE:
-                    successes.append(added_newline_proof)
+                    total_time = time.time() - start_time
+                    assert proof_check_result.new_proof is not None
+                    return WholeProofSuccess(
+                        total_time,
+                        self.total_model_time,
+                        proof_check_result.new_proof,
+                        attempts,
+                    )
                 case _:
-                    failures.append(added_newline_proof)
-        end = time.time()
-        return WholeProofResult(example, successes, failures, end - start)
+                    continue
+        total_time = time.time() - start_time
+        return WholeProofFailure(total_time, self.total_model_time, attempts)
+
+    def search_one_by_one(self) -> WholeProofSuccess | WholeProofFailure:
+        attempts: list[str] = []
+        start_time = time.time()
+        for attempt_num in range(self.n_attempts):
+            maybe_complete, attempt = self.search_step()
+            if self.print_proofs:
+                print(attempt)
+            attempts.append(attempt)
+            if maybe_complete is not None:
+                total_time = time.time() - start_time
+                return WholeProofSuccess(
+                    total_time,
+                    self.total_model_time,
+                    maybe_complete,
+                    attempts,
+                )
+        total_time = time.time() - start_time
+        return WholeProofFailure(total_time, self.total_model_time, attempts)
+
+    def search_step(self) -> tuple[Optional[Proof], str]:
+        last_proof = self.cur_dset_file.proofs[-1]
+        admitted_step = last_proof.steps[-1]
+        cur_proof_script = last_proof.proof_prefix_to_string(
+            admitted_step, include_theorem=False
+        )
+        start_time = time.time()
+        result = self.tactic_gen_client.get_recs(
+            len(last_proof.steps) - 1,
+            last_proof,
+            self.cur_dset_file,
+            1,
+        )
+        end_time = time.time()
+        assert len(result.next_tactic_list) == 1
+        next_tactic = result.next_tactic_list[0]
+        self.total_model_time += end_time - start_time
+        proof_check_result = self.proof_manager.check_proof(
+            cur_proof_script + next_tactic, last_proof.theorem
+        )
+        match proof_check_result.tactic_result:
+            case TacticResult.COMPLETE:
+                return proof_check_result.new_proof, cur_proof_script + next_tactic
+            case _:
+                return None, cur_proof_script + next_tactic

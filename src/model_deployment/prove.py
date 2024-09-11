@@ -18,6 +18,7 @@ from model_deployment.straight_line_searcher import (
     StraightLineSuccess,
     StraightLineFailure,
 )
+from model_deployment.whole_proof_searcher import WholeProofSuccess, WholeProofFailure
 from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure
 from model_deployment.searcher import (
     SearcherConf,
@@ -247,6 +248,126 @@ class ClassicalSummary:
 
 
 @dataclass
+class WholeProofSummary:
+    file: Path
+    theorem: str
+    proof_idx: int
+    theorem_id: str
+    success: bool
+    proof: str | None
+    attempts: list[str] | None
+    search_time: float | None
+    model_time: float | None
+
+    ALIAS = "whole"
+
+    def __lt__(self, other: WholeProofSummary) -> bool:
+        if self.file == other.file:
+            return self.theorem < other.theorem
+        return self.file < other.file
+
+    def print_detailed_summary(self):
+        print("File:", self.file)
+        print("Theorem:", self.theorem)
+        print("Success:", self.success)
+        if self.success:
+            assert self.proof is not None
+            print("Proof:", self.proof)
+
+        if self.attempts is not None:
+            print("ATTEMPTS:")
+            for attempt in self.attempts:
+                print(attempt)
+        else:
+            print("No Attempts")
+
+    def to_json(self) -> Any:
+        return {
+            "file": str(self.file),
+            "theorem": self.theorem,
+            "proof_idx": self.proof_idx,
+            "theorem_id": self.theorem_id,
+            "success": self.success,
+            "proof": self.proof,
+            "attempts": self.attempts,
+            "search_time": self.search_time,
+            "model_time": self.model_time,
+        }
+
+    @classmethod
+    def from_json(cls, json_data: Any) -> WholeProofSummary:
+        return cls(
+            Path(json_data["file"]),
+            json_data["theorem"],
+            json_data["proof_idx"],
+            json_data["theorem_id"],
+            json_data["success"],
+            json_data["proof"],
+            json_data["attempts"],
+            json_data["search_time"],
+            json_data["model_time"],
+        )
+
+    def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
+        headers = [
+            "file",
+            "theorem",
+            "success",
+            "search_time",
+            "model_time",
+            "num_attempts",
+        ]
+        return headers, {
+            "file": str(self.file),
+            "theorem": self.theorem,
+            "success": self.success,
+            "search_time": self.search_time,
+            "model_time": self.model_time,
+            "num_attempts": None if self.attempts is None else len(self.attempts),
+        }
+
+    @classmethod
+    def from_search_result(
+        cls,
+        file: Path,
+        theorem: str,
+        proof_idx: int,
+        theorem_id: str,
+        search_result: WholeProofSuccess | WholeProofFailure | None,
+    ) -> WholeProofSummary:
+        if search_result is None:
+            return cls(
+                file, theorem, proof_idx, theorem_id, False, None, None, None, None
+            )
+        match search_result:
+            case WholeProofSuccess():
+                proof_text = search_result.successful_proof.proof_text_to_string()
+                return cls(
+                    file,
+                    theorem,
+                    proof_idx,
+                    theorem_id,
+                    True,
+                    proof_text,
+                    search_result.attempted_proofs,
+                    search_result.time,
+                    search_result.model_time,
+                )
+            case WholeProofFailure():
+                return cls(
+                    file,
+                    theorem,
+                    proof_idx,
+                    theorem_id,
+                    False,
+                    None,
+                    search_result.attempted_proofs,
+                    search_result.time,
+                    search_result.model_time,
+                )
+
+
+@dataclass
 class StraightLineSummary:
     file: Path
     theorem: str
@@ -379,6 +500,8 @@ def summary_from_json(json_data: Any) -> Summary:
             return ClassicalSummary.from_json(json_data)
         case StraightLineSummary.ALIAS:
             return StraightLineSummary.from_json(json_data)
+        case WholeProofSummary.ALIAS:
+            return WholeProofSummary.from_json(json_data)
         case _:
             raise ValueError(f"Unknown alias {attempted_alias}")
 
@@ -434,7 +557,7 @@ def pretty_print_summary(summary: Summary):
     print(nice_str)
 
 
-Summary = ClassicalSummary | StraightLineSummary
+Summary = ClassicalSummary | StraightLineSummary | WholeProofSummary
 
 
 def summary_from_result(
@@ -451,5 +574,9 @@ def summary_from_result(
             )
         case StraightLineSuccess() | StraightLineFailure():
             return StraightLineSummary.from_search_result(
+                file, theorem, proof_idx, theorem_id, result
+            )
+        case WholeProofSuccess() | WholeProofFailure():
+            return WholeProofSummary.from_search_result(
                 file, theorem, proof_idx, theorem_id, result
             )
