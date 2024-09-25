@@ -4,6 +4,7 @@ We use the switches in this folder for compiling coq projects used to train and 
 ## Main Switch
 This opam switch is used to compile all of the projects for collecting training data, and is used to compile the following projects in Rango's evaluation:
 ### eval.opam
+**Install:** `opam switch import switches/eval.opam --switch=eval --repos=default,coq-released=https://coq.inria.fr/opam/released`
 | Repo                          | Commit                                   |
 |------                         |--------                                  |
 | AbsInt/CompCert               | 98323527abda4f6b01ca6a23518907a1272c9021 |
@@ -24,6 +25,7 @@ This opam switch is used to compile all of the projects for collecting training 
 These switches are used to compile the following "recent projects" -- from after the cutoff of Deepseek Coder
 
 ### eval-8.17.opam
+**Install:** `opam switch import switches/eval-8.17.opam --switch=eval-8.17 --repos=default,coq-released=https://coq.inria.fr/opam/released,iris-dev=git+https://gitlab.mpi-sws.org/iris/opam.git`
 | Repo                          | Commit                                   |
 | ---                           | ---                                      |
 | coq-community/trocq           | d417b00133c457e374a34afca71abb9ccee2c5aa | 
@@ -31,6 +33,7 @@ These switches are used to compile the following "recent projects" -- from after
 | Lapin0t/mu-mu-tilde           | f4342676c41a68ed1a068a9e37cddab267f08461 | 
 
 ### eval-8.18.opam
+**Install:** `opam switch import switches/eval-8.18.opam --switch=eval-8.18 --repos=default,coq-released=https://coq.inria.fr/opam/released`
 | Repo                              | Commit                                   |
 | ---                               | ---                                      |
 | ccz181078/Coq-BB5                 | 632ba68b03adb27f4f6faaa76b83db934d5ecbba |
@@ -38,6 +41,7 @@ These switches are used to compile the following "recent projects" -- from after
 | thamugadi/semantic-preservation   | 7fa40431d08ab02ee2cf1a120b59039c300eb49e |
 
 ### eval-8.19.opam
+**Install:** `opam switch import switches/eval-8.19.opam --switch=eval-8.19 --repos=default,coq-released=https://coq.inria.fr/opam/released,iris-dev=git+https://gitlab.mpi-sws.org/iris/opam.git`
 | Repo                          | Commit                                   | 
 | ---                           | ---                                      |
 | hferee/UIML                   | 3b0fd30a1657947b762090dc658b771b5a04a062 |
