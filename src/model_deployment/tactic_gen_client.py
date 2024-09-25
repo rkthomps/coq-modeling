@@ -13,6 +13,10 @@ from requests.adapters import Retry, HTTPAdapter
 from data_management.dataset_file import Proof, DatasetFile
 
 import openai
+from openai.types.chat import (
+    ChatCompletionUserMessageParam,
+    ChatCompletionAssistantMessageParam,
+)
 
 openai.api_key = os.environ["OPENAI_API_KEY"]
 from openai import OpenAI
@@ -205,6 +209,112 @@ class PrevProofTacticGenClient:
         return cls(proof_retriever_from_conf(conf.retriever_conf))
 
 
+@dataclass
+class OpenAIClientConf:
+    model: str
+    ALIAS = "openai"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> OpenAIClientConf:
+        return cls(yaml_data["model"])
+
+
+@dataclass
+class OpenAIClient:
+    model: str
+    client: openai.OpenAI
+
+    example_prefix = "Inductive Fruit :=\n" "  | Apple\n" "  | Banana."
+
+    example_theorem = "Theorem fruit_thm : forall (a : Fruit), a = Apple \/ a = Banana."
+
+    example_proof_str = (
+        "```coq\n"
+        "Proof.\n"
+        "  intros.\n"
+        "  destruct a.\n"
+        "  - left. reflexivity.\n"
+        "  - right. reflexivity.\n"
+        "Qed.\n"
+        "```"
+    )
+
+    def extract_proof(self, proof_str: str) -> Optional[str]:
+        start_str = "```coq"
+        end_str = "```"
+        if proof_str.startswith(start_str) and proof_str.endswith(end_str):
+            return proof_str[len(start_str) : -len(end_str)]
+        return None
+
+    def get_str_user_prompt(self, prefix: str, theorem: str) -> str:
+        instructions = (
+            "Prove the given theorem in Coq. "
+            "You are given the lines preceding the theorem in the Coq "
+            "file after the tag [PREFIX]. "
+            "You are given the theorem you are meant to prove after the tag [THEOREM]. "
+            "You complete the proof of the theorem. You give the proof after the [PROOF] tag. "
+        )
+        return (
+            f"{instructions}\n\n[PREFIX]\n{prefix}\n\n[THEOREM]\n{theorem}\n\n[PROOF]"
+        )
+
+    def get_user_prompt(self, prefix: str, proof: Proof) -> str:
+        return self.get_str_user_prompt(prefix, proof.theorem.term.text)
+
+    def get_recs(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dset_file: DatasetFile,
+        n: int,
+        file_prefix: str,
+        **kwargs: Any,
+    ) -> ModelResult:
+        example_user_prompt = self.get_str_user_prompt(
+            self.example_prefix, self.example_theorem
+        )
+        current_user_prompt = self.get_user_prompt(file_prefix, proof)
+        prompt = [
+            {
+                "role": "user",
+                "content": example_user_prompt,
+            },
+            {
+                "role": "assistant",
+                "content": self.example_proof_str,
+            },
+            {
+                "role": "user",
+                "content": current_user_prompt,
+            },
+        ]
+        print("GPT Request:")
+        print(prompt)
+
+        completion = self.client.chat.completions.create(
+            messages=prompt,
+            model=self.model,
+        )
+        attempt = completion.choices[0].message.content
+
+        assert attempt is not None
+        print("GPT Response:")
+        clean_attempt = self.extract_proof(attempt)
+        if clean_attempt:
+            final_result = clean_attempt
+        else:
+            final_result = attempt
+        return ModelResult([final_result], [1], [1])
+
+    @classmethod
+    def from_conf(cls, conf: OpenAIClientConf) -> OpenAIClient:
+        client = OpenAI(
+            api_key=os.environ["OPENAI_API_KEY"],
+            organization=os.environ["OPENAI_ORG_KEY"],
+        )
+        return cls(conf.model, client)
+
+
 class LocalTacticGenClient:
     def __init__(self, urls: list[str], formatters: list[LmFormatter]) -> None:
         self.formatters = formatters
@@ -263,7 +373,10 @@ class LocalTacticGenClient:
 
 
 TacticGenClient = (
-    LocalTacticGenClient | ModelFreeTacticGenClient | PrevProofTacticGenClient
+    LocalTacticGenClient
+    | ModelFreeTacticGenClient
+    | PrevProofTacticGenClient
+    | OpenAIClient
 )
 
 
@@ -275,6 +388,8 @@ def tactic_gen_client_from_conf(conf: TacticGenConf) -> TacticGenClient:
             return ModelFreeTacticGenClient.from_conf(conf)
         case PrevProofTacticGenClientConf():
             return PrevProofTacticGenClient.from_conf(conf)
+        case OpenAIClientConf():
+            return OpenAIClient.from_conf(conf)
         case _:
             raise ValueError(f"Invalid tactic client config: {str(conf.__class__)}")
 
@@ -297,6 +412,7 @@ TacticGenConf = (
     | PrevProofTacticGenClientConf
     | FidTacticGenConf
     | DecoderTacticGenConf
+    | OpenAIClientConf
 )
 
 
@@ -313,5 +429,7 @@ def tactic_gen_conf_from_yaml(yaml_data: Any) -> TacticGenConf:
             return DecoderTacticGenConf.from_yaml(yaml_data)
         case FidTacticGenConf.ALIAS:
             return FidTacticGenConf.from_yaml(yaml_data)
+        case OpenAIClientConf.ALIAS:
+            return OpenAIClientConf.from_yaml(yaml_data)
         case _:
             raise ValueError(f"Unknown tactic conf: {attempted_alias}")

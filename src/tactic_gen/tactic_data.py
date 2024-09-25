@@ -395,6 +395,78 @@ class ProofPremiseCollator:
         )
 
 
+@dataclass
+class NoScriptCollatorConf:
+    state_tokens: int
+    proof_tokens: int
+    premise_tokens: int
+    out_tokens: int
+    whole_proof: bool
+    ALIAS = "no-script"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> NoScriptCollatorConf:
+        return cls(
+            yaml_data["state_tokens"],
+            yaml_data["proof_tokens"],
+            yaml_data["premise_tokens"],
+            yaml_data["out_tokens"],
+            yaml_data.get("whole_proof", False),
+        )
+
+
+@dataclass
+class NoScriptCollator:
+    state_tokens: int
+    proof_tokens: int
+    premise_tokens: int
+    out_tokens: int
+    whole_proof: bool
+
+    STATE_SEP = "\n[STATE]\n"
+    PROOF_SEP = "\n[PROOFS]\n"
+    PREMISE_SEP = "\n[PREMISES]\n"
+
+    def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        proof_str = allocate_and_fmt(tokenizer, example.proofs, self.proof_tokens)
+        premise_str = allocate_and_fmt(tokenizer, example.premises, self.premise_tokens)
+        state_str, _ = allocate_tokens(
+            tokenizer, example.proof_state, self.state_tokens
+        )
+        combined_str = (
+            self.PREMISE_SEP
+            + premise_str
+            + self.PROOF_SEP
+            + proof_str
+            + self.STATE_SEP
+            + state_str
+            + NEWLINE_RESPONSE_TEMPLATE
+        )
+        return combined_str
+
+    def collate(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
+        input_str = self.collate_input(tokenizer, example)
+        if self.whole_proof:
+            target = "".join(example.next_steps)
+        else:
+            target = example.next_steps[0]
+        out_str, _ = allocate_tokens(
+            tokenizer, target, self.out_tokens, truncate_front=False
+        )
+        combined_str = input_str + out_str
+        return combined_str
+
+    @classmethod
+    def from_conf(cls, conf: NoScriptCollatorConf) -> NoScriptCollator:
+        return cls(
+            conf.state_tokens,
+            conf.proof_tokens,
+            conf.premise_tokens,
+            conf.out_tokens,
+            conf.whole_proof,
+        )
+
+
 @functools.lru_cache(maxsize=10000)
 def get_file_lines(file: Path) -> list[str]:
     with file.open("r") as f:
@@ -507,6 +579,7 @@ ExampleCollator = (
     | ProofCollator
     | ProofPremiseCollator
     | NPrevLineCollator
+    | NoScriptCollator
 )
 
 ExampleCollatorConf = (
@@ -515,6 +588,7 @@ ExampleCollatorConf = (
     | ProofCollatorConf
     | ProofPremiseCollatorConf
     | NPrevLineCollatorConf
+    | NoScriptCollatorConf
 )
 
 
@@ -531,6 +605,8 @@ def example_collator_conf_from_yaml(yaml_data: Any) -> ExampleCollatorConf:
             return ProofPremiseCollatorConf.from_yaml(yaml_data)
         case NPrevLineCollatorConf.ALIAS:
             return NPrevLineCollatorConf.from_yaml(yaml_data)
+        case NoScriptCollatorConf.ALIAS:
+            return NoScriptCollatorConf.from_yaml(yaml_data)
         case _:
             raise ValueError(f"Could not find example collator: {attempted_alias}")
 
@@ -547,6 +623,8 @@ def example_collator_from_conf(conf: ExampleCollatorConf) -> ExampleCollator:
             return ProofPremiseCollator.from_conf(conf)
         case NPrevLineCollatorConf():
             return NPrevLineCollator.from_conf(conf)
+        case NoScriptCollatorConf():
+            return NoScriptCollator.from_conf(conf)
 
 
 class LmProcessedDataset(Dataset):

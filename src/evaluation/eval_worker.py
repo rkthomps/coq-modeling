@@ -25,7 +25,6 @@ from model_deployment.prove import (
     run_proof,
     summary_from_result,
     save_summary,
-    get_save_loc,
     summary_from_json,
     pretty_print_summary,
     ClassicalSummary,
@@ -150,7 +149,6 @@ if __name__ == "__main__":
             run_conf.theorem_id,
             eval_conf,
         )
-        save_loc = get_save_loc(orig_summary, eval_conf.save_loc)
         save_summary(orig_summary, file_info, eval_conf.save_loc)
 
         _logger.info(f"running proof of {run_conf.theorem_id} from {run_conf.file}")

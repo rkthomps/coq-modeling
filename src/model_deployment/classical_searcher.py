@@ -222,6 +222,7 @@ class ClassicalSearcher:
                     cur_dset_file,
                     self.max_branch,
                     beam=self.beam_decode,
+                    file_prefix=self.proof_manager.file_prefix,
                 )
                 end_time = time.time()
                 self.total_model_time += end_time - start_time

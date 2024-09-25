@@ -44,6 +44,7 @@ def get_proofs_to_add(
             existing_summary = load_summary(summary_loc)
             if rerun_errors and errored_summary(existing_summary):
                 proofs_to_add.append((f_info, i))
+    _logger.info(f"Adding {len(proofs_to_add)}/{len(proofs)} proofs to queue")
     return proofs_to_add
 
 

@@ -46,7 +46,7 @@ class WholeProofSearcherConf:
     n_attempts: int
     print_proofs: bool
     rectype: RecType
-    timeout =  600
+    timeout = 600
     ALIAS = "whole_proof"
 
     @classmethod
@@ -132,6 +132,7 @@ class WholeProofSearcher:
             last_proof,
             self.cur_dset_file,
             self.n_attempts,
+            file_prefix=self.proof_manager.file_prefix,
         )
         end_model_time = time.time()
         self.total_model_time += end_model_time - start_model_time
@@ -190,6 +191,7 @@ class WholeProofSearcher:
             last_proof,
             self.cur_dset_file,
             1,
+            file_prefix=self.proof_manager.file_prefix,
         )
         end_time = time.time()
         assert len(result.next_tactic_list) == 1
@@ -198,6 +200,7 @@ class WholeProofSearcher:
         proof_check_result = self.proof_manager.check_proof(
             cur_proof_script + next_tactic, last_proof.theorem
         )
+        print(proof_check_result)
         match proof_check_result.tactic_result:
             case TacticResult.COMPLETE:
                 return proof_check_result.new_proof, cur_proof_script + next_tactic

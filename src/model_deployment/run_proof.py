@@ -5,6 +5,7 @@ import argparse
 import json
 import yaml
 import pickle
+from tqdm import tqdm
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,10 +60,12 @@ class TheoremLocationInfo:
         self,
         data_split: DataSplit,
     ) -> tuple[FileInfo, Split]:
+        resolved_test_file = self.test_file.resolve()
+        resolved_data_loc = self.data_loc.resolve()
         for split in Split:
             for file_info in data_split.get_file_list(split):
-                info_path = self.data_loc / Path(file_info.file)
-                if info_path.resolve() == self.test_file.resolve():
+                info_path = resolved_data_loc / Path(file_info.file)
+                if info_path == resolved_test_file:
                     return file_info, split
         raise ValueError(
             f"Could not find data points file corresponding to {self.test_file}"

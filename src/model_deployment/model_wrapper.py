@@ -31,6 +31,7 @@ from tactic_gen.train_decoder import (
 from tactic_gen.tactic_data import (
     ExampleCollator,
     ProofPremiseCollator,
+    NoScriptCollator,
     example_collator_from_conf,
     example_collator_conf_from_yaml,
     NEWLINE_RESPONSE_TEMPLATE,
@@ -66,6 +67,38 @@ def find_id_start_idx(t: torch.Tensor, s: torch.Tensor) -> Optional[int]:
     return None
 
 
+def get_enclosing_seps(
+    collator: ExampleCollator, token_mask: TokenMask
+) -> tuple[str, str]:
+    match collator:
+        case ProofPremiseCollator():
+            match token_mask:
+                case TokenMask.STATE:
+                    return (collator.STATE_SEP, collator.SCRIPT_SEP)
+                case TokenMask.SCRIPT:
+                    return (collator.SCRIPT_SEP, NEWLINE_RESPONSE_TEMPLATE)
+                case TokenMask.PROOF:
+                    return (collator.PROOF_SEP, collator.STATE_SEP)
+                case TokenMask.PREMISE:
+                    return (collator.PREMISE_SEP, collator.PROOF_SEP)
+
+        case NoScriptCollator():
+            match token_mask:
+                case TokenMask.STATE:
+                    return (collator.STATE_SEP, NEWLINE_RESPONSE_TEMPLATE)
+                case TokenMask.SCRIPT:
+                    raise ValueError(
+                        "NoScriptCollator does not support SCRIPT token masking."
+                    )
+                case TokenMask.PROOF:
+                    return (collator.PROOF_SEP, collator.STATE_SEP)
+                case TokenMask.PREMISE:
+                    return (collator.PREMISE_SEP, collator.PROOF_SEP)
+
+        case _:
+            raise ValueError(f"Token masking not supported for {collator}.")
+
+
 def transform_attention_mask(
     collator: ExampleCollator,
     tokenizer: PreTrainedTokenizer,
@@ -73,27 +106,11 @@ def transform_attention_mask(
     input_ids: torch.Tensor,
     attn_mask: torch.Tensor,
 ) -> torch.Tensor:
-    match token_mask:
-        case None:
-            return attn_mask
-        case TokenMask.STATE:
-            assert isinstance(collator, ProofPremiseCollator)
-            start_ids = tokenizer.encode(collator.STATE_SEP, add_special_tokens=False)
-            end_ids = tokenizer.encode(collator.SCRIPT_SEP, add_special_tokens=False)
-        case TokenMask.SCRIPT:
-            assert isinstance(collator, ProofPremiseCollator)
-            start_ids = tokenizer.encode(collator.SCRIPT_SEP, add_special_tokens=False)
-            end_ids = tokenizer.encode(
-                NEWLINE_RESPONSE_TEMPLATE, add_special_tokens=False
-            )
-        case TokenMask.PROOF:
-            assert isinstance(collator, ProofPremiseCollator)
-            start_ids = tokenizer.encode(collator.PROOF_SEP, add_special_tokens=False)
-            end_ids = tokenizer.encode(collator.STATE_SEP, add_special_tokens=False)
-        case TokenMask.PREMISE:
-            assert isinstance(collator, ProofPremiseCollator)
-            start_ids = tokenizer.encode(collator.PREMISE_SEP, add_special_tokens=False)
-            end_ids = tokenizer.encode(collator.PROOF_SEP, add_special_tokens=False)
+    if token_mask is None:
+        return attn_mask
+    start_str, end_str = get_enclosing_seps(collator, token_mask)
+    start_ids = tokenizer.encode(start_str, add_special_tokens=False)
+    end_ids = tokenizer.encode(end_str, add_special_tokens=False)
 
     changed_mask = attn_mask.clone()
     for i, id_row in enumerate(input_ids):
@@ -132,9 +149,6 @@ class DecoderLocalWrapper:
         if token_mask_str is not None:
             token_mask = TokenMask.from_str(token_mask_str)
         collated_input = self.collator.collate_input(self.tokenizer, example)
-        with open("out.txt", "a") as fout:
-            fout.write(collated_input)
-        # print("Collated: ", collated_input)
         inputs = self.tokenizer(
             collated_input,
             max_length=self.hard_seq_len,

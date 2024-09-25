@@ -144,6 +144,7 @@ class StraightLineSearcher:
                 cur_dset_file,
                 1,
                 token_mask=self.token_mask,
+                file_prefix=self.proof_manager.file_prefix,
             )
             end_model_time = time.time()
             assert len(result.next_tactic_list) == 1
