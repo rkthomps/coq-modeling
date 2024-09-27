@@ -544,7 +544,7 @@ def save_summary(summary: Summary, file_info: FileInfo, save_dir: Path):
         fout.write(json.dumps(summary_json, indent=2))
 
 
-def pretty_print_summary(summary: Summary):
+def pretty_print_summary(summary: Summary) -> str:
     if summary.search_time is None:
         nice_str = "{:20s}{:20s} FAILURE BY ERROR.".format(
             str(summary.file), summary.theorem
@@ -554,7 +554,7 @@ def pretty_print_summary(summary: Summary):
         nice_str = "{:20s}{:20s}{:10s} after {:3.2f} seconds.".format(
             str(summary.file), summary.theorem, success_str, summary.search_time
         )
-    print(nice_str)
+    return nice_str
 
 
 Summary = ClassicalSummary | StraightLineSummary | WholeProofSummary

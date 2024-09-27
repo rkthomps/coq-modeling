@@ -4,6 +4,7 @@ import random
 from dataclasses import dataclass
 import math
 import time
+import ipdb
 
 from data_management.dataset_file import DatasetFile, Proof
 from model_deployment.proof_manager import ProofManager, TacticResult

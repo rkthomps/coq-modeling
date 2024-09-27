@@ -106,6 +106,9 @@ if __name__ == "__main__":
 
     eval_conf = EvalConf.from_yaml(yaml_conf)
 
+    switch = subprocess.run(["opam", "switch", "show"], capture_output=True)
+    _logger.info(f"Running with switch {switch.stdout.decode()}")
+
     sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
     data_split = DataSplit.load(eval_conf.data_split_loc)
     q = FileQueue(queue_loc)

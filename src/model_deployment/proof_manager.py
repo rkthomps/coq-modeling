@@ -86,7 +86,6 @@ class ProofInfo:
 
 
 class ProofManager:
-    TIMEOUT = 60
     SEARCH_DIR = TMP_LOC / SEARCH_DIR_NAME
 
     def __init__(
@@ -116,24 +115,16 @@ class ProofManager:
         if not self.SEARCH_DIR.exists():
             os.makedirs(self.SEARCH_DIR)
         self.fast_aux_file_path = get_fresh_path(
-            self.SEARCH_DIR, str(self.file_loc.name)
+            self.file_loc.parent, "aux_" + str(self.file_loc.name)
         ).resolve()
         self.__make_empty(self.fast_aux_file_path)
-        self.fast_aux_client = FastLspClient(self.workspace_uri, timeout=60)
+        self.fast_aux_client = FastLspClient(self.workspace_uri, timeout=240)
         fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
-        self.fast_goal_file_path = get_fresh_path(
-            self.SEARCH_DIR, "goal_" + str(self.file_loc.name)
-        ).resolve()
-        self.__make_empty(self.fast_goal_file_path)
-        fast_goal_file_uri = f"file://{self.fast_goal_file_path}"
         self.fast_client = ClientWrapper(self.fast_aux_client, fast_aux_file_uri)
-        self.goal_client = ClientWrapper(self.fast_aux_client, fast_goal_file_uri)
 
     def __restart_clients(self) -> None:
         if os.path.exists(self.fast_aux_file_path):
             os.remove(self.fast_aux_file_path)
-        if os.path.exists(self.fast_goal_file_path):
-            os.remove(self.fast_goal_file_path)
         # self.fast_aux_client.shutdown()
         # self.fast_aux_client.exit()
         self.fast_aux_client.kill()
@@ -294,7 +285,7 @@ class ProofManager:
             _logger.warning(f"Got timeout error on proof: {partial_proof[-10:]}")
             self.__restart_clients()
             return ProofCheckResult.get_invalid(new_step_strs)
-        self.fast_client.client.lsp_endpoint.timeout = 5
+        # self.fast_client.client.lsp_endpoint.timeout = 5
 
         if current_goals is None:
             return ProofCheckResult.get_invalid(new_step_strs)
@@ -362,8 +353,6 @@ class ProofManager:
         # self.aux_client.close()
         if os.path.exists(self.fast_aux_file_path):
             os.remove(self.fast_aux_file_path)
-        if self.fast_goal_file_path.exists():
-            os.remove(self.fast_goal_file_path)
         self.fast_aux_client.kill()
         # self.fast_aux_client.shutdown()
         # self.fast_aux_client.exit()

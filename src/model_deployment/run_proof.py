@@ -66,6 +66,7 @@ class TheoremLocationInfo:
             for file_info in data_split.get_file_list(split):
                 info_path = resolved_data_loc / Path(file_info.file)
                 if info_path == resolved_test_file:
+                    print(f"Found {info_path} in {split}")
                     return file_info, split
         raise ValueError(
             f"Could not find data points file corresponding to {self.test_file}"

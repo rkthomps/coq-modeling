@@ -1,0 +1,6 @@
+alias: test-only
+test_projects: [
+  "raw-data/cutoff-eval-dataset/repos/Coq-BB5",
+  "raw-data/cutoff-eval-dataset/repos/PnVRocqLib",
+  "raw-data/cutoff-eval-dataset/repos/semantic-preservation",
+]

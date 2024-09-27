@@ -293,6 +293,12 @@ class DataSplit:
                     split_config.test_projects,
                     split_config.val_projects,
                 )
+            case TestOnlyConfig():
+                return cls.create_test_only(
+                    data_loc,
+                    sentence_db,
+                    split_config.test_projects,
+                )
 
     @classmethod
     def create_random_file_split(
@@ -314,6 +320,26 @@ class DataSplit:
         val_files = [f for f, _ in all_files[num_train : num_train + num_val]]
         test_files = [f for f, _ in all_files[num_train + num_val :]]
         return cls(train_files, val_files, test_files)
+
+    @classmethod
+    def create_test_only(
+        cls,
+        data_loc: Path,
+        sentence_db: SentenceDB,
+        test_projects: list[Path],
+    ) -> DataSplit:
+        pass
+        all_files = cls.index_files(data_loc, sentence_db)
+        print("data loc 1", data_loc)
+
+        test_files: list[FileInfo] = []
+        resolved_test_projects = set(p.resolve() for p in test_projects)
+        for f, thms in all_files:
+            if (
+                data_loc / f.repository
+            ).resolve() in resolved_test_projects:
+                test_files.append(f)
+        return DataSplit([], [], test_files)
 
     @classmethod
     def create_predefined(
@@ -395,7 +421,19 @@ class PredefinedSplitConfig:
         return cls(test_projects, val_projects)
 
 
-SplitConfig = RandomSplitConfig | PredefinedSplitConfig
+@dataclass
+class TestOnlyConfig:
+    test_projects: list[Path]
+    ALIAS = "test-only"
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> TestOnlyConfig:
+        test_projects = [Path(p) for p in yaml_data["test_projects"]]
+        assert all([p.exists() for p in test_projects])
+        return cls(test_projects)
+
+
+SplitConfig = RandomSplitConfig | PredefinedSplitConfig | TestOnlyConfig
 
 
 def split_config_from_yaml(yaml_data: Any) -> SplitConfig:
@@ -405,6 +443,8 @@ def split_config_from_yaml(yaml_data: Any) -> SplitConfig:
             return RandomSplitConfig.from_yaml(yaml_data)
         case PredefinedSplitConfig.ALIAS:
             return PredefinedSplitConfig.from_yaml(yaml_data)
+        case TestOnlyConfig.ALIAS:
+            return TestOnlyConfig.from_yaml(yaml_data)
         case _:
             raise ValueError(f"Invalid split config alias {attempted_alias}.")
 
@@ -442,6 +482,7 @@ if __name__ == "__main__":
 
     split_config = split_config_from_yaml(split_config_yaml)
     sentence_db = SentenceDB.load(sentence_db_loc)
+    print("data_loc", data_loc)
     split = DataSplit.create(split_config, data_loc, sentence_db)
     _logger.info(f"Saving split to {save_loc}.")
     split.save(save_loc)

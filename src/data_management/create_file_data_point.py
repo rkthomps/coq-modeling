@@ -19,6 +19,7 @@ from data_management.dataset_file import DatasetFile, FocusedStep, FileContext, 
 from data_management.sentence_db import SentenceDB
 
 from util.constants import RANGO_LOGGER
+from util.util import set_rango_logger
 
 _logger = logging.getLogger(RANGO_LOGGER)
 
@@ -193,3 +194,23 @@ def get_switch_loc() -> Path:
     assert (opam_loc.parents[1] / COQ_BIN_PATH).exists()
     switch_loc = opam_loc.parents[1]
     return switch_loc
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("repo_loc")
+    parser.add_argument("file_loc")
+
+    args = parser.parse_args()
+    set_rango_logger(__file__, logging.DEBUG)
+    
+    repo_loc = Path(args.repo_loc)
+    file_loc = Path(args.file_loc)
+
+    sentence_db_loc = Path("/tmp/temp-sentences.db")
+    if sentence_db_loc.exists():
+        os.remove(sentence_db_loc)
+    sentence_db = SentenceDB.create(sentence_db_loc)
+
+
+    get_data_point(file_loc, repo_loc, sentence_db, False, None)
