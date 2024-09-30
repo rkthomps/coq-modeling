@@ -138,6 +138,11 @@ def tactician_data_points_in_split(
     pool = ThreadPoolExecutor(n_cores)
     futures = []
 
+    with open('tactician_problems.json', 'r') as f:
+        problems = json.loads(f.read())
+        problems = list(map(lambda p: p["result_file"], problems))
+
+
     for file_info in data_split.get_file_list(split):
         file_path = file_info.file.replace("/", "_")
         file_data_point = file_info.get_dp(data_loc, sentence_db)
@@ -149,6 +154,7 @@ def tactician_data_points_in_split(
                 if (
                     not os.path.exists(proof_file)
                     or os.path.exists(results / f"{file_path}_{i}.json")
+                    or not f"{file_path.replace('/', '_')}_{i}.json" in problems
                 ):
                     continue
 
