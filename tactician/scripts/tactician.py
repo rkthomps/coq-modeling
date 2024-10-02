@@ -16,14 +16,15 @@ from data_management.splits import (
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-final = DataSplit.load(Path("../../splits/final-split.json"))
+final = DataSplit.load(Path("/home/nfsaavedra/coq-modeling/tactician/cutoff-eval/cutoff-8.18.json"))
 random = DataSplit.load(Path("../../splits/random-split.json"))
 
 
 data_loc = Path("../../raw-data/coq-dataset")
-data_points_loc = Path("data-points/")
-sentence_db_loc = Path("../../raw-data/coq-dataset/sentences.db")
+data_points_loc = Path("data-points")
+sentence_db_loc = Path("sentences.db")
 sentence_db = SentenceDB.load(sentence_db_loc)
+
 
 results = Path("results/")
 
@@ -70,7 +71,7 @@ def test_proof(
         proof_text = f.readlines()
 
     with open(new_path, "w") as f:
-        f.writelines(proof_text[:-2]) # Without Qed and synth.
+        f.writelines(proof_text)
 
     workspace = os.path.join(data_loc, file_info.workspace)
     
@@ -78,7 +79,7 @@ def test_proof(
         with open(os.path.join(workspace, "_CoqProject"), "r") as f:
             for line in f.readlines():
                 if line.startswith("-"):
-                    options = line
+                    options = line.split("#")[0]
                     break
     else:
         options = ""
@@ -92,7 +93,7 @@ def test_proof(
             options=options
         )
     except Exception as e:
-        logging.warning(f"Failed to compile {new_path}: {e}")
+        logging.warning(f"Failed to compile {new_path} ({original_file_path}) in workspace {workspace}: {e}")
         os.remove(new_path)
         return
     compile_time = time.time() - start
@@ -151,10 +152,11 @@ def tactician_data_points_in_split(
         for i, proof in enumerate(file_data_point.proofs):
             if proof.is_proof_independent():
                 proof_file = data_points_loc / file_path / f"{i}.v"
+
                 if (
                     not os.path.exists(proof_file)
                     or os.path.exists(results / f"{file_path}_{i}.json")
-                    or not f"{file_path.replace('/', '_')}_{i}.json" in problems
+                    # or not f"{file_path.replace('/', '_')}_{i}.json" in problems
                 ):
                     continue
 
