@@ -1,7 +1,7 @@
 n_procs: 8
 split: test
 
-save_loc: ./evaluations/eval-results/deepseek-prefix-random-test-500-retry
+save_loc: ./evaluations/eval-results/deepseek-bm25-proof-tfidf-proj-thm-prem-no-script-final.json
 data_loc: raw-data/coq-dataset
 sentence_db_loc: raw-data/coq-dataset/sentences.db
 data_split_loc: splits/random-split.json
@@ -26,7 +26,7 @@ search:
 #   timeout: 120
 #   print_proofs: False
 
-max_eval_proofs: 500
+# max_eval_proofs: 500
 
 # tactic_gen:
 #   alias: fid
@@ -106,9 +106,9 @@ max_eval_proofs: 500
 #   alias: decoder
 #   checkpoint_loc: models/deepseek-prem-random/checkpoint-73500
 
-tactic_gen:
-  alias: decoder
-  checkpoint_loc: models/deepseek-prefix-random/checkpoint-54000
+# tactic_gen:
+#   alias: decoder
+#   checkpoint_loc: models/deepseek-prefix-random/checkpoint-54000
 
 # tactic_gen:
 #   alias: decoder
@@ -121,6 +121,10 @@ tactic_gen:
 # tactic_gen:
 #   alias: decoder 
 #   checkpoint_loc: models/deepseek-proof-random/checkpoint-55000
+
+tactic_gen:
+  alias: decoder 
+  checkpoint_loc: models/deepseek-tfidf-proj-thm-prem-no-script-final/checkpoint-38500
 
 
         # - THEOREM

@@ -43,6 +43,16 @@ class EvalData:
                 if r.model_time is not None or include_errors
             ]
         )
+    
+    def get_total_cost(self) -> float:
+        total_cost: float = 0
+        for r in self.results:
+            match r:
+                case WholeProofSummary():
+                    if r.costs is not None:
+                        total_cost += sum(r.costs)
+        return total_cost
+
 
     def get_successful_searches(self, timeout: float = 600) -> list[SuccessfulSummary]:
         successes: list[SuccessfulSummary] = []

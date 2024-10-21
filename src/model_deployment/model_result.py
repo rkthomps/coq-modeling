@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Optional
 
 
 def remove_stop_strings(s: str, stop_strings: list[str]) -> str:
@@ -39,16 +39,19 @@ class ModelResult:
         next_tactic_list: list[str],
         score_list: list[float],
         num_tokens_list: list[int],
+        costs: Optional[list[float]] = None,
     ) -> None:
         self.next_tactic_list = next_tactic_list
         self.score_list = score_list
         self.num_tokens_list = num_tokens_list
+        self.costs = costs
 
     def to_json(self) -> Any:
         return {
             "next_tactic_list": self.next_tactic_list,
             "score_list": self.score_list,
             "num_tokens_list": self.num_tokens_list,
+            "costs": self.costs,
         }
 
     @classmethod
@@ -56,4 +59,5 @@ class ModelResult:
         next_tactic_list = json_data["next_tactic_list"]
         score_list = json_data["score_list"]
         num_tokens_list = json_data["num_tokens_list"]
-        return cls(next_tactic_list, score_list, num_tokens_list)
+        costs = json_data.get("costs", None)
+        return cls(next_tactic_list, score_list, num_tokens_list, costs)

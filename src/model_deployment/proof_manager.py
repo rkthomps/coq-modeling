@@ -118,7 +118,7 @@ class ProofManager:
             self.file_loc.parent, "aux_" + str(self.file_loc.name)
         ).resolve()
         self.__make_empty(self.fast_aux_file_path)
-        self.fast_aux_client = FastLspClient(self.workspace_uri, timeout=240)
+        self.fast_aux_client = FastLspClient(self.workspace_uri, timeout=600)
         fast_aux_file_uri = f"file://{self.fast_aux_file_path}"
         self.fast_client = ClientWrapper(self.fast_aux_client, fast_aux_file_uri)
 

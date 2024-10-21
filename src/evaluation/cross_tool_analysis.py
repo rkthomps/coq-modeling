@@ -10,6 +10,9 @@ from edist.sed import standard_sed
 
 from dataclasses import dataclass
 
+from data_management.dataset_file import DatasetFile
+from data_management.splits import DATA_POINTS_NAME, REPOS_NAME
+from data_management.sentence_db import SentenceDB
 from model_deployment.prove import Summary, StraightLineSummary, load_results
 
 
@@ -33,13 +36,100 @@ def fair_edist(s1: str, s2: str) -> int:
     return standard_sed(s1, s2)
 
 
+@dataclass(unsafe_hash=True)
+class CacheKey:
+    data_loc: Path
+    dp_name: str
+    proof_idx: int
+
+
+# @dataclass(frozen=True)
+# class ProofDesc:
+#     file: Path
+#     theorem: str
+#     module: str
+
+#     def __lt__(self, other: ProofDesc) -> bool:
+#         return (self.file, self.theorem, self.module) < (other.file, other.theorem, other.module)
+
+
+def kill_comments(string: str) -> str:
+    """
+    From https://github.com/HazardousPeach/coq_serapy/blob/0fc951116a8ccbc4dd1c701f160209cd98a54d78/src/coq_serapy/coq_util.py#L19
+    """
+    result = ""
+    depth = 0
+    in_quote = False
+    for i in range(len(string)):
+        if in_quote:
+            if depth == 0:
+                result += string[i]
+            if string[i] == '"' and string[i - 1] != "\\":
+                in_quote = False
+        else:
+            if string[i : i + 2] == "(*":
+                depth += 1
+            if depth == 0:
+                result += string[i]
+            if string[i - 1 : i + 1] == "*)" and depth > 0:
+                depth -= 1
+            if string[i] == '"' and string[i - 1] != "\\":
+                in_quote = True
+    return result
+
+
 @dataclass
 class NamedEval:
     name: str
     results: list[GeneralResult]
 
-    def get_proof_pairs(self) -> set[ProofPair]:
-        return {ProofPair(result.file, result.theorem) for result in self.results}
+    # def get_non_duplicate_proof_descs(self) -> set[ProofDesc]:
+    #     duplicates = set()
+    #     non_duplicates = set()
+    #     for r in self.results:
+    #         desc = r.get_desc()
+    #         if desc in duplicates:
+    #             continue
+    #         if desc in non_duplicates:
+    #             duplicates.add(desc)
+    #             non_duplicates.remove(desc)
+    #         else:
+    #             non_duplicates.add(desc)
+    #     return non_duplicates
+
+    # def filter_descs(self, descs: set[ProofDesc]) -> NamedEval:
+    #     filtered: list[GeneralResult] = []
+    #     seen_descs: set[ProofDesc] = set()
+    #     for result in self.results:
+    #         desc = result.get_desc()
+    #         assert desc not in seen_descs
+    #         if desc in descs:
+    #             filtered.append(result)
+    #         seen_descs.add(desc)
+    #     return NamedEval(self.name, filtered)
+
+    def get_non_duplicate_proof_pairs(self) -> set[ProofPair]:
+        duplicates = set()
+        non_duplicates = set()
+        for r in self.results:
+            pair = ProofPair(r.file, r.theorem)
+            if pair in duplicates:
+                continue
+            if pair in non_duplicates:
+                duplicates.add(pair)
+                non_duplicates.remove(pair)
+            else:
+                non_duplicates.add(pair)
+        return non_duplicates
+
+    def get_indexed_proof_pairs(self) -> set[IndexedProofPair]:
+        indexed_pairs: set[IndexedProofPair] = set()
+        for result in self.results:
+            assert result.file_idx is not None
+            indexed_pairs.add(
+                IndexedProofPair(result.file, result.theorem, result.file_idx)
+            )
+        return indexed_pairs
 
     def get_successful_results(self, timeout: float = 600) -> list[SuccessfulResult]:
         successes: list[SuccessfulResult] = []
@@ -119,6 +209,18 @@ class NamedEval:
                 seen_pairs.add(key)
         return NamedEval(self.name, filtered)
 
+    def filter_indexed_results(self, pairs: set[IndexedProofPair]) -> NamedEval:
+        filtered: list[GeneralResult] = []
+        seen_pairs: set[IndexedProofPair] = set()
+        for result in self.results:
+            assert result.file_idx is not None
+            key = IndexedProofPair(result.file, result.theorem, result.file_idx)
+            if key not in seen_pairs:
+                if key in pairs:
+                    filtered.append(result)
+                seen_pairs.add(key)
+        return NamedEval(self.name, filtered)
+
 
 @dataclass
 class PlotPoint:
@@ -166,33 +268,59 @@ class ProofPair:
         return hash((self.file, self.theorem))
 
 
-def get_mutual_proof_pairs(evals: list[NamedEval]) -> set[ProofPair]:
+@dataclass
+class IndexedProofPair:
+    file: Path
+    theorem: str
+    index: int
+
+    def __hash__(self) -> int:
+        return hash((self.file, self.theorem, self.index))
+
+
+def get_mutual_indexed_proof_pairs(evals: list[NamedEval]) -> set[IndexedProofPair]:
     assert 0 < len(evals)
-    mutual_pairs = evals[0].get_proof_pairs()
+    mutual_pairs = evals[0].get_indexed_proof_pairs()
     for eval in evals[1:]:
-        mutual_pairs &= eval.get_proof_pairs()
+        mutual_pairs &= eval.get_indexed_proof_pairs()
     return mutual_pairs
 
 
-def get_mutually_successful_proof_pairs(
-    evals: list[NamedEval],
-) -> dict[str, list[SuccessfulResult]]:
+def get_mutual_proof_pairs(evals: list[NamedEval]) -> set[ProofPair]:
     assert 0 < len(evals)
-    eval_successes = [e.get_successful_proof_pairs() for e in evals]
-    all_successes = set(eval_successes[0].keys())
-    for e in evals[1:]:
-        e_successes = set(e.get_successful_proof_pairs().keys())
-        all_successes &= e_successes
+    mutual_pairs = evals[0].get_non_duplicate_proof_pairs()
+    for eval in evals[1:]:
+        mutual_pairs &= eval.get_non_duplicate_proof_pairs()
+    return mutual_pairs
 
-    success_dict: dict[str, list[SuccessfulResult]] = dict(
-        [(e.name, []) for e in evals]
-    )
-    for easy_proof in all_successes:
-        for e, e_succeses in zip(evals, eval_successes):
-            success_dict[e.name].append(e_succeses[easy_proof])
-    for k, v in success_dict.items():
-        assert len(v) == len(all_successes)
-    return success_dict
+
+# def get_mutual_proof_descs(evals: list[NamedEval]) -> set[ProofDesc]:
+#     assert 0 < len(evals)
+#     mutual_descs = evals[0].get_non_duplicate_proof_descs()
+#     for eval in evals[1:]:
+#         mutual_descs &= eval.get_non_duplicate_proof_descs()
+#     return mutual_descs
+
+
+# def get_mutually_successful_proof_pairs(
+#     evals: list[NamedEval],
+# ) -> dict[str, list[SuccessfulResult]]:
+#     assert 0 < len(evals)
+#     eval_successes = [e.get_successful_proof_pairs() for e in evals]
+#     all_successes = set(eval_successes[0].keys())
+#     for e in evals[1:]:
+#         e_successes = set(e.get_successful_proof_pairs().keys())
+#         all_successes &= e_successes
+
+#     success_dict: dict[str, list[SuccessfulResult]] = dict(
+#         [(e.name, []) for e in evals]
+#     )
+#     for easy_proof in all_successes:
+#         for e, e_succeses in zip(evals, eval_successes):
+#             success_dict[e.name].append(e_succeses[easy_proof])
+#     for k, v in success_dict.items():
+#         assert len(v) == len(all_successes)
+#     return success_dict
 
 
 @dataclass
@@ -210,14 +338,20 @@ class GeneralResult:
     theorem: str
     time: float
     success: bool
+    modules: list[str]
+    file_idx: Optional[int]
     proof: Optional[str]
     num_deps: Optional[int]
     num_proj_deps: Optional[int]
+    num_proofs_available: Optional[int]
 
     def __lt__(self, other: GeneralResult) -> bool:
         return (self.file, self.theorem) < (other.file, other.theorem)
 
     GIT_NAMES = ["coq-community", "coq-contribs", "thery", "AbsInt", "CertiKOS"]
+
+    # def get_desc(self) -> ProofDesc:
+    #     return ProofDesc(self.file, self.theorem, ".".join(self.modules))
 
     def to_json(self) -> Any:
         return {
@@ -225,10 +359,13 @@ class GeneralResult:
             "raw_file": str(self.raw_file),
             "theorem": self.theorem,
             "time": self.time,
+            "modules": self.modules,
             "success": self.success,
+            "file_idx": self.file_idx,
             "proof": self.proof,
             "num_deps": self.num_deps,
             "num_proj_deps": self.num_proj_deps,
+            "num_proofs_available": self.num_proofs_available,
         }
 
     @classmethod
@@ -239,9 +376,12 @@ class GeneralResult:
             json_data["theorem"],
             json_data["time"],
             json_data["success"],
+            json_data["modules"],
+            json_data.get("file_idx", None),
             json_data["proof"],
             json_data["num_deps"],
             json_data["num_proj_deps"],
+            json_data["num_proofs_available"],
         )
 
     @classmethod
@@ -264,10 +404,13 @@ class GeneralResult:
         return cls(
             cls.clean_proverbot_path(result.project / Path(result.file_name)),
             result.project / Path(result.file_name),
-            cls.normalize_thm(result.thm_str),
+            cls.normalize_thm(kill_comments(result.thm_str)),
             result.time,
             result.success,
+            result.module,
+            None,
             result.proof,
+            None,
             None,
             None,
         )
@@ -282,7 +425,7 @@ class GeneralResult:
             dashed_name = f"{name}-"
             if str(path).startswith(dashed_name):
                 return Path(str(path)[len(dashed_name) :])
-        raise ValueError(f"Unexpected prefix {path}")
+        return path
 
     @classmethod
     def clean_tactician_path(cls, file_path: Path) -> Path:
@@ -293,24 +436,31 @@ class GeneralResult:
 
     @classmethod
     def clean_rango_path(cls, file_path: Path) -> Path:
-        assert list(file_path.parts[:3]) == ["raw-data", "coq-dataset", "repos"]
-        rel_path = file_path.relative_to("raw-data/coq-dataset/repos")
+        if file_path.is_relative_to("raw-data/coq-dataset/repos"):
+            rel_path = file_path.relative_to("raw-data/coq-dataset/repos")
+        elif file_path.is_relative_to("raw-data/cutoff-eval-dataset/repos"):
+            rel_path = file_path.relative_to("raw-data/cutoff-eval-dataset/repos")
+        else:
+            raise ValueError(f"Unexpected path {file_path}")
         stripped_path = cls.strip_path(rel_path)
         return Path(stripped_path.parts[0]) / stripped_path.name
 
     @classmethod
-    def from_tacitician_result(cls, result: TacticianResult) -> GeneralResult:
+    def from_tactician_result(cls, result: TacticianResult) -> GeneralResult:
         return cls(
             cls.clean_tactician_path(Path(result.file_name)),
             Path(result.file_name),
             cls.normalize_thm(result.thm_str),
             result.time,
             result.success,
+            result.module,
+            result.file_idx,
             (
                 cls.get_tactician_proof(result.proof)
                 if result.success and result.proof is not None
                 else None
             ),
+            None,
             None,
             None,
         )
@@ -319,18 +469,29 @@ class GeneralResult:
     def from_rango_summary(cls, result: Summary) -> GeneralResult:
         assert isinstance(result, StraightLineSummary)
         proof = None
+        file_idx = result.proof_idx
         if result.success:
             assert result.attempts is not None
             assert result.proof is not None
             assert result.attempts[-1] in result.proof
             proof = result.attempts[-1]
+        if result.file.is_relative_to("raw-data/coq-dataset"):
+            clean_file_path = result.file.relative_to("raw-data/coq-dataset")
+        elif result.file.is_relative_to("raw-data/cutoff-eval-dataset"):
+            clean_file_path = result.file.relative_to("raw-data/cutoff-eval-dataset")
+        else:
+            raise ValueError(f"Unexpected path {result.file}")
+
         return cls(
             cls.clean_rango_path(result.file),
-            result.file.relative_to("raw-data/coq-dataset"),
+            clean_file_path,
             cls.normalize_thm(result.theorem),
             result.search_time if result.search_time is not None else -1,
             result.success,
+            result.module,
+            file_idx,
             proof,
+            None,
             None,
             None,
         )
@@ -357,7 +518,7 @@ def load_proverbot(path: Path) -> list[GeneralResult]:
 
 def load_tactician(path: Path) -> list[GeneralResult]:
     tactician_results = load_tactician_results(path)
-    return [GeneralResult.from_tacitician_result(r) for r in tactician_results]
+    return [GeneralResult.from_tactician_result(r) for r in tactician_results]
 
 
 def load_rango(path: Path) -> list[GeneralResult]:
@@ -378,24 +539,20 @@ class TacticianResult:
     file_name: str
     thm_str: str
     success: bool
+    module: list[str]
+    file_idx: int
     time: float
     timeout: bool
     proof: Optional[str]
 
-    def clean_path(self, proverbot_paths: list[str]) -> str:
-        file_path = Path(self.file_name)
-        assert file_path.parts[0] == "repos"
-        for path in proverbot_paths:
-            if str(file_path).endswith(path):
-                return path
-        return str(file_path.relative_to("repos"))
-
     @classmethod
-    def from_json(cls, json_data: Any) -> TacticianResult:
+    def from_json(cls, json_data: Any, file_idx: int) -> TacticianResult:
         return cls(
             json_data["file"],
             json_data["theorem"],
             json_data["success"],
+            json_data["module"],
+            file_idx,
             json_data["synth_time"],
             json_data["timeout"],
             json_data["stdout"],
@@ -407,7 +564,10 @@ def load_tactician_results(path: Path) -> list[TacticianResult]:
     for result_file in os.listdir(path):
         with (path / result_file).open() as fin:
             result_data = json.load(fin)
-            result = TacticianResult.from_json(result_data)
+            file_idx_match = re.search(r"(\d+)\.json", result_file)
+            assert file_idx_match is not None
+            (file_idx_str,) = file_idx_match.groups()
+            result = TacticianResult.from_json(result_data, int(file_idx_str))
             results.append(result)
     return results
 
@@ -417,6 +577,7 @@ class ProverBotResult:
     project: str
     file_name: str
     thm_str: str
+    module: list[str]
     success: bool
     time: float
     num_steps: int
@@ -425,6 +586,7 @@ class ProverBotResult:
     META_IDX = 0
     META_PROJ_IDX = 0
     META_FILE_IDX = 1
+    META_MODULE_IDX = 2
     META_THM_IDX = 3
 
     PROOF_IDX = 1
@@ -440,6 +602,11 @@ class ProverBotResult:
         proj = metadata_json[cls.META_PROJ_IDX]
         file = metadata_json[cls.META_FILE_IDX]
         thm = metadata_json[cls.META_THM_IDX]
+        module = metadata_json[cls.META_MODULE_IDX]
+        assert 0 < len(module) and module.endswith(".")
+        module_list_w_filename = module[:-1].split(".")
+        assert 0 < len(module_list_w_filename)
+        module_list = module_list_w_filename[1:]
 
         proof_json = json_data[cls.PROOF_IDX]
         success = proof_json["status"] == "SUCCESS"
@@ -455,7 +622,7 @@ class ProverBotResult:
 
         time = proof_json["time_taken"]
         steps = proof_json["steps_taken"]
-        return cls(proj, file, thm, success, time, steps, proof)
+        return cls(proj, file, thm, module_list, success, time, steps, proof)
 
 
 def results_from_file(file_path: Path) -> list[ProverBotResult]:

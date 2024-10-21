@@ -6,8 +6,10 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
+from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import FocusedStep, Proof, DatasetFile, Sentence
 from premise_selection.rerank_example import RerankExample
+from premise_selection.retrieved_premise_db import RetrievedPremiseDB
 from premise_selection.rerank_formatter import (
     RerankFormatterConf,
     RerankFormatter,
@@ -22,6 +24,7 @@ from premise_selection.premise_client import (
     SelectPremiseClient,
     select_client_from_conf,
     select_conf_from_yaml,
+    get_cached_premises,
 )
 
 from util.util import FlexibleUrl
@@ -33,14 +36,26 @@ class RerankConf:
     checkpoint_loc: Path
     rerank_num: int
     select_conf: Optional[PremiseConf]
+    cached_premise_loc: Optional[Path]
+    sentence_db_loc: Path
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RerankConf:
+        if "cached_premise_loc" in yaml_data:
+            cached_premise_loc = Path(yaml_data["cached_premise_loc"])
+        else:
+            cached_premise_loc = None
+
         select_conf = None
         if "select" in yaml_data:
             select_conf = premise_conf_from_yaml(yaml_data["select"])
+
         return cls(
-            Path(yaml_data["checkpoint_loc"]), yaml_data["rerank_num"], select_conf
+            Path(yaml_data["checkpoint_loc"]),
+            yaml_data["rerank_num"],
+            select_conf,
+            cached_premise_loc,
+            Path(yaml_data["sentence_db_loc"]),
         )
 
 
@@ -51,14 +66,8 @@ class RerankClientConf:
     select_client: PremiseConf
     rerank_num: int
     rerank_formatter: RerankFormatterConf
-
-    def merge(self, other: RerankClientConf) -> RerankClientConf:
-        new_urls = self.urls + other.urls
-        new_select_client = merge_premise_confs(self.select_client, other.select_client)
-        assert self.rerank_num == other.rerank_num
-        return RerankClientConf(
-            new_urls, new_select_client, self.rerank_num, self.rerank_formatter
-        )
+    cached_premise_loc: Optional[Path]
+    sentence_db_loc: Path
 
     def update_ips(self, port_map: dict[int, tuple[str, int]]):
         for url in self.urls:
@@ -69,11 +78,17 @@ class RerankClientConf:
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> RerankClientConf:
+        if "cached_premise_loc" in yaml_data:
+            cached_premise_loc = Path(yaml_data["cached_premise_loc"])
+        else:
+            cached_premise_loc = None
         return cls(
             [FlexibleUrl.from_yaml(u) for u in yaml_data["urls"]],
             premise_conf_from_yaml(yaml_data["select"]),
             yaml_data["rerank_num"],
             rerank_conf_from_yaml(yaml_data["rerank_formatter"]),
+            cached_premise_loc,
+            Path(yaml_data["sentence_db_loc"]),
         )
 
 
@@ -86,19 +101,6 @@ def premise_conf_update_ips(c: PremiseConf, port_map: dict[int, tuple[str, int]]
             c.update_ips(port_map)
         case _:
             pass
-
-
-def merge_premise_confs(conf1: PremiseConf, conf2: PremiseConf) -> PremiseConf:
-    match conf1:
-        case SelectModelClientConf():
-            assert isinstance(conf2, SelectModelClientConf)
-            return conf1.merge(conf2)
-        case RerankClientConf():
-            assert isinstance(conf2, RerankClientConf)
-            return conf1.merge(conf2)
-        case _:
-            assert conf1 == conf2
-            return conf1
 
 
 def premise_conf_from_yaml(yaml_data: Any) -> PremiseConf:
@@ -129,6 +131,8 @@ class RerankClient:
         select_client: PremiseClient,
         rerank_num: int,
         rerank_formatter: RerankFormatter,
+        cached_premises: Optional[RetrievedPremiseDB],
+        sentence_db: SentenceDB,
     ):
         self.select_client = select_client
         self.rerank_num = rerank_num
@@ -138,6 +142,8 @@ class RerankClient:
         self.premise_filter = self.select_client.premise_filter
         self.session = requests.Session()
         self.urls = urls
+        self.cached_premises = cached_premises
+        self.sentence_db = sentence_db
 
     def get_scores(self, examples: list[RerankExample]) -> list[float]:
         json_examples = [e.to_json() for e in examples]
@@ -159,6 +165,16 @@ class RerankClient:
         premises: list[Sentence],
         training: bool,
     ) -> list[Sentence]:
+        if training:
+            cached_scores = get_cached_premises(
+                self.cached_premises,
+                step_idx,
+                proof,
+                dp_obj,
+                self.sentence_db,
+            )
+            if cached_scores is not None:
+                return cached_scores
         step = proof.steps[step_idx]
         rerank_premises: list[Sentence] = []
         for premise in self.select_client.get_ranked_premises(
@@ -189,6 +205,12 @@ class RerankClient:
             premise_client_from_conf(conf.select_client),
             conf.rerank_num,
             rerank_formatter_from_conf(conf.rerank_formatter),
+            (
+                RetrievedPremiseDB.load(conf.cached_premise_loc)
+                if conf.cached_premise_loc is not None
+                else None
+            ),
+            SentenceDB.load(conf.sentence_db_loc),
         )
 
 

@@ -177,10 +177,17 @@ thm_info:
 #   timeout: 120
 #   beam_decode: false
 
+# search:
+#   alias: straight_line
+#   timeout: 120
+#   print_proofs: True
+
 search:
-  alias: straight_line
-  timeout: 120
+  alias: whole_proof
+  n_attempts: 3
   print_proofs: True
+  rectype: one_by_one
+
 
   # initial_proof: "\n
   # intros m n H.\n
@@ -190,40 +197,9 @@ search:
   # remember (ominus m n) as m_sub_n.\n
   # destruct m_sub_n. "  
 
-# tactic_gen:
-#   alias: client
-#   socket_paths: [servers/0]
-#   # formatters:
-#   #   - alias: basic
-#   #     n_step_sampler: 
-#   #       alias: one
-
-#   formatters:
-#   - alias: whole-proof-ret 
-#     proof_bank_loc: proof-goals
-#     data_loc: raw-data/coq-dataset
-#     sentence_db_loc: sentences.db
-#     n_step_sampler:
-#       alias: one
-
-# formatter:
-#   alias: proof
-#   proof_bank_loc: proof-goals
-#   n_step_sampler:
-#     alias: one
-
-#   formatter:
-#     alias: premise
-#     premise_conf:
-#       alias: tfidf
-#       context_format_alias: basic
-#       premise_format_alias: basic
-#       premise_filter:
-#         coq_excludes: []    
-#         non_coq_excludes: []
-#         general_excludes: []
-#     n_step_sampler:
-#       alias: one
+tactic_gen:
+  alias: openai
+  model: gpt-3.5-turbo
 
 # tactic_gen:
 #   alias: fid
@@ -261,9 +237,9 @@ search:
 #   alias: decoder 
 #   checkpoint_loc: models/deepseek-proof-prem-final/checkpoint-15000 
 
-tactic_gen:
-  alias: decoder 
-  checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-48000
+# tactic_gen:
+#   alias: decoder 
+#   checkpoint_loc: models/deepseek-1.3b-basic/checkpoint-48000
 
 # tactic_gen:
 #   alias: decoder 

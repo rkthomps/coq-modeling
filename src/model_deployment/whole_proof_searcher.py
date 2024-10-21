@@ -18,6 +18,7 @@ class WholeProofSuccess:
     model_time: float
     successful_proof: Proof
     attempted_proofs: list[str]
+    costs: list[float]
 
 
 @dataclass
@@ -25,6 +26,7 @@ class WholeProofFailure:
     time: float
     model_time: float
     attempted_proofs: list[str]
+    costs: list[float]
 
 
 class RecType(Enum):
@@ -138,13 +140,15 @@ class WholeProofSearcher:
         self.total_model_time += end_model_time - start_model_time
 
         attempts: list[str] = []
-        for attempt in result.next_tactic_list:
+        costs: list[float] = []
+        for i, attempt in enumerate(result.next_tactic_list):
             if self.print_proofs:
                 print(cur_proof_script + attempt)
             proof_check_result = self.proof_manager.check_proof(
                 cur_proof_script + attempt, last_proof.theorem
             )
             attempts.append(cur_proof_script + attempt)
+            costs.append(result.costs[i] if result.costs is not None else 0)
             match proof_check_result.tactic_result:
                 case TacticResult.COMPLETE:
                     total_time = time.time() - start_time
@@ -154,20 +158,25 @@ class WholeProofSearcher:
                         self.total_model_time,
                         proof_check_result.new_proof,
                         attempts,
+                        costs,
                     )
                 case _:
                     continue
         total_time = time.time() - start_time
-        return WholeProofFailure(total_time, self.total_model_time, attempts)
+        return WholeProofFailure(total_time, self.total_model_time, attempts, costs)
 
     def search_one_by_one(self) -> WholeProofSuccess | WholeProofFailure:
         attempts: list[str] = []
+        costs: list[float] = []
         start_time = time.time()
         for attempt_num in range(self.n_attempts):
-            maybe_complete, attempt = self.search_step()
+            maybe_complete, attempt, cost = self.search_step()
             if self.print_proofs:
+                print(f"Attempt ({cost}): ")
                 print(attempt)
+
             attempts.append(attempt)
+            costs.append(cost)
             if maybe_complete is not None:
                 total_time = time.time() - start_time
                 return WholeProofSuccess(
@@ -175,11 +184,12 @@ class WholeProofSearcher:
                     self.total_model_time,
                     maybe_complete,
                     attempts,
+                    costs,
                 )
         total_time = time.time() - start_time
-        return WholeProofFailure(total_time, self.total_model_time, attempts)
+        return WholeProofFailure(total_time, self.total_model_time, attempts, costs)
 
-    def search_step(self) -> tuple[Optional[Proof], str]:
+    def search_step(self) -> tuple[Optional[Proof], str, float]:
         last_proof = self.cur_dset_file.proofs[-1]
         admitted_step = last_proof.steps[-1]
         cur_proof_script = last_proof.proof_prefix_to_string(
@@ -200,9 +210,13 @@ class WholeProofSearcher:
         proof_check_result = self.proof_manager.check_proof(
             cur_proof_script + next_tactic, last_proof.theorem
         )
-        print(proof_check_result)
+        cost = result.costs[0] if result.costs is not None else 0
         match proof_check_result.tactic_result:
             case TacticResult.COMPLETE:
-                return proof_check_result.new_proof, cur_proof_script + next_tactic
+                return (
+                    proof_check_result.new_proof,
+                    cur_proof_script + next_tactic,
+                    cost,
+                )
             case _:
-                return None, cur_proof_script + next_tactic
+                return None, cur_proof_script + next_tactic, cost

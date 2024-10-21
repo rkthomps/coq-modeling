@@ -58,6 +58,10 @@ class RunProofConf:
     @property
     def theorem(self) -> str:
         return self.loc.dataset_file.proofs[self.loc.dp_proof_idx].theorem.term.text
+    
+    @property
+    def module(self) -> list[str]:
+        return self.loc.dataset_file.proofs[self.loc.dp_proof_idx].theorem.term.module
 
     @property
     def theorem_id(self) -> str:
@@ -133,6 +137,7 @@ class ClassicalSummary:
     theorem: str
     proof_idx: int
     theorem_id: str
+    module: list[str]
     success: bool
     proof: Optional[str]
     search_steps: int | None
@@ -155,6 +160,7 @@ class ClassicalSummary:
             "theorem": self.theorem,
             "proof_idx": self.proof_idx,
             "theorem_id": self.theorem_id,
+            "module": self.module,
             "success": self.success,
             "proof": self.proof,
             "search_steps": self.search_steps,
@@ -169,6 +175,7 @@ class ClassicalSummary:
             json_data["theorem"],
             json_data["proof_idx"],
             json_data["theorem_id"],
+            json_data.get("module", []),
             json_data["success"],
             json_data["proof"],
             json_data["search_steps"],
@@ -206,6 +213,7 @@ class ClassicalSummary:
         theorem: str,
         proof_idx: int,
         theorem_id: str,
+        module: list[str],
         result: ClassicalSuccess | ClassicalFailure | None,
     ) -> ClassicalSummary:
         if result is None:
@@ -214,6 +222,7 @@ class ClassicalSummary:
                 theorem,
                 proof_idx,
                 theorem_id,
+                module,
                 False,
                 None,
                 None,
@@ -227,6 +236,7 @@ class ClassicalSummary:
                     theorem,
                     proof_idx,
                     theorem_id,
+                    module,
                     True,
                     result.successful_candidate.proof_str,
                     result.search_steps,
@@ -239,6 +249,7 @@ class ClassicalSummary:
                     theorem,
                     proof_idx,
                     theorem_id,
+                    module,
                     False,
                     None,
                     result.search_steps,
@@ -253,11 +264,13 @@ class WholeProofSummary:
     theorem: str
     proof_idx: int
     theorem_id: str
+    module: list[str]
     success: bool
     proof: str | None
     attempts: list[str] | None
     search_time: float | None
     model_time: float | None
+    costs: list[float] | None
 
     ALIAS = "whole"
 
@@ -287,25 +300,30 @@ class WholeProofSummary:
             "theorem": self.theorem,
             "proof_idx": self.proof_idx,
             "theorem_id": self.theorem_id,
+            "module": self.module,
             "success": self.success,
             "proof": self.proof,
             "attempts": self.attempts,
             "search_time": self.search_time,
             "model_time": self.model_time,
+            "costs": self.costs,
         }
 
     @classmethod
     def from_json(cls, json_data: Any) -> WholeProofSummary:
+        costs = json_data.get("costs", None)
         return cls(
             Path(json_data["file"]),
             json_data["theorem"],
             json_data["proof_idx"],
             json_data["theorem_id"],
+            json_data.get("module", []),
             json_data["success"],
             json_data["proof"],
             json_data["attempts"],
             json_data["search_time"],
             json_data["model_time"],
+            costs,
         )
 
     def to_csv_dict(self) -> tuple[list[str], dict[str, Any]]:
@@ -333,11 +351,22 @@ class WholeProofSummary:
         theorem: str,
         proof_idx: int,
         theorem_id: str,
+        module: list[str],
         search_result: WholeProofSuccess | WholeProofFailure | None,
     ) -> WholeProofSummary:
         if search_result is None:
             return cls(
-                file, theorem, proof_idx, theorem_id, False, None, None, None, None
+                file,
+                theorem,
+                proof_idx,
+                theorem_id,
+                module,
+                False,
+                None,
+                None,
+                None,
+                None,
+                None,
             )
         match search_result:
             case WholeProofSuccess():
@@ -347,11 +376,13 @@ class WholeProofSummary:
                     theorem,
                     proof_idx,
                     theorem_id,
+                    module,
                     True,
                     proof_text,
                     search_result.attempted_proofs,
                     search_result.time,
                     search_result.model_time,
+                    search_result.costs,
                 )
             case WholeProofFailure():
                 return cls(
@@ -359,11 +390,13 @@ class WholeProofSummary:
                     theorem,
                     proof_idx,
                     theorem_id,
+                    module,
                     False,
                     None,
                     search_result.attempted_proofs,
                     search_result.time,
                     search_result.model_time,
+                    search_result.costs,
                 )
 
 
@@ -373,6 +406,7 @@ class StraightLineSummary:
     theorem: str
     proof_idx: int
     theorem_id: str
+    module: list[str]
     success: bool
     proof: str | None
     attempts: list[str] | None
@@ -407,6 +441,7 @@ class StraightLineSummary:
             "theorem": self.theorem,
             "proof_idx": self.proof_idx,
             "theorem_id": self.theorem_id,
+            "module": self.module,
             "success": self.success,
             "proof": self.proof,
             "attempts": self.attempts,
@@ -421,6 +456,7 @@ class StraightLineSummary:
             json_data["theorem"],
             json_data["proof_idx"],
             json_data["theorem_id"],
+            json_data.get("module", []),
             json_data["success"],
             json_data["proof"],
             json_data["attempts"],
@@ -453,11 +489,21 @@ class StraightLineSummary:
         theorem: str,
         proof_idx: int,
         theorem_id: str,
+        module: list[str],
         search_result: StraightLineSuccess | StraightLineFailure | None,
     ):
         if search_result is None:
             return cls(
-                file, theorem, proof_idx, theorem_id, False, None, None, None, None
+                file,
+                theorem,
+                proof_idx,
+                theorem_id,
+                module,
+                False,
+                None,
+                None,
+                None,
+                None,
             )
         match search_result:
             case StraightLineSuccess():
@@ -467,6 +513,7 @@ class StraightLineSummary:
                     theorem,
                     proof_idx,
                     theorem_id,
+                    module,
                     True,
                     proof_text,
                     search_result.attempted_proofs,
@@ -479,6 +526,7 @@ class StraightLineSummary:
                     theorem,
                     proof_idx,
                     theorem_id,
+                    module,
                     False,
                     None,
                     search_result.attempted_proofs,
@@ -533,12 +581,12 @@ def get_save_loc(summary: Summary, save_dir: Path):
     return save_dir / save_name
 
 
-def get_save_name(f_info: FileInfo, proof_idx: int) -> str:
-    return f"{f_info.dp_name}-{proof_idx}.json"
+def get_save_name(dp_name: str, proof_idx: int) -> str:
+    return f"{dp_name}-{proof_idx}.json"
 
 
-def save_summary(summary: Summary, file_info: FileInfo, save_dir: Path):
-    save_loc = save_dir / get_save_name(file_info, summary.proof_idx)
+def save_summary(summary: Summary, data_point_name: str, save_dir: Path):
+    save_loc = save_dir / get_save_name(data_point_name, summary.proof_idx)
     with save_loc.open("w") as fout:
         summary_json = summary_to_json(summary)
         fout.write(json.dumps(summary_json, indent=2))
@@ -565,18 +613,19 @@ def summary_from_result(
     theorem: str,
     proof_idx: int,
     theorem_id: str,
+    module: list[str],
     result: SearchResult,
 ) -> Summary:
     match result:
         case ClassicalSuccess() | ClassicalFailure():
             return ClassicalSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, result
+                file, theorem, proof_idx, theorem_id, module, result
             )
         case StraightLineSuccess() | StraightLineFailure():
             return StraightLineSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, result
+                file, theorem, proof_idx, theorem_id, module, result
             )
         case WholeProofSuccess() | WholeProofFailure():
             return WholeProofSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, result
+                file, theorem, proof_idx, theorem_id, module, result
             )

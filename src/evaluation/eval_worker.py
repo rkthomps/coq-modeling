@@ -47,20 +47,25 @@ _logger = logging.getLogger(RANGO_LOGGER)
 
 
 def get_orig_summary(
-    file: Path, theorem: str, proof_idx: int, theorem_id: str, eval_conf: EvalConf
+    file: Path,
+    theorem: str,
+    proof_idx: int,
+    theorem_id: str,
+    module: list[str],
+    eval_conf: EvalConf,
 ) -> Summary:
     match eval_conf.search_conf:
         case ClassicalSearchConf():
             return ClassicalSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, None
+                file, theorem, proof_idx, theorem_id, module, None
             )
         case StraightLineSearcherConf():
             return StraightLineSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, None
+                file, theorem, proof_idx, theorem_id, module, None
             )
         case WholeProofSearcherConf():
             return WholeProofSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, None
+                file, theorem, proof_idx, theorem_id, module, None
             )
 
 
@@ -77,10 +82,11 @@ def run_and_save_proof(run_conf: RunProofConf):
         run_conf.theorem,
         run_conf.loc.dp_proof_idx,
         run_conf.theorem_id,
+        run_conf.module,
         result,
     )
     _logger.info(pretty_print_summary(summary))
-    save_summary(summary, run_conf.loc.file_info, eval_conf.save_loc)
+    save_summary(summary, run_conf.loc.file_info.dp_name, eval_conf.save_loc)
 
 
 if __name__ == "__main__":
@@ -111,7 +117,7 @@ if __name__ == "__main__":
 
     sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
     data_split = DataSplit.load(eval_conf.data_split_loc)
-    q = FileQueue(queue_loc)
+    q = FileQueue[tuple[FileInfo, int]](queue_loc)
 
     clean_tactic_conf, n_commands, commands = tactic_gen_to_client_conf(
         eval_conf.tactic_conf, 0
@@ -150,9 +156,10 @@ if __name__ == "__main__":
             run_conf.theorem,
             run_conf.loc.dp_proof_idx,
             run_conf.theorem_id,
+            run_conf.module,
             eval_conf,
         )
-        save_summary(orig_summary, file_info, eval_conf.save_loc)
+        save_summary(orig_summary, file_info.dp_name, eval_conf.save_loc)
 
         _logger.info(f"running proof of {run_conf.theorem_id} from {run_conf.file}")
         worker_process = mp.Process(target=run_and_save_proof, args=(run_conf,))

@@ -36,6 +36,7 @@ dependencies = [
     #"edist",
 		"Werkzeug",
     "waitress",
+    "tiktoken",
 ]
 
 [tool.setuptools.packages.find]

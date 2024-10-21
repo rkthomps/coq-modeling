@@ -3,6 +3,7 @@ from typing import Any, Optional
 import os
 import time
 from enum import Enum
+import tiktoken
 
 import requests
 import random
@@ -209,20 +210,59 @@ class PrevProofTacticGenClient:
         return cls(proof_retriever_from_conf(conf.retriever_conf))
 
 
+def find_truncate_idx(
+    tokenizer: tiktoken.Encoding,
+    lines: list[str],
+    cur_ceiling: int,
+    cur_floor: int,
+    max_tokens: int,
+) -> int:
+    ## cur_ceiling is the lowest index s.t. the number of tokens is too many.
+    ## cur_floor is the the largets index s.t. the number of tokens are allowed.
+    if cur_floor - cur_ceiling <= 1:
+        return cur_floor
+    inc_num = (cur_floor - cur_ceiling) // 2
+    next_idx = cur_ceiling + inc_num
+    next_n_tokens = len(tokenizer.encode("\n".join(lines[next_idx:])))
+    if max_tokens < next_n_tokens:
+        ## Lower the ceiling
+        return find_truncate_idx(tokenizer, lines, next_idx, cur_floor, max_tokens)
+    else:
+        return find_truncate_idx(tokenizer, lines, cur_ceiling, next_idx, max_tokens)
+
+
+def truncate_lines(tokenizer: tiktoken.Encoding, s: str, max_tokens: int) -> str:
+    assert 1 <= max_tokens
+    encoding = tokenizer.encode(s)
+    if len(encoding) <= max_tokens:
+        return s
+    lines = s.split("\n")
+    assert 0 < len(lines)
+    single_line_length = len(tokenizer.encode(lines[-1]))
+    if max_tokens < single_line_length:
+        return ""
+    truncate_idx = find_truncate_idx(tokenizer, lines, 0, len(lines) - 1, max_tokens)
+    return "\n".join(lines[truncate_idx:])
+
+
 @dataclass
 class OpenAIClientConf:
     model: str
+    max_input_tokens: int
     ALIAS = "openai"
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> OpenAIClientConf:
-        return cls(yaml_data["model"])
+        max_input_tokens = yaml_data.get("max_input_tokens", 4096)
+        return cls(yaml_data["model"], max_input_tokens)
 
 
 @dataclass
 class OpenAIClient:
     model: str
+    tokenizer: tiktoken.Encoding
     client: openai.OpenAI
+    max_input_tokens: int
 
     example_prefix = "Inductive Fruit :=\n" "  | Apple\n" "  | Banana."
 
@@ -261,6 +301,22 @@ class OpenAIClient:
     def get_user_prompt(self, prefix: str, proof: Proof) -> str:
         return self.get_str_user_prompt(prefix, proof.theorem.term.text)
 
+    def num_tokens(self, s: str) -> int:
+        return len(self.tokenizer.encode(s))
+
+    def get_cost(self, input_tokens: int, output_tokens: int) -> float:
+        match self.model:
+            case "gpt-4o":
+                return 5e-6 * input_tokens + 15e-6 * output_tokens
+            case "gpt-4o-mini":
+                return 0.15e-6 * input_tokens + 0.6e-6 * output_tokens
+            case "o1-mini":
+                return 3e-6 * input_tokens + 12e-6 * output_tokens
+            case "o1-preview":
+                return 15e-6 * input_tokens + 60e-6 * output_tokens
+            case _:
+                raise ValueError(f"Invalid model: {self.model}")
+
     def get_recs(
         self,
         step_idx: int,
@@ -273,6 +329,10 @@ class OpenAIClient:
         example_user_prompt = self.get_str_user_prompt(
             self.example_prefix, self.example_theorem
         )
+        # example_tokens = self.num_tokens(example_user_prompt) + self.num_tokens(self.example_proof_str)
+        # theorem_tokens = self.num_tokens(proof.theorem.term.text)
+
+        self.get_cost(0, 0)
         current_user_prompt = self.get_user_prompt(file_prefix, proof)
         prompt = [
             {
@@ -296,6 +356,9 @@ class OpenAIClient:
             model=self.model,
         )
         attempt = completion.choices[0].message.content
+        prompt_tokens = completion.usage.prompt_tokens
+        completion_tokens = completion.usage.completion_tokens
+        cost = self.get_cost(prompt_tokens, completion_tokens)
 
         assert attempt is not None
         print("GPT Response:")
@@ -304,7 +367,7 @@ class OpenAIClient:
             final_result = clean_attempt
         else:
             final_result = attempt
-        return ModelResult([final_result], [1], [1])
+        return ModelResult([final_result], [1], [1], [cost])
 
     @classmethod
     def from_conf(cls, conf: OpenAIClientConf) -> OpenAIClient:
@@ -312,7 +375,13 @@ class OpenAIClient:
             api_key=os.environ["OPENAI_API_KEY"],
             organization=os.environ["OPENAI_ORG_KEY"],
         )
-        return cls(conf.model, client)
+        if conf.model == "o1-preview":
+            tokenizer = tiktoken.encoding_for_model("gpt-4o")
+        elif conf.model == "o1-mini":
+            tokenizer = tiktoken.encoding_for_model("gpt-4o-mini")
+        else:
+            tokenizer = tiktoken.encoding_for_model(conf.model)
+        return cls(conf.model, tokenizer, client, conf.max_input_tokens)
 
 
 class LocalTacticGenClient:

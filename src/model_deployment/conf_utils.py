@@ -311,7 +311,12 @@ def premise_conf_to_client_conf(
                 conf, next_server_num
             )
             new_rerank_conf = RerankClientConf(
-                [rerank_url], select_conf, conf.rerank_num, rerank_formatter
+                [rerank_url],
+                select_conf,
+                conf.rerank_num,
+                rerank_formatter,
+                conf.cached_premise_loc,
+                conf.sentence_db_loc,
             )
             return new_rerank_conf, next_server_num, commands + [rerank_command]
         case _:

@@ -203,7 +203,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     set_rango_logger(__file__, logging.DEBUG)
-    
+
     repo_loc = Path(args.repo_loc)
     file_loc = Path(args.file_loc)
 
@@ -211,6 +211,5 @@ if __name__ == "__main__":
     if sentence_db_loc.exists():
         os.remove(sentence_db_loc)
     sentence_db = SentenceDB.create(sentence_db_loc)
-
 
     get_data_point(file_loc, repo_loc, sentence_db, False, None)

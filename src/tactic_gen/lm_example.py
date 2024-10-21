@@ -19,7 +19,6 @@ from premise_selection.rerank_client import (
     premise_conf_from_yaml,
     premise_client_from_conf,
     premise_conf_update_ips,
-    merge_premise_confs,
     close_premise_client,
 )
 

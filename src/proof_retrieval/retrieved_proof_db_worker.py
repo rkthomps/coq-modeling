@@ -4,7 +4,11 @@ import time
 
 from proof_retrieval.retrieved_proof_db_creator import ProofDBCreatorConf
 from proof_retrieval.retrieved_proof_db import RetrievedProofDB, StepID, ProofDBPage
-from proof_retrieval.proof_retriever import ProofRetriever, proof_retriever_from_conf
+from proof_retrieval.proof_retriever import (
+    ProofRetriever,
+    proof_retriever_from_conf,
+    proof_conf_update_ips,
+)
 from proof_retrieval.retrieved_proof_db_creator import ProofDBCreatorConf
 
 from model_deployment.conf_utils import (
@@ -19,7 +23,7 @@ from util.slurm import worker_get_conf_queue
 from data_management.sentence_db import SentenceDB
 from data_management.splits import FileInfo
 
-from util.util import set_rango_logger
+from util.util import set_rango_logger, clear_port_map
 from util.constants import RANGO_LOGGER
 import logging
 
@@ -62,8 +66,10 @@ if __name__ == "__main__":
         conf.proof_retriever_conf, 0
     )
     if 0 < len(commands):
+        clear_port_map()
         start_servers(commands)
-        wait_for_servers(next_num)
+        port_map = wait_for_servers(next_num)
+        proof_conf_update_ips(proof_ret_conf, port_map)
 
     proof_retriever = proof_retriever_from_conf(proof_ret_conf)
 

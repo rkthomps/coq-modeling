@@ -101,4 +101,4 @@ if __name__ == "__main__":
             slurm_conf.write_script(
                 f"proof-ret-db-{conf.save_loc.name}", commands, slurm_loc
             )
-            # subprocess.run(["sbatch", str(slurm_loc)])
+            subprocess.run(["sbatch", str(slurm_loc)])

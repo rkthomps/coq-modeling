@@ -3,7 +3,9 @@ import argparse
 from pathlib import Path
 import json
 
-from data_management.dataset_file import DatasetFile
+from proof_retrieval.proof_retriever import get_available_proofs
+
+from data_management.dataset_file import DatasetFile, DPCache
 from data_management.sentence_db import SentenceDB
 from data_management.splits import DataSplit, Split, REPOS_NAME
 from evaluation.cross_tool_analysis import GeneralResult
@@ -27,11 +29,17 @@ def create_human_eval(
 ):
     data_split = DataSplit.load(data_split_loc)
     sentence_db = SentenceDB.load(sentence_db_loc)
+    cache = DPCache(256)
 
-    for file_info in data_split.get_file_list(Split.TEST):
+    file_list = data_split.get_file_list(Split.TEST)
+    file_list.sort(key=lambda x: x.file)
+    for file_info in file_list:
         file_dp = file_info.get_dp(data_loc, sentence_db)
         num_deps, num_proj_deps = get_num_deps(file_info, file_dp)
         for i, proof in enumerate(file_dp.proofs):
+            available_proofs = get_available_proofs(
+                proof, file_dp, cache, data_loc, sentence_db
+            )
             if not proof.is_proof_independent():
                 continue
             proof_result = GeneralResult(
@@ -40,9 +48,12 @@ def create_human_eval(
                 proof.theorem.term.text,
                 0,
                 True,
+                proof.theorem.term.module,
+                i,
                 proof.proof_text_to_string(include_theorem=False),
                 num_deps,
                 num_proj_deps,
+                len(available_proofs),
             )
             save_name = (file_info.dp_name + "-" + str(i) + ".json")[-255:]
             with open(save_loc / save_name, "w") as fout:
