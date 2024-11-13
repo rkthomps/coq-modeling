@@ -1,0 +1,11 @@
+# 8-gpu array 
+alias: array
+num_workers: 8
+partition: gpu 
+time_limit: "23:59:59"
+mem_per_node: 16G
+slurm_out_loc: slurm/out
+cpus_per_worker: 1
+gpus_per_worker: 1
+machine_constraint: 2080ti
+

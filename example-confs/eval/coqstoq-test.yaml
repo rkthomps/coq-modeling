@@ -1,0 +1,88 @@
+# proof_ids: [0, 1, 2, 3, 4]
+split: test
+save_loc: evaluations/coqstoq-results/test-rango
+data_loc: raw-data/coqstoq-test
+coqstoq_loc: /work/pi_brun_umass_edu/kthompson/CoqStoq
+sentence_db_loc: raw-data/coqstoq-test/coqstoq-test-sentences.db
+
+search:
+  alias: straight_line
+  timeout: 600 
+  print_proofs: False
+
+tactic_gen:
+  alias: decoder 
+  checkpoint_loc: models/deepseek-bm25-proof-tfidf-proj-thm-prem-final/checkpoint-54500
+
+  formatters:
+  - alias: general 
+    num_proofs: 20
+    num_premises: 50
+    n_step_conf:
+      alias: one
+
+    proof_ret:
+      alias: sparse 
+      kind: bm25 
+      max_examples: 20
+      data_loc: raw-data/coqstoq-test
+      sentence_db_loc: raw-data/coqstoq-test/coqstoq-test-sentences.db
+      # cached_proof_loc: data/bm25-proof-db
+
+    premise:
+      alias: sparse 
+      kind: tfidf
+      context_format_alias: basic
+      premise_format_alias: basic
+      sentence_db_loc: raw-data/coqstoq-test/coqstoq-test-sentences.db
+      # cached_premise_loc: data/tfidf-proj-thm-prem-db
+      premise_filter:
+        coq_excludes:
+        - THEOREM
+        - LEMMA
+        - DEFINITION
+        - NOTATION
+        - INDUCTIVE
+        - COINDUCTIVE
+        - RECORD
+        - CLASS
+        - INSTANCE
+        - FIXPOINT
+        - COFIXPOINT
+        - SCHEME
+        - VARIANT
+        - FACT
+        - REMARK
+        - COROLLARY
+        - PROPOSITION
+        - PROPERTY
+        - OBLIGATION
+        - TACTIC
+        - RELATION
+        - SETOID
+        - FUNCTION
+        - DERIVE
+        - OTHER
+
+        non_coq_excludes:
+        - DEFINITION
+        - NOTATION
+        - INDUCTIVE
+        - COINDUCTIVE
+        - RECORD
+        - CLASS
+        - INSTANCE
+        - FIXPOINT
+        - COFIXPOINT
+        - SCHEME
+        - VARIANT
+        - OBLIGATION
+        - TACTIC
+        - RELATION
+        - SETOID
+        - FUNCTION
+        - DERIVE
+        - OTHER
+
+        general_excludes: [] 
+

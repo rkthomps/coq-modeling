@@ -5,8 +5,8 @@ thm_info:
   # test_file: raw-data/coq-dataset/repos/coq-community-stalmarck/theories/Algorithm/OrderedListEq.v
   # theorem_name: interOlist
 
-  test_file: raw-data/coq-dataset/repos/coq-community-math-classes/theory/int_pow.v
-  theorem_name: Instance
+  # test_file: raw-data/coq-dataset/repos/coq-community-math-classes/theory/int_pow.v
+  # theorem_name: Instance
 
   # Anonymous Name
   # test_file: raw-data/coq-dataset/repos/coq-community-math-classes/implementations/list_finite_set.v
@@ -96,8 +96,8 @@ thm_info:
   # theorem_name: get_next
 
   ## Anything choose 0 is 1
-  # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
-  # theorem_name: binomial_def1
+  test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
+  theorem_name: binomial_def1
     
   # n choose m with n < m is 0
   # test_file: raw-data/coq-dataset/repos/coq-community-bertrand/theories/Binomial.v
