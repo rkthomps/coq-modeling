@@ -30,9 +30,9 @@ from tactic_gen.lm_example import (
 from tactic_gen.lm_example import (
     LmFormatter,
     FormatterConf,
-    formatter_update_ips,
     formatter_conf_from_yaml,
     formatter_from_conf,
+    formatter_update_ips,
 )
 from model_deployment.model_result import ModelResult
 
@@ -58,7 +58,7 @@ class FidTacticGenConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> FidTacticGenConf:
         formatter_confs = None
-        if "formatter" in yaml_data:
+        if "formatters" in yaml_data:
             formatter_confs = [
                 formatter_conf_from_yaml(f) for f in yaml_data["formatters"]
             ]
@@ -77,7 +77,7 @@ class DecoderTacticGenConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> DecoderTacticGenConf:
         formatter_confs = None
-        if "formatter" in yaml_data:
+        if "formatters" in yaml_data:
             formatter_confs = [
                 formatter_conf_from_yaml(f) for f in yaml_data["formatters"]
             ]
@@ -145,6 +145,9 @@ class ModelFreeTacticGenClient:
         self.retriever = retriever
         self.score_type = score_type
 
+    def set_seed(self, seed: int) -> None:
+        return
+
     def get_recs(
         self, step_idx: int, proof: Proof, dset_file: DatasetFile, n: int, **kwargs: Any
     ) -> ModelResult:
@@ -204,6 +207,9 @@ class PrevProofTacticGenClient:
         return ModelResult(
             list(similar_proofs), [1] * len(similar_proofs), [1] * len(similar_proofs)
         )
+
+    def set_seed(self, seed: int) -> None:
+        return
 
     @classmethod
     def from_conf(cls, conf: PrevProofTacticGenClientConf) -> PrevProofTacticGenClient:
@@ -297,6 +303,9 @@ class OpenAIClient:
         return (
             f"{instructions}\n\n[PREFIX]\n{prefix}\n\n[THEOREM]\n{theorem}\n\n[PROOF]"
         )
+
+    def set_seed(self, seed: int):
+        return
 
     def get_user_prompt(self, prefix: str, proof: Proof) -> str:
         return self.get_str_user_prompt(prefix, proof.theorem.term.text)
@@ -432,6 +441,16 @@ class LocalTacticGenClient:
             _logger.error("ID MISMATCH IN REQUESTS")
         assert response["id"] == request_id
         return ModelResult.from_json(response["result"])
+
+    def set_seed(self, seed: int) -> None:
+        request_data = {
+            "method": "set_model_seed",
+            "params": [seed],
+            "jsonrpc": "2.0",
+            "id": hash(seed),
+        }
+        chosen_url = random.choice(self.urls)
+        self.session.post(chosen_url, json=request_data)
 
     @classmethod
     def from_conf(cls, conf: LocalTacticGenClientConf) -> TacticGenClient:

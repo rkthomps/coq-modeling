@@ -197,11 +197,6 @@ class GeneralFormatter:
         proof_idx: int,
         dp_obj: DatasetFile,
         training: bool = False,
-        # file_info: FileInfo,
-        # key_record: Optional[GoalRecord] = None,
-        # cutoff_idx: Optional[int] = None,
-        # max_num_nodes: int = 30,
-        # max_num_steps: int = 500,
         **kwargs: Any,
     ) -> LmExample:
         proof = dp_obj.proofs[proof_idx]
@@ -214,11 +209,6 @@ class GeneralFormatter:
                 proof,
                 dp_obj,
                 training,
-                # file_info=file_info,
-                # key_record=key_record,
-                # cutoff_idx=cutoff_idx,
-                # max_num_nodes=max_num_nodes,
-                # max_num_steps=max_num_steps,
             )[: self.num_proofs]
             similar_proof_strs = [p.proof_text_to_string() for p in simliar_proofs]
         else:

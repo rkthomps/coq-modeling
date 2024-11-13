@@ -72,6 +72,13 @@ class SlurmArrayConf:
             return cls.from_yaml(yaml.safe_load(fin))
 
 
+def get_queue_slurm_loc() -> tuple[Path, Path]:
+    time_str = datetime.now().strftime("%m%d%H%M%S")
+    queue_loc = TMP_LOC / (QUEUE_NAME + "-" + time_str)
+    slurm_loc = TMP_LOC / (SLURM_NAME + "-" + time_str)
+    return queue_loc, slurm_loc
+
+
 def get_conf_queue_slurm_loc(orig_conf_loc: Path) -> tuple[Path, Path, Path]:
     time_str = datetime.now().strftime("%m%d%H%M%S")
     conf_loc = TMP_LOC / (CLEAN_CONFIG + "-" + time_str)

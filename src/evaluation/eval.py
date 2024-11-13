@@ -6,9 +6,12 @@ import yaml
 import shutil
 import subprocess
 from pathlib import Path
-from model_deployment.prove import load_summary, errored_summary, get_save_name
-from evaluation.eval_utils import EvalConf, create_eval_proof_map
+from evaluation.eval_utils import EvalConf
 from data_management.splits import DataSplit, get_all_files, FileInfo
+from model_deployment.prove import get_save_loc
+
+from coqstoq import get_theorem_list
+from coqstoq.eval_thms import EvalTheorem
 
 from util.slurm import (
     JobOption,
@@ -23,6 +26,7 @@ from util.constants import RANGO_LOGGER
 from util.util import set_rango_logger
 import subprocess
 
+
 import logging
 
 _logger = logging.getLogger(RANGO_LOGGER)
@@ -30,41 +34,24 @@ _logger = logging.getLogger(RANGO_LOGGER)
 WORKER_LOC = Path("src/evaluation/eval_worker.py")
 
 
-def get_proofs_to_add(
-    save_loc: Path, proofs: list[tuple[FileInfo, int]], rerun_errors: bool
-) -> list[tuple[FileInfo, int]]:
-    existing_names = set(f.name for f in save_loc.iterdir())
-    proofs_to_add: list[tuple[FileInfo, int]] = []
-    for f_info, i in proofs:
-        save_name = get_save_name(f_info, i)
-        if save_name not in existing_names:
-            proofs_to_add.append((f_info, i))
-        else:
-            summary_loc = save_loc / save_name
-            existing_summary = load_summary(summary_loc)
-            if rerun_errors and errored_summary(existing_summary):
-                proofs_to_add.append((f_info, i))
-    _logger.info(f"Adding {len(proofs_to_add)}/{len(proofs)} proofs to queue")
-    return proofs_to_add
-
-
-def fill_queue(queue_loc: Path, eval_conf: EvalConf) -> None:
-    q = FileQueue(queue_loc)
+def fill_queue(
+    queue_loc: Path,
+    conf: EvalConf,
+):
+    theorem_list = get_theorem_list(conf.split, conf.coqstoq_loc)
+    q = FileQueue[EvalTheorem](queue_loc)
     q.initialize()
-    proof_map = create_eval_proof_map(
-        eval_conf.split,
-        eval_conf.data_split_loc,
-        eval_conf.sentence_db_loc,
-        eval_conf.data_loc,
-    )
-    start = eval_conf.start_at if eval_conf.start_at is not None else 0
-    end = eval_conf.end_at if eval_conf.end_at is not None else len(proof_map)
-    proofs = proof_map.proofs[start:end]
-    proofs_to_add = get_proofs_to_add(
-        eval_conf.save_loc, proofs, eval_conf.rerun_errors
-    )
-    _logger.info(f"Adding {len(proofs_to_add)} proofs to queue")
-    q.put_all(proofs_to_add)
+
+    ids = conf.proof_ids if conf.proof_ids is not None else range(len(theorem_list))
+
+    print("Num thms:", len(ids))
+    queue_num_thms = 0
+    for id in ids:
+        save_loc = get_save_loc(conf.save_loc, theorem_list[id])
+        if not save_loc.exists():
+            q.put(theorem_list[id])
+            queue_num_thms += 1
+    _logger.info(f"Added {queue_num_thms} theorems to the queue.")
 
 
 if __name__ == "__main__":
@@ -95,6 +82,9 @@ if __name__ == "__main__":
         case SlurmJobConf(_, slurm_conf):
             commands = [
                 f"cp -r {conf.sentence_db_loc} /tmp/{conf.sentence_db_loc.name}",
+                f"source unity-module-change-revert",
+                f"module load opam/2.1.2",
+                f"eval $(opam env)",
                 worker_command,
             ]
             slurm_conf.write_script(f"eval-{conf.save_loc.name}", commands, slurm_loc)

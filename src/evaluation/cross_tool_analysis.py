@@ -453,7 +453,7 @@ class GeneralResult:
             cls.normalize_thm(result.thm_str),
             result.time,
             result.success,
-            result.module,
+            result.module if result.module is not None else [],
             result.file_idx,
             (
                 cls.get_tactician_proof(result.proof)
@@ -539,7 +539,7 @@ class TacticianResult:
     file_name: str
     thm_str: str
     success: bool
-    module: list[str]
+    module: Optional[list[str]]
     file_idx: int
     time: float
     timeout: bool
@@ -551,7 +551,7 @@ class TacticianResult:
             json_data["file"],
             json_data["theorem"],
             json_data["success"],
-            json_data["module"],
+            json_data.get("module"),
             file_idx,
             json_data["synth_time"],
             json_data["timeout"],
@@ -564,9 +564,9 @@ def load_tactician_results(path: Path) -> list[TacticianResult]:
     for result_file in os.listdir(path):
         with (path / result_file).open() as fin:
             result_data = json.load(fin)
-            file_idx_match = re.search(r"(\d+)\.json", result_file)
+            file_idx_match = re.search(r"(\d+)\.(json|v)$", result_file)
             assert file_idx_match is not None
-            (file_idx_str,) = file_idx_match.groups()
+            (file_idx_str, _) = file_idx_match.groups()
             result = TacticianResult.from_json(result_data, int(file_idx_str))
             results.append(result)
     return results

@@ -9,7 +9,8 @@ import multiprocessing as mp
 
 from data_management.splits import DataSplit, FileInfo
 from data_management.sentence_db import SentenceDB
-from evaluation.eval_utils import ProofMap, EvalConf
+from evaluation.eval_utils import EvalConf
+from evaluation.find_coqstoq_idx import get_thm_desc
 
 from model_deployment.conf_utils import (
     tactic_gen_to_client_conf,
@@ -23,14 +24,8 @@ from model_deployment.prove import (
     LocationInfo,
     RunProofConf,
     run_proof,
-    summary_from_result,
-    save_summary,
-    summary_from_json,
-    pretty_print_summary,
-    ClassicalSummary,
-    StraightLineSummary,
-    WholeProofSummary,
-    Summary,
+    get_save_loc,
+    RangoResult,
 )
 from model_deployment.tactic_gen_client import (
     tactic_gen_client_from_conf,
@@ -39,54 +34,30 @@ from model_deployment.tactic_gen_client import (
 from util.constants import CLEAN_CONFIG, RANGO_LOGGER
 from util.util import set_rango_logger, clear_port_map
 from util.file_queue import FileQueue, EmptyFileQueueError
+from util.coqstoq_utils import get_file_loc, get_workspace_loc
 
 import logging
+from coqstoq import EvalTheorem
 
 
 _logger = logging.getLogger(RANGO_LOGGER)
 
 
-def get_orig_summary(
-    file: Path,
-    theorem: str,
-    proof_idx: int,
-    theorem_id: str,
-    module: list[str],
-    eval_conf: EvalConf,
-) -> Summary:
-    match eval_conf.search_conf:
-        case ClassicalSearchConf():
-            return ClassicalSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, module, None
-            )
-        case StraightLineSearcherConf():
-            return StraightLineSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, module, None
-            )
-        case WholeProofSearcherConf():
-            return WholeProofSummary.from_search_result(
-                file, theorem, proof_idx, theorem_id, module, None
-            )
-
-
-def run_and_save_proof(run_conf: RunProofConf):
+def run_and_save_proof(thm: EvalTheorem, run_conf: RunProofConf, save_dir: Path):
     try:
         result = run_proof(run_conf)
     except TimeoutError:
         _logger.error(
-            f"Got timeout error running proof: {run_conf.theorem_id} from {run_conf.file}"
+            f"Got timeout error running proof: {run_conf.theorem_id} from {run_conf.loc.file_loc}"
         )
         return
-    summary = summary_from_result(
-        run_conf.file,
-        run_conf.theorem,
-        run_conf.loc.dp_proof_idx,
-        run_conf.theorem_id,
-        run_conf.module,
-        result,
-    )
-    _logger.info(pretty_print_summary(summary))
-    save_summary(summary, run_conf.loc.file_info.dp_name, eval_conf.save_loc)
+    rango_result = RangoResult.from_search_result(thm, result)
+    save_loc = get_save_loc(save_dir, thm)
+    rango_result.save(save_loc)
+    if rango_result.proof is not None:
+        _logger.info(f"Eval theorem for {thm.path}::{run_conf.theorem_id} : SUCCESS")
+    else:
+        _logger.info(f"Eval theorem for {thm.path} : FAILURE")
 
 
 if __name__ == "__main__":
@@ -116,8 +87,8 @@ if __name__ == "__main__":
     _logger.info(f"Running with switch {switch.stdout.decode()}")
 
     sentence_db = SentenceDB.load(eval_conf.sentence_db_loc)
-    data_split = DataSplit.load(eval_conf.data_split_loc)
-    q = FileQueue[tuple[FileInfo, int]](queue_loc)
+
+    q = FileQueue[EvalTheorem](queue_loc)
 
     clean_tactic_conf, n_commands, commands = tactic_gen_to_client_conf(
         eval_conf.tactic_conf, 0
@@ -132,37 +103,42 @@ if __name__ == "__main__":
     tactic_client = tactic_gen_client_from_conf(clean_tactic_conf)
     while True:
         try:
-            file_info, idx = q.get()
+            eval_thm = q.get()
         except EmptyFileQueueError:
             break
 
-        proof_dp = file_info.get_dp(eval_conf.data_loc, sentence_db)
+        thm_desc = get_thm_desc(eval_thm, eval_conf.data_loc, sentence_db)
+        if thm_desc is None:
+            _logger.error(f"Failed to get thm desc for {eval_thm}")
+            continue
+        assert thm_desc is not None
+
+        proof_dp = thm_desc.dp
 
         location_info = LocationInfo(
             eval_conf.data_loc,
-            file_info,
-            eval_conf.split,
+            get_file_loc(eval_thm, eval_conf.coqstoq_loc),
+            get_workspace_loc(eval_thm, eval_conf.coqstoq_loc),
             proof_dp,
-            idx,
+            thm_desc.idx,
             sentence_db,
-            data_split,
         )
         run_conf = RunProofConf(
             location_info, eval_conf.search_conf, tactic_client, False, False
         )
+        orig_summary = RangoResult(eval_thm, None, None, None)
+        save_loc = get_save_loc(eval_conf.save_loc, eval_thm)
+        if save_loc.exists():
+            _logger.info(f"Skipping {eval_thm.path}::{run_conf.theorem_id}")
+            continue
 
-        orig_summary = get_orig_summary(
-            run_conf.file,
-            run_conf.theorem,
-            run_conf.loc.dp_proof_idx,
-            run_conf.theorem_id,
-            run_conf.module,
-            eval_conf,
+        orig_summary.save(get_save_loc(eval_conf.save_loc, eval_thm))
+        _logger.info(
+            f"running proof of {run_conf.theorem_id} from {location_info.file_loc}"
         )
-        save_summary(orig_summary, file_info.dp_name, eval_conf.save_loc)
-
-        _logger.info(f"running proof of {run_conf.theorem_id} from {run_conf.file}")
-        worker_process = mp.Process(target=run_and_save_proof, args=(run_conf,))
+        worker_process = mp.Process(
+            target=run_and_save_proof, args=(eval_thm, run_conf, eval_conf.save_loc)
+        )
         worker_process.start()
         worker_process.join(2 * run_conf.search_conf.timeout)
 

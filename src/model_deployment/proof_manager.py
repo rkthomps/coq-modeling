@@ -93,17 +93,17 @@ class ProofManager:
         file_context: FileContext,
         same_file_proofs: list[Proof],
         proof_info: ProofInfo,
-        file_info: FileInfo,
+        file_loc: Path,
+        workspace_loc: Path,
         sentence_db: SentenceDB,
-        split: Split,
         data_loc: Path,
     ) -> None:
         self.same_file_proofs = same_file_proofs
         self.file_context = file_context
         self.proof_info = proof_info
-        self.file_info = file_info
+        self.file_loc = file_loc
+        self.workspace_loc = workspace_loc
         self.sentence_db = sentence_db
-        self.split = split
         self.data_loc = data_loc
         self.__start_clients()
 
@@ -135,12 +135,8 @@ class ProofManager:
         return "".join([s.text for s in self.proof_info.prefix_steps])
 
     @property
-    def file_loc(self) -> Path:
-        return self.data_loc / self.file_info.file
-
-    @property
     def workspace_uri(self) -> str:
-        return f"file://{(self.data_loc / self.file_info.workspace).resolve()}"
+        return f"file://{(self.workspace_loc).resolve()}"
 
     def get_proof_shell(
         self,
@@ -329,8 +325,6 @@ class ProofManager:
             last_step_idx,
             last_proof_idx,
             dp_obj=dset_file,
-            file_info=self.file_info,
-            split=self.split,
             data_loc=self.data_loc,
             ground_truth_steps=None,  # Not doing this right now
         )

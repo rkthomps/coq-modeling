@@ -24,6 +24,8 @@ from model_deployment.model_result import ModelResult
 
 from model_deployment.conf_utils import get_ip, get_free_port
 
+from transformers.trainer_utils import set_seed
+
 wrapper: ModelWrapper = StubWrapper()
 
 
@@ -40,6 +42,11 @@ def get_recs(
     result = wrapper.get_recs(example, n, current_proof, beam, token_mask).to_json()
     end = time.time()
     return result
+
+
+@dispatcher.add_method
+def set_model_seed(seed: int) -> None:
+    set_seed(seed)
 
 
 @Request.application

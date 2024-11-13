@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from data_management.sentence_db import SentenceDB
-from data_management.splits import FileInfo, DataSplit, Split, str2split, split2str
 
 from model_deployment.prove import LocationInfo, RunProofConf
 from model_deployment.searcher import SearcherConf, searcher_conf_from_yaml
@@ -30,86 +29,33 @@ from model_deployment.tactic_gen_client import (
     tactic_gen_conf_from_yaml,
 )
 
+from coqstoq import Split, get_theorem_list
+from coqstoq.eval_thms import EvalTheorem
+
 from util.file_queue import FileQueue
 from util.util import get_basic_logger, read_port_map, get_flexible_url
 from util.constants import TMP_LOC, SYNTH_DATA_LOC
+from util.coqstoq_utils import split2str, str2split
 
 _logger = get_basic_logger(__name__)
 
 
-PROOF_MAP_LOC = SYNTH_DATA_LOC / "proof_maps"
 QUEUE_LOC = TMP_LOC / "queue"
 
 
 def initialize_and_fill_queue(
     queue_loc: Path,
-    conf: EvalConf | PremiseEvalConf,
+    conf: EvalConf,
 ):
-    proof_map = create_eval_proof_map(
-        conf.split, conf.data_split_loc, conf.sentence_db_loc, conf.data_loc
-    )
-    q = FileQueue(queue_loc)
+    theorem_list = get_theorem_list(conf.split, conf.coqstoq_loc)
+    q = FileQueue[EvalTheorem](queue_loc)
     q.initialize()
-    if conf.end_at is not None and conf.start_at is not None:
-        q.put_all(proof_map.proofs[conf.start_at : conf.end_at])
-    elif conf.end_at is not None:
-        q.put_all(proof_map.proofs[: conf.end_at])
-    elif conf.start_at is not None:
-        q.put_all(proof_map.proofs[conf.start_at :])
+
+    if conf.proof_ids is not None:
+        for id in conf.proof_ids:
+            q.put(theorem_list[id])
     else:
-        q.put_all(proof_map.proofs)
-
-
-@dataclass
-class ProofMap:
-    proofs: list[tuple[FileInfo, int]]
-
-    def __len__(self) -> int:
-        return len(self.proofs)
-
-    def get(self, idx: int) -> tuple[FileInfo, int]:
-        return self.proofs[idx]
-
-    def to_json(self):
-        objs: list[dict[str, str | int]] = []
-        for f_info, proof_idx in self.proofs:
-            objs.append({"file_info": f_info.to_json(), "proof_idx": proof_idx})
-        return {"map": objs}
-
-    def save(self, path: Path):
-        with path.open("w") as fout:
-            fout.write(json.dumps(self.to_json(), indent=2))
-
-    @classmethod
-    def from_json(cls, json_data: Any) -> ProofMap:
-        proofs: list[tuple[FileInfo, int]] = []
-        for obj in json_data["map"]:
-            proofs.append((FileInfo.from_json(obj["file_info"]), obj["proof_idx"]))
-        return cls(proofs)
-
-    @classmethod
-    def load(cls, path: Path) -> ProofMap:
-        with path.open("r") as fin:
-            return cls.from_json(json.load(fin))
-
-    @classmethod
-    def create(
-        cls,
-        data_split: DataSplit,
-        split: Split,
-        data_loc: Path,
-        sentence_db: SentenceDB,
-    ) -> ProofMap:
-        proofs: list[tuple[FileInfo, int]] = []
-        for f in tqdm(data_split.get_file_list(split)):
-            f_proofs = f.get_proofs(data_loc, sentence_db)
-            for i, f_proof in enumerate(f_proofs):
-                if not f_proof.is_proof_independent():
-                    continue
-                proofs.append((f, i))
-        random.seed(0)
-        random.shuffle(proofs)
-        return cls(proofs)
+        q.put_all(theorem_list)
 
 
 @dataclass
@@ -117,97 +63,35 @@ class EvalConf:
     split: Split
     save_loc: Path
     data_loc: Path
+    coqstoq_loc: Path
     sentence_db_loc: Path
-    data_split_loc: Path
     search_conf: SearcherConf
     tactic_conf: TacticGenConf
-    start_at: Optional[int]
-    end_at: Optional[int]
+    proof_ids: Optional[list[int]]
     rerun_errors: bool
 
     def update_ips(self, port_map: dict[int, tuple[str, int]]):
         tactic_conf_update_ips(self.tactic_conf, port_map)
 
-    def get_proof_confs(self) -> Generator[EvalProofConf, None, None]:
-        data_split = DataSplit.load(self.data_split_loc)
-        sentence_db = SentenceDB.load(self.sentence_db_loc)
-        file_list = data_split.get_file_list(self.split)
-        if self.end_at is not None and self.end_at < len(file_list):
-            random.seed(0)
-            file_list = random.sample(file_list, self.end_at)
-        for file_info in file_list:
-            proofs = file_info.get_proofs(self.data_loc, sentence_db)
-            for i, proof in enumerate(proofs):
-                if not proof.is_proof_independent():
-                    _logger.debug(f"Skipping {proof.theorem.term.text}")
-                    continue
-                yield EvalProofConf(
-                    file_info,
-                    i,
-                    self.split,
-                    self.data_loc,
-                    self.sentence_db_loc,
-                    self.data_split_loc,
-                    self.search_conf,
-                    self.tactic_conf,
-                )
-
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> EvalConf:
-        end_at = None
-        if "end_at" in yaml_data:
-            end_at = yaml_data["end_at"]
-        start_at = None
-        if "start_at" in yaml_data:
-            start_at = yaml_data["start_at"]
-        rerun_errors = False
-        if "rerun_errors" in yaml_data:
-            rerun_errors = yaml_data["rerun_errors"]
+        proof_ids = yaml_data.get("proof_ids", None)
+        rerun_errors = yaml_data.get("rerun_errors", False)
 
         return cls(
             str2split(yaml_data["split"]),
             Path(yaml_data["save_loc"]),
             Path(yaml_data["data_loc"]),
+            Path(yaml_data["coqstoq_loc"]),
             Path(yaml_data["sentence_db_loc"]),
-            Path(yaml_data["data_split_loc"]),
             searcher_conf_from_yaml(yaml_data["search"]),
             tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
-            start_at,
-            end_at,
+            proof_ids,
             rerun_errors,
         )
 
 
-@dataclass
-class EvalProofConf:
-    file_info: FileInfo
-    proof_idx: int
-    split: Split
-    data_loc: Path
-    sentence_db_loc: Path
-    data_split_loc: Path
-    search_conf: SearcherConf
-    tactic_conf: TacticGenConf
-
-    def to_run_conf(self) -> RunProofConf:
-        sentence_db = SentenceDB.load(self.sentence_db_loc)
-        dp_obj = self.file_info.get_dp(self.data_loc, sentence_db)
-        data_split = DataSplit.load(self.data_split_loc)
-        location_info = LocationInfo(
-            self.data_loc,
-            self.file_info,
-            self.split,
-            dp_obj,
-            self.proof_idx,
-            sentence_db,
-            data_split,
-        )
-        tactic_client = tactic_gen_client_from_conf(self.tactic_conf)
-        return RunProofConf(
-            location_info, self.search_conf, tactic_client, False, False
-        )
-
-
+# TODO: Have not adjusted the premise evaluation to work with coqstoq.
 @dataclass
 class PremiseStepResult:
     step_idx: int
@@ -266,27 +150,6 @@ def __get_data_split_hash(data_split_loc: Path) -> str:
         m.update(str.encode(fin.read()))
         encoding = m.hexdigest()
     return encoding
-
-
-def create_eval_proof_map(
-    split: Split, data_split_loc: Path, sentence_db_loc: Path, data_loc: Path
-) -> ProofMap:
-    if split == Split.TRAIN:
-        raise ValueError("Evaluation on training set not supported.")
-
-    os.makedirs(PROOF_MAP_LOC, exist_ok=True)
-    split_encoding = __get_data_split_hash(data_split_loc)
-    proof_map_loc = PROOF_MAP_LOC / f"{split_encoding}-{split2str(split)}"
-    if proof_map_loc.exists():
-        print(f"Using proof map located at {proof_map_loc}")
-        return ProofMap.load(proof_map_loc)
-
-    _logger.info(f"Creating proof map.")
-    data_split = DataSplit.load(data_split_loc)
-    sentence_db = SentenceDB.load(sentence_db_loc)
-    proof_map = ProofMap.create(data_split, split, data_loc, sentence_db)
-    proof_map.save(proof_map_loc)
-    return proof_map
 
 
 def wait_for_servers(next_server_num: int) -> dict[int, tuple[str, int]]:
