@@ -189,6 +189,7 @@ def run_slurm(args: argparse.Namespace):
             break
 
         result_save_loc = get_save_loc(thm, save_loc)
+        print("Running ", result_save_loc)
         result = test_theorem(thm, coqstoq_loc, args.timeout)
         if result is not None:
             os.makedirs(result_save_loc.parent, exist_ok=True)
