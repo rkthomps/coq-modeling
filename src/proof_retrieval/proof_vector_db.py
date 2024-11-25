@@ -19,7 +19,7 @@ from util.util import get_basic_logger
 
 from data_management.sentence_db import SentenceDB
 from data_management.dataset_file import Proof, DatasetFile
-from data_management.splits import DataSplit, FileInfo, get_all_files
+from data_management.splits import DataSplit, FileInfo, get_all_files, DATA_POINTS_NAME
 
 from util.constants import PROOF_VECTOR_DB_METADATA
 
@@ -32,18 +32,16 @@ _logger = get_basic_logger(__name__)
 
 
 def step_iterator(
-    data_split_locs: list[Path], data_loc: Path, sentence_db_loc: Path
+    data_loc: Path, sentence_db_loc: Path
 ) -> Generator[ProofDBQuery, None, None]:
-    data_splits = [DataSplit.load(loc) for loc in data_split_locs]
-    all_files = get_all_files(data_splits)
     sentence_db = SentenceDB.load(sentence_db_loc)
-    for i, f_info in enumerate(all_files):
+    for i, dp_loc in enumerate((data_loc / DATA_POINTS_NAME).iterdir()):
+        dp = DatasetFile.load(dp_loc, sentence_db, metadata_only=True)
         if i % 100 == 0:
-            _logger.info(f"Processing file {i}/{len(all_files)}")
-        proofs = f_info.get_proofs(data_loc, sentence_db)
-        for proof in proofs:
+            _logger.info(f"Processing file {i}")
+        for proof in dp.proofs:
             for i, _ in enumerate(proof.steps):
-                yield ProofDBQuery(i, proof, f_info.dp_name)
+                yield ProofDBQuery(i, proof, dp.dp_name)
 
 
 def page_iterator(
@@ -70,7 +68,6 @@ class ProofVectorDBConf:
     batch_size: int
     model_name: str | Path
     max_seq_len: int
-    data_splits: list[Path]
     data_loc: Path
     sentence_db_loc: Path
 
@@ -85,7 +82,6 @@ class ProofVectorDBConf:
             yaml_data["batch_size"],
             model_name,
             yaml_data["max_seq_len"],
-            [Path(p) for p in yaml_data["data_splits"]],
             Path(yaml_data["data_loc"]),
             Path(yaml_data["sentence_db_loc"]),
         )
@@ -134,7 +130,7 @@ class ProofVectorDB:
         _logger.info(model.model.device)
         proof_indices: dict[int, int] = {}
         _logger.info("Creating proof state iterator.")
-        step_gen = step_iterator(conf.data_splits, conf.data_loc, conf.sentence_db_loc)
+        step_gen = step_iterator(conf.data_loc, conf.sentence_db_loc)
         _logger.info("Creating page iterator.")
         _logger.info(f"Worker with process id {process_id} of {num_processes}")
         page_gen = page_iterator(step_gen, conf.page_size)

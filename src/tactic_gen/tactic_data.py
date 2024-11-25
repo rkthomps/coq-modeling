@@ -526,10 +526,12 @@ class NPrevLineCollator:
     def collate_input(self, tokenizer: PreTrainedTokenizer, example: LmExample) -> str:
         assert example.file_name is not None
         assert example.proof_idx is not None
-        prefix_lines = self.get_prefix_lines(Path(example.file_name), example.proof_idx)
-        prefix_str = allocate_and_fmt(
-            tokenizer, prefix_lines, self.prefix_tokens, reverse=False
-        )
+        prefix_lines = self.get_prefix_lines(
+            Path(example.file_name), example.proof_idx
+        )[
+            ::-1
+        ]  # Take last lines
+        prefix_str = allocate_and_fmt(tokenizer, prefix_lines, self.prefix_tokens)
         state_str, _ = allocate_tokens(
             tokenizer, example.proof_state, self.state_tokens
         )

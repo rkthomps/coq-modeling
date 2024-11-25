@@ -3,6 +3,7 @@ import argparse
 import os
 import json
 import ipdb
+import re
 from enum import Enum
 from pathlib import Path
 from dataclasses import dataclass
@@ -26,68 +27,52 @@ from evaluation.translate import (
 import logging
 
 
-META_IDX = 0
-META_PROJ_IDX = 0
-META_FILE_IDX = 1
-META_MODULE_IDX = 2
-META_THM_IDX = 3
-
-PROOF_IDX = 1
-
-
-def proof_from_cmds(commands: list[Any]) -> str:
-    tactics = [c["tactic"] for c in commands]
-    return "\n".join(tactics)
+def get_tactician_proof(stdout: str) -> str:
+    proof_text = re.sub(r"\u001b\[\d+m", "", stdout)
+    proof_text = proof_text.replace("only 1: ", "")
+    proof_portion_match = re.search(
+        r"synth with cache \((.*?)\)\.\r\nNo more (sub)?goals.", proof_text
+    )
+    assert proof_portion_match is not None
+    (proof_portion, _) = proof_portion_match.groups()
+    return proof_portion
 
 
 def from_json(json_data: Any) -> RawResult:
-    metadata_json = json_data[META_IDX]
-    proj = metadata_json[META_PROJ_IDX]
-    file = metadata_json[META_FILE_IDX]
-    thm = metadata_json[META_THM_IDX]
-    module = metadata_json[META_MODULE_IDX]
-    assert 0 < len(module) and module.endswith(".")
-    module_list_w_filename = module[:-1].split(".")
-    assert 0 < len(module_list_w_filename)
-    module_list = module_list_w_filename[1:]
-
-    proof_json = json_data[PROOF_IDX]
-    success = proof_json["status"] == "SUCCESS"
-    if (
-        not success
-        and proof_json["status"] != "INCOMPLETE"
-        and proof_json["status"] != "FAILURE"
-        and proof_json["status"] != "CRASHED"
-    ):
-        print(json.dumps(json_data, indent=2))
-        exit()
-    proof = proof_from_cmds(proof_json["commands"]) if success else None
-
-    time = proof_json["time_taken"]
-    return RawResult(proj, file, thm, success, time, proof)
+    print(json_data["file"])
+    assert Path(json_data["file"]).is_relative_to("repos")
+    project = Path(json_data["file"]).relative_to("repos").parts[0]
+    new_path = Path(json_data["file"]).relative_to(Path("repos") / project)
+    if json_data["success"]:
+        proof = get_tactician_proof(json_data["stdout"])
+    else:
+        proof = None
+    return RawResult(
+        project,
+        str(new_path),
+        json_data["theorem"],
+        json_data["success"],
+        json_data["synth_time"],
+        proof,
+    )
 
 
-def results_from_file(file_path: Path) -> list[RawResult]:
-    file_results: list[RawResult] = []
-    with file_path.open() as fin:
-        for line in fin:
-            line_info = json.loads(line)
-            file_results.append(from_json(line_info))
-    return file_results
-
-
-def load_proverbot_results(path: Path) -> list[RawResult]:
+def load_tactician_results(path: Path) -> list[RawResult]:
     results: list[RawResult] = []
-    for root, _, files in os.walk(path):
-        for file in files:
-            if file.endswith("proofs.txt"):
-                results.extend(results_from_file(Path(root) / file))
+    for result_file in os.listdir(path):
+        with (path / result_file).open() as fin:
+            result_data = json.load(fin)
+            file_idx_match = re.search(r"(\d+)\.(json|v)$", result_file)
+            assert file_idx_match is not None
+            (file_idx_str, _) = file_idx_match.groups()
+            result = from_json(result_data)
+            results.append(result)
     return results
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--proverbot_loc", type=str, required=True)
+    parser.add_argument("--tactician_loc", type=str, required=True)
     parser.add_argument("--coqstoq_loc", type=str, required=True)
     parser.add_argument(
         "--split", type=str, required=True, choices=["val", "test", "cutoff"]
@@ -95,9 +80,9 @@ if __name__ == "__main__":
     parser.add_argument("--save_loc", type=str, required=True)
 
     args = parser.parse_args()
-    proverbot_results = load_proverbot_results(Path(args.proverbot_loc))
+    tactician_results = load_tactician_results(Path(args.tactician_loc))
     split = get_coqstoq_split(args.split)
-    results = raw_results_to_results(proverbot_results, Path(args.coqstoq_loc), split)
+    results = raw_results_to_results(tactician_results, Path(args.coqstoq_loc), split)
 
     # Save results
     for r in results:
@@ -114,7 +99,7 @@ if __name__ == "__main__":
     coqstoq_files = get_coqstoq_files(Path(args.coqstoq_loc), split)
     thms = get_theorem_list(split, Path(args.coqstoq_loc))
     print("Num coqstoq theorems", len(thms))
-    proverbot_files = get_raw_file_set(proverbot_results)
+    proverbot_files = get_raw_file_set(tactician_results)
     because_file_missing = 0
     total = 0
     missing_files: set[Path] = set()

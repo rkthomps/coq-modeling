@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 import subprocess
 import multiprocessing as mp
-
 from data_management.splits import DataSplit, FileInfo
 from data_management.sentence_db import SentenceDB
 from evaluation.eval_utils import EvalConf
@@ -26,6 +25,7 @@ from model_deployment.prove import (
     run_proof,
     get_save_loc,
     RangoResult,
+    load_result,
 )
 from model_deployment.tactic_gen_client import (
     tactic_gen_client_from_conf,
@@ -44,15 +44,18 @@ _logger = logging.getLogger(RANGO_LOGGER)
 
 
 def run_and_save_proof(thm: EvalTheorem, run_conf: RunProofConf, save_dir: Path):
+    start = time.time()
+    save_loc = get_save_loc(save_dir, thm)
     try:
         result = run_proof(run_conf)
+        rango_result = RangoResult.from_search_result(thm, result)
     except TimeoutError:
         _logger.error(
             f"Got timeout error running proof: {run_conf.theorem_id} from {run_conf.loc.file_loc}"
         )
-        return
-    rango_result = RangoResult.from_search_result(thm, result)
-    save_loc = get_save_loc(save_dir, thm)
+        stop = time.time()
+        rango_result = RangoResult(thm, None, stop - start, None)
+
     rango_result.save(save_loc)
     if rango_result.proof is not None:
         _logger.info(f"Eval theorem for {thm.path}::{run_conf.theorem_id} : SUCCESS")
@@ -101,6 +104,7 @@ if __name__ == "__main__":
         tactic_conf_update_ips(clean_tactic_conf, port_map)
 
     tactic_client = tactic_gen_client_from_conf(clean_tactic_conf)
+    strikes = 0
     while True:
         try:
             eval_thm = q.get()
@@ -141,6 +145,12 @@ if __name__ == "__main__":
         )
         worker_process.start()
         worker_process.join(2 * run_conf.search_conf.timeout)
-
+        assert save_loc.exists()
+        result = load_result(save_loc)
+        if result.proof is None:
+            strikes += 1
+        if 3 <= strikes:
+            _logger.error(f"Too many strikes for {eval_thm.path}")
+            break
     for p in procs:
         p.kill()

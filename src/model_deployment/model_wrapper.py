@@ -149,6 +149,7 @@ class DecoderLocalWrapper:
         if token_mask_str is not None:
             token_mask = TokenMask.from_str(token_mask_str)
         collated_input = self.collator.collate_input(self.tokenizer, example)
+        # print(collated_input)
         inputs = self.tokenizer(
             collated_input,
             max_length=self.hard_seq_len,
@@ -162,7 +163,6 @@ class DecoderLocalWrapper:
             inputs["input_ids"],
             inputs["attention_mask"],
         )
-        print(attention_mask)
         with torch.no_grad():
             outputs = self.model.generate(
                 inputs["input_ids"],
@@ -188,17 +188,18 @@ class DecoderLocalWrapper:
             scores = outputs.sequences_scores.tolist()
             return ModelResult(tactics, scores, lengths)
         else:
-            transition_scores = self.model.compute_transition_scores(
-                generated_seqs, outputs.scores, normalize_logits=True
-            )
-            scores = (
-                transition_scores.where(
-                    transition_scores != -torch.inf, torch.tensor(0.0)
+            with torch.no_grad():
+                transition_scores = self.model.compute_transition_scores(
+                    generated_seqs, outputs.scores, normalize_logits=True
                 )
-                .sum(axis=1)
-                .tolist()
-            )
-            return ModelResult(tactics, scores, lengths)
+                scores = (
+                    transition_scores.where(
+                        transition_scores != -torch.inf, torch.tensor(0.0)
+                    )
+                    .sum(axis=1)
+                    .tolist()
+                )
+                return ModelResult(tactics, scores, lengths)
 
     @classmethod
     def get_training_conf(cls, checkpoint_loc: Path) -> Any:
