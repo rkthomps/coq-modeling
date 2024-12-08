@@ -181,7 +181,7 @@ class ClassicalSearcher:
             if self.comparer.as_hard_as(
                 candidate_goals,
                 seen_goals,
-                self.proof_manager.goal_client,
+                self.proof_manager.fast_client,
                 self.proof_manager.file_prefix,
             ):
                 return True

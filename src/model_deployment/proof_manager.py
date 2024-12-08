@@ -195,6 +195,7 @@ class ProofManager:
     def get_initial_context(self) -> Optional[DatasetFile]:
         # TODO ADD PREFIX TO THIS DSET FILE
         initial_proof_result = self.check_proof("", self.proof_info.proof_term)
+        print("Tactic result:", initial_proof_result.tactic_result)
         assert initial_proof_result.new_proof is not None
         return DatasetFile(
             self.file_context, self.same_file_proofs + [initial_proof_result.new_proof]
@@ -209,6 +210,7 @@ class ProofManager:
     def check_valid(self, client: FastLspClient) -> bool:
         for diagnostic in client.lsp_endpoint.diagnostics[self.fast_client.file_uri]:
             if diagnostic.severity == 1:
+                print(diagnostic.message)
                 return False
         return True
 

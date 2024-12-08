@@ -105,6 +105,7 @@ if __name__ == "__main__":
 
     tactic_client = tactic_gen_client_from_conf(clean_tactic_conf)
     strikes = 0
+    MAX_STRIKES_IN_A_ROW = 3
     while True:
         try:
             eval_thm = q.get()
@@ -136,7 +137,7 @@ if __name__ == "__main__":
             _logger.info(f"Skipping {eval_thm.path}::{run_conf.theorem_id}")
             continue
 
-        orig_summary.save(get_save_loc(eval_conf.save_loc, eval_thm))
+        orig_summary.save(save_loc)
         _logger.info(
             f"running proof of {run_conf.theorem_id} from {location_info.file_loc}"
         )
@@ -147,9 +148,11 @@ if __name__ == "__main__":
         worker_process.join(2 * run_conf.search_conf.timeout)
         assert save_loc.exists()
         result = load_result(save_loc)
-        if result.proof is None:
+        if result.time is None:
             strikes += 1
-        if 3 <= strikes:
+        else:
+            strikes = 0
+        if MAX_STRIKES_IN_A_ROW <= strikes:
             _logger.error(f"Too many strikes for {eval_thm.path}")
             break
     for p in procs:
