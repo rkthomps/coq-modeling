@@ -120,11 +120,12 @@ class ClassicalSearcher:
     def from_conf(
         cls,
         conf: ClassicalSearchConf,
-        tactic_client: TacticGenClient,
+        tactic_clients: list[TacticGenClient],
         proof_manager: ProofManager,
     ) -> ClassicalSearcher:
+        assert len(tactic_clients) == 1
         return cls(
-            tactic_client,
+            tactic_clients[0],
             proof_manager,
             conf.max_branch,
             conf.max_search_steps,

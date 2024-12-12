@@ -149,7 +149,7 @@ class DecoderLocalWrapper:
         if token_mask_str is not None:
             token_mask = TokenMask.from_str(token_mask_str)
         collated_input = self.collator.collate_input(self.tokenizer, example)
-        # print(collated_input)
+        print(collated_input)
         inputs = self.tokenizer(
             collated_input,
             max_length=self.hard_seq_len,

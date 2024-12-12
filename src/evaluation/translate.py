@@ -8,6 +8,7 @@ from coqstoq import get_theorem_list, Split
 from coqstoq.eval_thms import EvalTheorem, get_file_hash, Position
 
 import logging
+import ipdb
 
 
 @dataclass
@@ -149,6 +150,7 @@ class FailureMode(Enum):
     AMBIGUOUS = 1
     THM_MISSING = 2
     THM_MISMATCH = 3
+    BAD_THM = 4
 
 
 def get_theorem_possibilities(
@@ -185,6 +187,56 @@ def map_filter_candidate_ranges(
     return candidate_thms
 
 
+def special_cases(
+    r_result: RawResult, pbot_possibilities: list[RawResult]
+) -> tuple[list[RawResult], set[int]]:
+    if (
+        r_result.project == "AbsInt-CompCert"
+        and r_result.file_name == "./lib/Lattice.v"
+        and r_result.thm_str
+        == "\nLemma beq_correct: forall x y, beq x y = true -> eq x y.\n"
+    ):
+        # fourth one does not have Qed.
+        assert len(pbot_possibilities) == 5
+        return (pbot_possibilities[:3] + pbot_possibilities[4:]), {3}
+
+    if (
+        r_result.project == "AbsInt-CompCert"
+        and r_result.file_name == "./lib/Ordered.v"
+        and r_result.thm_str
+        == "\nLemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.\n"
+    ):
+        # first one does not have Qed.
+        assert len(pbot_possibilities) == 5
+        return pbot_possibilities[1:], {0}
+
+    if (
+        r_result.project == "AbsInt-CompCert"
+        and r_result.file_name == "./lib/Ordered.v"
+        and r_result.thm_str
+        == "Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.\n"
+    ):
+        # first one does not have Qed.
+        assert len(pbot_possibilities) == 5
+        return pbot_possibilities[1:], {0}
+
+    if (
+        r_result.project == "AbsInt-CompCert"
+        and r_result.file_name == "./lib/Ordered.v"
+        and (
+            r_result.thm_str
+            == "Lemma lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.\n"
+            or r_result.thm_str
+            == "\nLemma lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.\n"
+        )
+    ):
+        # first one does not have Qed.
+        assert len(pbot_possibilities) == 5
+        return pbot_possibilities[2:], {0, 1}
+
+    return pbot_possibilities, set()
+
+
 def raw_result_to_result(
     r_result: RawResult,
     coqstoq_files: dict[Path, CoqStoqFile],
@@ -210,9 +262,17 @@ def raw_result_to_result(
 
     if 1 < len(candidate_thms):
         pbot_possibilities, thm_idx = get_theorem_possibilities(r_result, raw_map)
+        pbot_possibilities, removed_idxs = special_cases(r_result, pbot_possibilities)
+
+        if thm_idx in removed_idxs:
+            return FailureMode.BAD_THM
+        for idx in removed_idxs:
+            if idx < thm_idx:
+                thm_idx -= 1
+
         if len(pbot_possibilities) != len(candidate_thms):
             logging.warning(f"Ambiguous theorem in {p_target_file}")
-            # ipdb.set_trace()
+            ipdb.set_trace()
             return FailureMode.AMBIGUOUS
         else:
             single_thm = candidate_thms[thm_idx]

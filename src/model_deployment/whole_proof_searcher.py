@@ -99,11 +99,12 @@ class WholeProofSearcher:
     def from_conf(
         cls,
         conf: WholeProofSearcherConf,
-        tactic_gen_client: TacticGenClient,
+        tactic_gen_clients: list[TacticGenClient],
         proof_manager: ProofManager,
     ) -> WholeProofSearcher:
+        assert len(tactic_gen_clients) == 1
         return cls(
-            tactic_gen_client,
+            tactic_gen_clients[0],
             proof_manager,
             conf.n_attempts,
             conf.print_proofs,

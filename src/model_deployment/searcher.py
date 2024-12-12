@@ -44,12 +44,12 @@ def searcher_conf_from_yaml(yaml_data: Any) -> SearcherConf:
 
 
 def searcher_from_conf(
-    conf: SearcherConf, tactic_gen: TacticGenClient, manager: ProofManager
+    conf: SearcherConf, tactic_gens: list[TacticGenClient], manager: ProofManager
 ) -> Searcher:
     match conf:
         case ClassicalSearchConf():
-            return ClassicalSearcher.from_conf(conf, tactic_gen, manager)
+            return ClassicalSearcher.from_conf(conf, tactic_gens, manager)
         case StraightLineSearcherConf():
-            return StraightLineSearcher.from_conf(conf, tactic_gen, manager)
+            return StraightLineSearcher.from_conf(conf, tactic_gens, manager)
         case WholeProofSearcherConf():
-            return WholeProofSearcher.from_conf(conf, tactic_gen, manager)
+            return WholeProofSearcher.from_conf(conf, tactic_gens, manager)

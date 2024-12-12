@@ -52,14 +52,14 @@ class StraightLineSearcherConf:
 class StraightLineSearcher:
     def __init__(
         self,
-        tactic_client: TacticGenClient,
+        tactic_clients: list[TacticGenClient],
         proof_manager: ProofManager,
         timeout: int,
         print_proofs: bool,
         initial_proof: Optional[str],
         token_mask: Optional[str],
     ):
-        self.tactic_client = tactic_client
+        self.tactic_clients = tactic_clients
         self.proof_manager = proof_manager
         self.timeout = timeout
         self.print_proofs = print_proofs
@@ -89,11 +89,11 @@ class StraightLineSearcher:
     def from_conf(
         cls,
         conf: StraightLineSearcherConf,
-        tactic_client: TacticGenClient,
+        tactic_clients: list[TacticGenClient],
         proof_manager: ProofManager,
     ) -> StraightLineSearcher:
         return cls(
-            tactic_client,
+            tactic_clients,
             proof_manager,
             conf.timeout,
             conf.print_proofs,
@@ -106,7 +106,10 @@ class StraightLineSearcher:
         attempts: list[str] = []
         cur_time = time.time() - start_time
         while cur_time < self.timeout:
-            maybe_complete, attempt = self.search_step(start_time)
+            maybe_complete, attempt = self.search_step(
+                start_time,
+                self.tactic_clients[len(attempts) % len(self.tactic_clients)],
+            )
             if self.print_proofs:
                 print(attempt)
             attempts.append(attempt)
@@ -121,7 +124,9 @@ class StraightLineSearcher:
             cur_time = time.time() - start_time
         return StraightLineFailure(cur_time, self.total_model_time, attempts)
 
-    def search_step(self, start_time: float) -> tuple[Optional[Proof], str]:
+    def search_step(
+        self, start_time: float, client: TacticGenClient
+    ) -> tuple[Optional[Proof], str]:
         cur_proof_result = self.initial_check_result
         cur_time = time.time() - start_time
         last_proof_script = ""
@@ -139,7 +144,7 @@ class StraightLineSearcher:
             )
             start_model_time = time.time()
             last_proof = cur_dset_file.proofs[-1]
-            result = self.tactic_client.get_recs(
+            result = client.get_recs(
                 len(last_proof.steps) - 1,
                 last_proof,
                 cur_dset_file,

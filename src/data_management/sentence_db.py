@@ -144,6 +144,9 @@ class SentenceDB:
         if fast_db_path.exists():
             _logger.debug(f"Using local sentence db at {fast_db_path}")
             db_path = fast_db_path
+        else:
+            _logger.debug(f"Not using local db. {fast_db_path} does not exist.")
+
         con = connect(
             db_path,
         )

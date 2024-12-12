@@ -76,6 +76,8 @@ def get_coqstoq_data_point(f: CoqStoqFile, sentence_db: SentenceDB, save_loc: Pa
         dp.save(save_loc / dp.dp_name, sentence_db, insert_allowed=True)
     except ResponseError as e:
         _logger.info(f"Failed to create data point for {f}: {e}")
+    except Exception as e:
+        _logger.error(f"Failed to create data point for {f}: {e}")
 
 
 def get_predicted_dp_name(f: CoqStoqFile) -> str:

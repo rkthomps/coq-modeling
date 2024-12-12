@@ -66,17 +66,27 @@ class EvalConf:
     coqstoq_loc: Path
     sentence_db_loc: Path
     search_conf: SearcherConf
-    tactic_conf: TacticGenConf
+    tactic_confs: list[TacticGenConf]
     proof_ids: Optional[list[int]]
     rerun_errors: bool
 
     def update_ips(self, port_map: dict[int, tuple[str, int]]):
-        tactic_conf_update_ips(self.tactic_conf, port_map)
+        for conf in self.tactic_confs:
+            tactic_conf_update_ips(conf, port_map)
 
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> EvalConf:
         proof_ids = yaml_data.get("proof_ids", None)
         rerun_errors = yaml_data.get("rerun_errors", False)
+        if "tactic_gens" in yaml_data:
+            tactic_gens = [
+                tactic_gen_conf_from_yaml(tactic_gen)
+                for tactic_gen in yaml_data["tactic_gens"]
+            ]
+        elif "tactic_gen" in yaml_data:
+            tactic_gens = [tactic_gen_conf_from_yaml(yaml_data["tactic_gen"])]
+        else:
+            raise ValueError("No tactic gen conf found.")
 
         return cls(
             str2split(yaml_data["split"]),
@@ -85,7 +95,7 @@ class EvalConf:
             Path(yaml_data["coqstoq_loc"]),
             Path(yaml_data["sentence_db_loc"]),
             searcher_conf_from_yaml(yaml_data["search"]),
-            tactic_gen_conf_from_yaml(yaml_data["tactic_gen"]),
+            tactic_gens,
             proof_ids,
             rerun_errors,
         )

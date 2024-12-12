@@ -15,6 +15,7 @@ from model_deployment.conf_utils import (
     tactic_gen_to_client_conf,
     wait_for_servers,
     start_servers,
+    StartModelCommand,
 )
 from model_deployment.classical_searcher import ClassicalSearchConf
 from model_deployment.straight_line_searcher import StraightLineSearcherConf
@@ -30,6 +31,8 @@ from model_deployment.prove import (
 from model_deployment.tactic_gen_client import (
     tactic_gen_client_from_conf,
     tactic_conf_update_ips,
+    TacticGenConf,
+    TacticGenClient,
 )
 from util.constants import CLEAN_CONFIG, RANGO_LOGGER
 from util.util import set_rango_logger, clear_port_map
@@ -93,17 +96,29 @@ if __name__ == "__main__":
 
     q = FileQueue[EvalTheorem](queue_loc)
 
-    clean_tactic_conf, n_commands, commands = tactic_gen_to_client_conf(
-        eval_conf.tactic_conf, 0
-    )
-    procs = []
-    if 0 < len(commands):
-        clear_port_map()
-        procs = start_servers(commands)
-        port_map = wait_for_servers(n_commands)
-        tactic_conf_update_ips(clean_tactic_conf, port_map)
+    clean_tactic_confs: list[TacticGenConf] = []
+    all_commands: list[StartModelCommand] = []
+    next_num = 0
+    for tactic_conf in eval_conf.tactic_confs:
+        clean_tactic_conf, n_commands, commands = tactic_gen_to_client_conf(
+            tactic_conf, next_num
+        )
+        clean_tactic_confs.append(clean_tactic_conf)
+        all_commands.extend(commands)
+        next_num = n_commands
 
-    tactic_client = tactic_gen_client_from_conf(clean_tactic_conf)
+    procs = []
+    if 0 < len(all_commands):
+        clear_port_map()
+        procs = start_servers(all_commands)
+        port_map = wait_for_servers(next_num)
+        for tactic_conf in clean_tactic_confs:
+            tactic_conf_update_ips(tactic_conf, port_map)
+
+    tactic_clients: list[TacticGenClient] = [
+        tactic_gen_client_from_conf(conf) for conf in clean_tactic_confs
+    ]
+
     strikes = 0
     MAX_STRIKES_IN_A_ROW = 3
     while True:
@@ -129,7 +144,7 @@ if __name__ == "__main__":
             sentence_db,
         )
         run_conf = RunProofConf(
-            location_info, eval_conf.search_conf, tactic_client, False, False
+            location_info, eval_conf.search_conf, tactic_clients, False, False
         )
         orig_summary = RangoResult(eval_thm, None, None, None)
         save_loc = get_save_loc(eval_conf.save_loc, eval_thm)

@@ -49,7 +49,7 @@ class LocationInfo:
 class RunProofConf:
     loc: LocationInfo
     search_conf: SearcherConf
-    tactic_gen: TacticGenClient
+    tactic_gens: list[TacticGenClient]
     print_proofs: bool
     print_trees: bool
 
@@ -79,8 +79,6 @@ def get_proof_info(
     workspace_loc: Path,
     term: Term,
 ) -> ProofInfo:
-    # Make better -- do based off of line num?
-
     workspace_uri = f"file://{workspace_loc.resolve()}"
     client = FastLspClient(workspace_uri, timeout=240)
     fresh_file_loc = get_fresh_path(file_loc, file_loc.name)
@@ -111,7 +109,8 @@ def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
         conf.loc.workspace_loc,
         conf.loc.dataset_file.proofs[conf.loc.dp_proof_idx].theorem,
     )
-    conf.tactic_gen.set_seed(0)
+    for tgen in conf.tactic_gens:
+        tgen.set_seed(0)
     with ProofManager(
         conf.loc.dataset_file.file_context,
         conf.loc.dataset_file.proofs[: conf.loc.dp_proof_idx],
@@ -122,7 +121,7 @@ def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
         conf.loc.data_loc,
     ) as proof_manager:
         tree_manager = searcher_from_conf(
-            conf.search_conf, conf.tactic_gen, proof_manager
+            conf.search_conf, conf.tactic_gens, proof_manager
         )
         result = tree_manager.search(
             print_proofs=conf.print_proofs, print_trees=conf.print_trees
