@@ -18,12 +18,18 @@ class ProofLoc:
 
 
 def get_thm_desc(
-    thm: EvalTheorem, data_loc: Path, sentence_db: SentenceDB
+    thm: EvalTheorem,
+    data_loc: Path,
+    sentence_db: SentenceDB,
+    dp_cache: Optional[DPCache] = None,
 ) -> Optional[ProofLoc]:
     data_points_loc = data_loc / DATA_POINTS_NAME
     dp_name = str(thm.project.workspace.name / thm.path).replace("/", "-")
-    dp_loc = data_points_loc / dp_name
-    dp = DatasetFile.load(dp_loc, sentence_db)
+    if dp_cache is None:
+        dp_loc = data_points_loc / dp_name
+        dp = DatasetFile.load(dp_loc, sentence_db, metadata_only=metadata_only)
+    else:
+        dp = dp_cache.get_dp(dp_name, data_loc, sentence_db)
     for i, proof in enumerate(dp.proofs):
         if proof.theorem.term.line == thm.theorem_start_pos.line:
             if 0 < i:

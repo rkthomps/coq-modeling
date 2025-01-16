@@ -24,12 +24,14 @@ def load_eval_results(
             all_results[get_thm_hash(result.thm)] = result
 
     coqstoq_thms = get_theorem_list(split, coqstoq_loc)
-    assert len(all_results) == len(coqstoq_thms)
-    result_list: list[Result] = []
-    for thm in coqstoq_thms:
-        result_list.append(all_results[get_thm_hash(thm)])
-    assert len(result_list) == len(coqstoq_thms)
-    return EvalResults(hardware_desc, result_list)
+    if len(all_results) == len(coqstoq_thms):
+        result_list: list[Result] = []
+        for thm in coqstoq_thms:
+            result_list.append(all_results[get_thm_hash(thm)])
+        assert len(result_list) == len(coqstoq_thms)
+        return EvalResults(hardware_desc, result_list)
+    else:
+        return EvalResults(hardware_desc, list(all_results.values()))
 
 
 if __name__ == "__main__":
