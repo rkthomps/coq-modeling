@@ -1,7 +1,9 @@
 from typing import Optional
 import argparse
+import re
 import json
 import pandas as pd
+import statistics
 from tqdm import tqdm
 from pathlib import Path
 from dataclasses import dataclass
@@ -12,6 +14,7 @@ from evaluation.find_coqstoq_idx import get_thm_desc
 
 from coqstoq import Split as CQSplit, get_theorem_list, EvalTheorem
 from coqstoq.check import EvalResults, Result
+from edist.sed import standard_sed
 
 
 # --------------------------------
@@ -88,7 +91,7 @@ def replicate_tab1():
     )
 
     print("Getting val counts...")
-    COQSTOQ_LOC = Path("CoqStoq")
+    COQSTOQ_LOC = Path("CoqStoq").resolve()
     assert COQSTOQ_LOC.exists()
     COQSTOQ_VAL_LOC = Path("raw-data/coqstoq-val")
     COQSTOQ_VAL_SDB_LOC = Path("raw-data/coqstoq-val/coqstoq-val-sentences.db")
@@ -124,13 +127,13 @@ def replicate_tab1():
             ],
             "Total": [
                 training_results.num_repos
-                + test_results.num_repos
+                + val_results.num_repos
                 + test_results.num_repos,
                 training_results.num_proofs
-                + test_results.num_proofs
+                + val_results.num_proofs
                 + test_results.num_proofs,
                 training_results.num_steps
-                + test_results.num_steps
+                + val_results.num_steps
                 + test_results.num_steps,
             ],
         },
@@ -405,6 +408,9 @@ def replicate_tab4():
     print(total_df)
 
 
+# --------------------------------
+# REPLICATION CODE FOR TABLE 5
+# --------------------------------
 def replicate_tab5():
     RANGO_LOC = Path("results/rango.json")
     names = [
@@ -450,6 +456,9 @@ def replicate_tab5():
     print(total_df)
 
 
+# --------------------------------
+# REPLICATION CODE FOR TABLE 6
+# --------------------------------
 def replicate_tab6():
     RANGO_RESULTS_LOC = Path("results/rango.json")
     RANGO_FIRST_STEP_LOC = Path("results/rango-abl-first-step.json")
@@ -469,6 +478,9 @@ def replicate_tab6():
     print(total_df)
 
 
+# --------------------------------
+# REPLICATION CODE FOR TABLE 7
+# --------------------------------
 def replicate_tab7():
     RANGO_RESULTS_LOC = Path("results/rango.json")
     TFIDF_RESULTS_LOC = Path("results/rango-abl-tfidf.json")
@@ -490,6 +502,9 @@ def replicate_tab7():
     print(total_df)
 
 
+# --------------------------------
+# REPLICATION CODE FOR TABLE 8
+# --------------------------------
 def replicate_tab8():
     RANGO_RESULTS_LOC = Path("results/rango.json")
     PREFIX_RESULTS_LOC = Path("results/rango-abl-prefix.json")
@@ -535,6 +550,9 @@ def replicate_tab8():
     print(total_cutoff_df)
 
 
+# --------------------------------
+# REPLICATION CODE FOR TABLE 9
+# --------------------------------
 def replicate_tab9():
     RANGO_RESULTS_LOC = Path("results/rango.json")
     BEAM_RESULTS_LOC = Path("results/rango-abl-best-first-beam.json")
@@ -557,8 +575,157 @@ def replicate_tab9():
     print(total_df)
 
 
+# --------------------------------
+# REPLICATION CODE FOR TABLE 10
+# --------------------------------
+def load_results(loc: Path) -> EvalResults:
+    with loc.open() as fin:
+        eval_data = json.load(fin)
+        return EvalResults.from_json(eval_data)
+
+
+def remove_proof_qed(s: str) -> str:
+    return s.replace("Proof.", "").replace("Qed.", "")
+
+
+def proof_length(s: str) -> int:
+    s = remove_proof_qed(s)
+    tactics = re.split(r"[.;]\s+", s.strip())
+    proof_length = len(tactics)
+    if 0 == proof_length:
+        print(s)
+    assert 0 < proof_length
+    return len(tactics)
+
+
+def fair_edist(s1: str, s2: str) -> int:
+    s1 = remove_proof_qed(s1)
+    s2 = remove_proof_qed(s2)
+    return standard_sed(s1, s2)
+
+
+def find_mutual_proofs(
+    results_list: list[EvalResults], timeout: int = 600
+) -> list[int]:
+    all_succeed_indices: list[int] = []
+    assert 0 < len(results_list)
+    results_num = len(results_list[0].results)
+    for i in range(results_num):
+        all_succeed = True
+        for r_list in results_list:
+            assert i < len(r_list.results)
+            result_i = r_list.results[i]
+            if (
+                result_i.proof is None
+                or result_i.time is None
+                or timeout <= result_i.time
+            ):
+                all_succeed = False
+                break
+        if all_succeed:
+            all_succeed_indices.append(i)
+    return all_succeed_indices
+
+
+def get_proof_lengths(eval: EvalResults, indices: list[int]) -> list[int]:
+    proof_lengths: list[int] = []
+    for i in indices:
+        assert i < len(eval.results)
+        result_i = eval.results[i]
+        assert result_i.proof is not None
+        proof_lengths.append(proof_length(result_i.proof))
+    return proof_lengths
+
+
+def get_edists(
+    eval: EvalResults, human_eval: EvalResults, indices: list[int]
+) -> list[float]:
+    edists: list[float] = []
+    for i in indices:
+        assert i < len(eval.results)
+        result_i = eval.results[i]
+        assert i < len(human_eval.results)
+        human_i = human_eval.results[i]
+        assert result_i.proof is not None
+        assert human_i.proof is not None
+        edists.append(fair_edist(result_i.proof, human_i.proof) * 1.0)
+    return edists
+
+
 def replicate_tab10():
-    pass
+    HUMAN_EVAL_LOC = Path("results/human.json")
+    RANGO_EVAL_LOC = Path("results/rango.json")
+    TACTICIAN_EVAL_LOC = Path("results/tactician.json")
+    PROVERBOT_EVAL_LOC = Path("results/proverbot.json")
+
+    human_eval = load_results(HUMAN_EVAL_LOC)
+    rango_eval = load_results(RANGO_EVAL_LOC)
+    tactician_eval = load_results(TACTICIAN_EVAL_LOC)
+    proverbot_eval = load_results(PROVERBOT_EVAL_LOC)
+
+    mutual_idxs = find_mutual_proofs([rango_eval, tactician_eval, proverbot_eval])
+    human_lengths = get_proof_lengths(human_eval, mutual_idxs)
+    rango_lengths = get_proof_lengths(rango_eval, mutual_idxs)
+    tactician_lengths = get_proof_lengths(tactician_eval, mutual_idxs)
+    proverbot_lengths = get_proof_lengths(proverbot_eval, mutual_idxs)
+
+    print("PROOF LENGTHS")
+    print(
+        "Human",
+        "mean:",
+        statistics.mean(human_lengths),
+        "median:",
+        statistics.median(human_lengths),
+    )
+    print(
+        "Rango",
+        "mean:",
+        statistics.mean(rango_lengths),
+        "median:",
+        statistics.median(rango_lengths),
+    )
+    print(
+        "Tactician",
+        "mean:",
+        statistics.mean(tactician_lengths),
+        "median:",
+        statistics.median(tactician_lengths),
+    )
+    print(
+        "Proverbot",
+        "mean:",
+        statistics.mean(proverbot_lengths),
+        "median:",
+        statistics.median(proverbot_lengths),
+    )
+
+    mutual_idxs = find_mutual_proofs([rango_eval, tactician_eval, proverbot_eval])
+    rango_edists = get_edists(rango_eval, human_eval, mutual_idxs)
+    tactician_edists = get_edists(tactician_eval, human_eval, mutual_idxs)
+    proverbot_edists = get_edists(proverbot_eval, human_eval, mutual_idxs)
+
+    print("\nEDIST")
+    print(
+        "Rango",
+        "mean:",
+        statistics.mean(rango_edists),
+        "median:",
+        statistics.median(rango_edists),
+    )
+    print(
+        "Tactician",
+        "mean:",
+        statistics.mean(tactician_edists),
+        "median:",
+        statistics.median(tactician_edists),
+    )
+    print(
+        "Proverbot",
+        "mean:",
+        statistics.mean(proverbot_edists),
+        "median:",
+        statistics.median(proverbot_edists),
+    )
 
 
 def replicate_fig2():
