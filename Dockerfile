@@ -1,23 +1,29 @@
-# For more information, please refer to https://aka.ms/vscode-docker-python
-FROM python:3-slim
-
-# Keeps Python from generating .pyc files in the container
-ENV PYTHONDONTWRITEBYTECODE=1
-
-# Turns off buffering for easier container logging
-ENV PYTHONUNBUFFERED=1
-
-# Install pip requirements
-COPY requirements.txt .
-RUN python -m pip install -r requirements.txt
+ARG IMAGE_NAME
+FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04 as base
 
 WORKDIR /app
-COPY . /app
 
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
-# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN adduser -u 5678 --disabled-password --gecos "" appuser && chown -R appuser /app
-USER appuser
+RUN apt-get update && apt-get upgrade -y
+RUN apt-get install -y build-essential
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt install -y python3.11-dev
+RUN apt install -y python3.11-venv
+RUN apt install -y git
 
-# During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
-CMD ["python", "scripts/replicate.py"]
+COPY . /app/coq-modeling
+
+WORKDIR /app/coq-modeling
+
+RUN /usr/bin/python3.11 -m venv venv
+ENV PATH="/app/coq-modeling/venv/bin:$PATH"
+
+RUN pip3 install --no-cache-dir -e .
+
+WORKDIR /app/coq-modeling/coqpyt
+RUN pip3 install --no-cache-dir -e .
+
+WORKDIR /app/coq-modeling/CoqStoq
+RUN pip3 install --no-cache-dir -e .
+
+WORKDIR /app/coq-modeling
