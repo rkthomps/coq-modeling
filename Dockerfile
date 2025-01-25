@@ -1,11 +1,14 @@
-ARG IMAGE_NAME
-FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04 as base
+# ARG IMAGE_NAME
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04 as base
 
 WORKDIR /app
 
 RUN apt-get update && apt-get upgrade -y
 RUN apt-get install -y build-essential
 RUN apt-get install -y software-properties-common
+
+ENV DEBIAN_FRONTEND noninteractive
+
 RUN add-apt-repository ppa:deadsnakes/ppa
 RUN apt install -y python3.11-dev
 RUN apt install -y python3.11-venv
@@ -26,4 +29,26 @@ RUN pip3 install --no-cache-dir -e .
 WORKDIR /app/coq-modeling/CoqStoq
 RUN pip3 install --no-cache-dir -e .
 
+# Build coqstoq reos etc...
+# Install opam packages etc...
+RUN apt install -y opam
+RUN opam -y init
+WORKDIR /app/coq-modeling/CoqStoq
+RUN apt-get install -y libgmp-dev pkg-config
+RUN opam switch import -y coqstoq.opam --switch=coqstoq --repos=default,coq-released=https://coq.inria.fr/opam/released
+RUN opam switch set coqstoq
+
+# In place of 'eval opam env'
+ENV OPAM_SWITCH_PREFIX='/root/.opam/coqstoq'
+ENV CAML_LD_LIBRARY_PATH='/root/.opam/coqstoq/lib/stublibs:/root/.opam/coqstoq/lib/ocaml/stublibs:/root/.opam/coqstoq/lib/ocaml'
+ENV OCAML_TOPLEVEL_PATH='/root/.opam/coqstoq/lib/toplevel'
+ENV MANPATH=':/root/.opam/coqstoq/man'
+ENV PATH='/root/.opam/coqstoq/bin:/app/coq-modeling/venv/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+RUN python3 coqstoq/build_projects.py 
+
 WORKDIR /app/coq-modeling
+
+RUN ln -s /app/coq-modeling/CoqStoq/test-repos raw-data/coqstoq-test/repos
+RUN ln -s /app/coq-modeling/CoqStoq/val-repos raw-data/coqstoq-val/repos
+RUN ln -s /app/coq-modeling/CoqStoq/cutoff-repos raw-data/coqstoq-cutoff/repos

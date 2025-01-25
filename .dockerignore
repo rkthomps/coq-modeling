@@ -33,7 +33,6 @@ README.md
 /reports
 /confs
 **/*.egg-info
-/data
 /example-confs
 final_split.yaml
 /slurm
