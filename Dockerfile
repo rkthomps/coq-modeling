@@ -27,3 +27,7 @@ WORKDIR /app/coq-modeling/CoqStoq
 RUN pip3 install --no-cache-dir -e .
 
 WORKDIR /app/coq-modeling
+
+RUN ln -s /app/coq-modeling/CoqStoq/test-repos/ raw-data/coqstoq-test/repos
+RUN ln -s /app/coq-modeling/CoqStoq/val-repos/ raw-data/coqstoq-val/repos
+RUN ln -s /app/coq-modeling/CoqStoq/cutoff-repos/ raw-data/coqstoq-cutoff/repos

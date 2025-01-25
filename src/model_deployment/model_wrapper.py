@@ -149,7 +149,6 @@ class DecoderLocalWrapper:
         if token_mask_str is not None:
             token_mask = TokenMask.from_str(token_mask_str)
         collated_input = self.collator.collate_input(self.tokenizer, example)
-        print(collated_input)
         inputs = self.tokenizer(
             collated_input,
             max_length=self.hard_seq_len,
@@ -165,7 +164,7 @@ class DecoderLocalWrapper:
         )
         with torch.no_grad():
             outputs = self.model.generate(
-                inputs["input_ids"],
+                inputs["input_ids"].cuda(),
                 max_new_tokens=128,
                 return_dict_in_generate=True,
                 output_scores=True,
@@ -174,7 +173,7 @@ class DecoderLocalWrapper:
                 temperature=None if beam else 1,
                 do_sample=not beam,
                 num_beams=n if beam and 1 < n else None,
-                attention_mask=attention_mask,
+                attention_mask=attention_mask.cuda(),
             )
         input_num_tokens = inputs["input_ids"].shape[1]
         generated_seqs = outputs.sequences[:, input_num_tokens:]

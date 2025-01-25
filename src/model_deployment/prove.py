@@ -103,6 +103,7 @@ def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
     for proof in conf.loc.dataset_file.proofs[: conf.loc.dp_proof_idx]:
         if normalize(target_theorem.term.text) == normalize(proof.theorem.term.text):
             occurance += 1
+    print("Compiling File...")
     proof_info = get_proof_info(
         conf.loc.data_loc,
         conf.loc.file_loc,
@@ -123,6 +124,7 @@ def run_proof(conf: RunProofConf) -> SuccessfulSearch | FailedSearch:
         tree_manager = searcher_from_conf(
             conf.search_conf, conf.tactic_gens, proof_manager
         )
+        print("Starting search...")
         result = tree_manager.search(
             print_proofs=conf.print_proofs, print_trees=conf.print_trees
         )
