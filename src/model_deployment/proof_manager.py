@@ -146,9 +146,16 @@ class ProofManager:
         complete: bool = False,
     ) -> Proof:
         focused_steps: list[FocusedStep] = []
+        assert self.first_goals is not None
+        orig_goals = [
+            dataset_file.Goal.from_json(repr(g)) for g in self.first_goals.goals.goals
+        ]
         for i, step in enumerate(cur_steps):
+            step_goals = orig_goals if i == 0 else []
             focused_steps.append(
-                FocusedStep(theorem, Step.from_text(step, TermType.TACTIC), i, [])
+                FocusedStep(
+                    theorem, Step.from_text(step, TermType.TACTIC), i, step_goals
+                )
             )
 
         goals = [dataset_file.Goal.from_json(repr(g)) for g in cur_goals.goals.goals]
@@ -194,7 +201,9 @@ class ProofManager:
 
     def get_initial_context(self) -> Optional[DatasetFile]:
         # TODO ADD PREFIX TO THIS DSET FILE
-        initial_proof_result = self.check_proof("", self.proof_info.proof_term)
+        initial_proof_result = self.check_proof(
+            "", self.proof_info.proof_term, initial_proof=True
+        )
         print("Tactic result:", initial_proof_result.tactic_result)
         assert initial_proof_result.new_proof is not None
         return DatasetFile(
@@ -236,6 +245,7 @@ class ProofManager:
         self,
         partial_proof: str,
         theorem: dataset_file.Term,
+        initial_proof: bool = False,
     ) -> ProofCheckResult:
         if (
             ("Theorem" in partial_proof)
@@ -289,6 +299,9 @@ class ProofManager:
             return ProofCheckResult.get_invalid(new_step_strs)
         if current_goals.goals is None:
             return ProofCheckResult.get_invalid(new_step_strs)
+
+        if initial_proof:
+            self.first_goals = current_goals
 
         if self.__can_close_proof(current_goals):
             must_be_valid = "".join([s.text for s in steps]) + "\nQed."
