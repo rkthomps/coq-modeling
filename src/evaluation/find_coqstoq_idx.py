@@ -22,6 +22,7 @@ def get_thm_desc(
     data_loc: Path,
     sentence_db: SentenceDB,
     dp_cache: Optional[DPCache] = None,
+    metadata_only: bool = False,
 ) -> Optional[ProofLoc]:
     data_points_loc = data_loc / DATA_POINTS_NAME
     dp_name = str(thm.project.workspace.name / thm.path).replace("/", "-")
