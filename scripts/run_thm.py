@@ -453,9 +453,13 @@ def print_info():
     print()
     print("Table 5:")
     print("  rango")
+    print("  rango-inter-file")
     print("  no-lemma")
+    print("  no-lemma-inter-file")
     print("  no-proof")
+    print("  no-proof-inter-file")
     print("  no-retrieval")
+    print("  no-retrieval-inter-file")
     print()
     print("Table 6:")
     print("  rango")
@@ -470,6 +474,11 @@ def print_info():
     print("  rango")
     print("  prefix")
     print("  hybrid")
+    print()
+    print("Table 9:")
+    print("  rango")
+    print("  rango-best-beam")
+    print("  rango-best-rand")
     exit()
 
 
@@ -612,21 +621,21 @@ if __name__ == "__main__":
         assert args.command == "eval"
         theorem_list = get_theorem_list(coqstoq_split, COQSTOQ_LOC)
         results: list[Result] = []
-        for thm in theorem_list[37:]:
-            thm_conf = TestProofConf(
-                thm,
-                conf.coqstoq_loc,
-                conf.data_loc,
-                conf.sentence_db_loc,
-                conf.search_conf,
-                conf.tactic_confs,
-                conf.print_proofs,
-                conf.print_trees,
-            )
-            try:
+        try:
+            for thm in theorem_list[37:]:
+                thm_conf = TestProofConf(
+                    thm,
+                    conf.coqstoq_loc,
+                    conf.data_loc,
+                    conf.sentence_db_loc,
+                    conf.search_conf,
+                    conf.tactic_confs,
+                    conf.print_proofs,
+                    conf.print_trees,
+                )
                 search_result = run_proof(thm_conf.to_run_conf())
                 result = RangoResult.from_search_result(thm, search_result)
                 results.append(result)
-            finally:
-                for p in procs:
-                    p.kill()
+        finally:
+            for p in procs:
+                p.kill()
