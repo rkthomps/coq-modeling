@@ -81,8 +81,8 @@ def get_proof_info(
 ) -> ProofInfo:
     workspace_uri = f"file://{workspace_loc.resolve()}"
     client = FastLspClient(workspace_uri, timeout=240)
-    fresh_file_loc = get_fresh_path(file_loc, file_loc.name)
-    client_wrapper = ClientWrapper(client, f"file://{fresh_file_loc}")
+    # fresh_file_loc = get_fresh_path(file_loc, file_loc.name)
+    client_wrapper = ClientWrapper(client, f"file://{file_loc.resolve()}")
     with file_loc.open("r") as fin:
         file_contents = fin.read()
     steps = client_wrapper.write_and_get_steps(file_contents)
