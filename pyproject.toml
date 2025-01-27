@@ -37,6 +37,8 @@ dependencies = [
 		"Werkzeug",
     "waitress",
     "tiktoken",
+    "SciencePlots",
+    "seaborn",
 ]
 
 [tool.setuptools.packages.find]
