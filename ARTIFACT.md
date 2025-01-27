@@ -13,11 +13,12 @@ This artifact deserves each of the listed badges for the following reasons.
 All models, data and code are publically available and stored in an archival source [#INSERT LINK]
 
 ### Functional
-- The artifact can replicate all of the main results (tables 1 through 10) from the [# link this paper] using cached results. 
-- The artifact contains a script that allows users to run any model appearing in the [# link this paper] on any theorem in our benchmark -- enabling complete replication of results given enough time. 
+- The artifact can replicate all of the main results (table 1-9 and figures 2-6) from our paper using cached results. 
+- The artifact contains a script that allows users to run any model appearing in the paper on any theorem in the CoqStoq benchmark -- enabling complete replication of results given enough time. 
 
 ### Reusable
-System is well-documented with a map of the source code [#DO SOURCE CODE MAP]
+System is well-documented with a map of the source code given in MAP.md. 
+System is also  provided as a Docker image to enable automatic installation and configuration across machines. 
 
 ## Provenance
 [# INSERT LINK]
@@ -74,8 +75,10 @@ Once you are in the container, run `nvidia-smi` to ensure you have access to GPU
 
 There are two main scripts in our artifact:
 - `scripts/replicate.py`: This script takes a table name from the paper as a flag and re-tabulates the numbers in the table from 
-raw cached proof search results. For figures and tables (tab1, fig2, fig3) that do not involve proof search, this command tabulates the numbers in the tables from 
-scratch. 
+raw cached proof search results. For figures and tables (tab1, fig2, fig3) that do not involve proof search, this command tabulates the numbers in the tables from scratch. 
+Available flags are (--tab<1-9>) and (--fig<2-6>)
+Note that table 1, figure 2 and figure 3 are all produced together so you only need to run one of their commands.
+Figures are saved in the `/reproduced-figs` directory.
 
   **For example:** ``scripts/replicate.py --tab1`` counts the number of proof steps, theorems, and repositories in the CoqStoq dataset.
 

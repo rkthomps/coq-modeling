@@ -72,8 +72,14 @@ RUN ln -s /app/coq-modeling/CoqStoq/test-repos raw-data/coqstoq-test/repos
 RUN ln -s /app/coq-modeling/CoqStoq/val-repos raw-data/coqstoq-val/repos
 RUN ln -s /app/coq-modeling/CoqStoq/cutoff-repos raw-data/coqstoq-cutoff/repos
 
+COPY ./splits /app/coq-modeling/splits
 COPY ./results /app/coq-modeling/results
 COPY ./scripts /app/coq-modeling/scripts
+
+COPY ./ARTIFACT.md /app/coq-modeling/ARTIFACT.md
+COPY ./MAP.md /app/coq-modeling/MAP.md
+COPY ./README.md /app/coq-modeling/README.md
+COPY ./LICENSE /app/coq-modeling/LICENSE
 
 
 ENV OPENAI_API_KEY=""
