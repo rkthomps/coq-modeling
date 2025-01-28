@@ -10,18 +10,18 @@ This artifact is applying for the following badges:
 This artifact deserves each of the listed badges for the following reasons.
 
 ### Available
-All models, data and code are publically available and stored in an archival source [#INSERT LINK]
+All models, data and code are publically available and stored in an archival source: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14751622.svg)](https://doi.org/10.5281/zenodo.14751622) 
 
 ### Functional
 - The artifact can replicate all of the main results (table 1-9 and figures 2-6) from our paper using cached results. 
 - The artifact contains a script that allows users to run any model appearing in the paper on any theorem in the CoqStoq benchmark -- enabling complete replication of results given enough time. 
 
 ### Reusable
-System is well-documented with a map of the source code given in MAP.md. 
+System is well-documented with a map of the source code given in `MAP.md` of the uncompressed archive. 
 System is also  provided as a Docker image to enable automatic installation and configuration across machines. 
 
 ## Provenance
-[# INSERT LINK]
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14751622.svg)](https://doi.org/10.5281/zenodo.14751622)
 
 ## Data
 The artifcat contains the entire corpus of data used to train and evaluate Rango.  
@@ -43,8 +43,9 @@ To build this artifact, you must:
 - Have at least 50GB of disk space available for the docker image and container. 
 - Have `nvidia-container-toolkit` installed on the machine.
 
-1. Download the replication package.
-2. Build the replication package:
+1. Download the replication package from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14751622.svg)](https://doi.org/10.5281/zenodo.14751622).
+2. Decompress the replication package: `tar -xzvf coq-modeling.tar.gz`
+3. Build the replication package:
    ```
    docker build --build-arg CUDA_VERSION=12.4.1 -t rango .
    ```
@@ -53,7 +54,7 @@ To build this artifact, you must:
    with a different cuda version. 
    You can check the latest cuda version supported by your drivers using `nvidia-smi`. 
    You can check the exact cuda version of your drivers using `nvcc --version`.
-3. The build process is expected to take 1-2 hours. After that, you will be able to run Rango! 
+4. The build process is expected to take 1-2 hours. After that, you will be able to run Rango! 
 
 
 **Note:** When creating the artifact, I encountered the following error while building the image:
