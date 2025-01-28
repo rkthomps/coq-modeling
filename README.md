@@ -17,7 +17,7 @@ You can access the CoqStoq repository [here](https://github.com/rkthomps/CoqStoq
 <!-- You can access the language models powering Rango and its variants [here](https://zenodo.org/records/13190944?token=eyJhbGciOiJIUzUxMiIsImlhdCI6MTcyMjY3NzIyOCwiZXhwIjoxNzM1Njg5NTk5fQ.eyJpZCI6ImNjODA2M2MwLTFlNDYtNDljZS05ZjkzLTAxYWNiYjhhMGY0ZSIsImRhdGEiOnt9LCJyYW5kb20iOiJjNDA2ZmVjNzhmMWRkNzAzNzVmNDRjOWJhMTIxNzY4OSJ9.AY9p1oeV_I4L44MQRDHTgpQU9xlDKbK805zLo22wZ9GZZQTKvfbB8mWxFuqjHSMLswLeT_5CuvS_M9vZa12lMw) -->
 
 ## Artifact
-The easiest way to replicate our project is using the replication package provided here [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14751622.svg)](https://doi.org/10.5281/zenodo.14751622).
+The easiest way to replicate our project is using the replication package provided here [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14757301.svg)](https://doi.org/10.5281/zenodo.14757301).
 Once you download the replication package, you should follow [ARTIFACT.md](ARTIFACT.md) to build a docker image, and run replication commands in a docker container.
 
 ## Source Code Documentation
