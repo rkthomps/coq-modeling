@@ -17,8 +17,18 @@ class WholeProofSuccess:
     time: float
     model_time: float
     successful_proof: Proof
+    successful_proofs: list[str]
     attempted_proofs: list[str]
     costs: list[float]
+
+    def to_json(self):
+        return {
+            "time": self.time,
+            "model_time": self.model_time,
+            "successful_proofs": self.successful_proofs,
+            "attempted_proofs": self.attempted_proofs,
+            "costs": self.costs,
+        }
 
 
 @dataclass
@@ -27,6 +37,14 @@ class WholeProofFailure:
     model_time: float
     attempted_proofs: list[str]
     costs: list[float]
+
+    def to_json(self):
+        return {
+            "time": self.time,
+            "model_time": self.model_time,
+            "attempted_proofs": self.attempted_proofs,
+            "costs": self.costs,
+        }
 
 
 class RecType(Enum):
@@ -141,6 +159,8 @@ class WholeProofSearcher:
         self.total_model_time += end_model_time - start_model_time
 
         attempts: list[str] = []
+        successful_attempts: list[str] = []
+        successful_proof: Proof | None = None
         costs: list[float] = []
         for i, attempt in enumerate(result.next_tactic_list):
             if self.print_proofs:
@@ -154,17 +174,23 @@ class WholeProofSearcher:
                 case TacticResult.COMPLETE:
                     total_time = time.time() - start_time
                     assert proof_check_result.new_proof is not None
-                    return WholeProofSuccess(
-                        total_time,
-                        self.total_model_time,
-                        proof_check_result.new_proof,
-                        attempts,
-                        costs,
-                    )
+                    successful_attempts.append(attempt)
+                    if successful_proof is None:
+                        successful_proof = proof_check_result.new_proof
                 case _:
                     continue
         total_time = time.time() - start_time
-        return WholeProofFailure(total_time, self.total_model_time, attempts, costs)
+        if successful_proof is not None:
+            return WholeProofSuccess(
+                total_time,
+                self.total_model_time,
+                successful_proof,
+                successful_attempts,
+                attempts,
+                costs,
+            )
+        else:
+            return WholeProofFailure(total_time, self.total_model_time, attempts, costs)
 
     def search_one_by_one(self) -> WholeProofSuccess | WholeProofFailure:
         attempts: list[str] = []
@@ -184,6 +210,7 @@ class WholeProofSearcher:
                     total_time,
                     self.total_model_time,
                     maybe_complete,
+                    [attempt],
                     attempts,
                     costs,
                 )
