@@ -1,25 +1,35 @@
 from typing import Optional
 import argparse
 import re
+import os
 import json
 import pandas as pd
 import statistics
 from tqdm import tqdm
 from pathlib import Path
 from dataclasses import dataclass
-from data_management.dataset_file import DPCache
+
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from matplotlib.figure import figaspect
+from edist.sed import standard_sed
+
+from data_management.dataset_file import DPCache, DatasetFile
 from data_management.sentence_db import SentenceDB
 from data_management.splits import DataSplit, Split
 from evaluation.find_coqstoq_idx import get_thm_desc
 
 from coqstoq import Split as CQSplit, get_theorem_list, EvalTheorem
 from coqstoq.check import EvalResults, Result
-from edist.sed import standard_sed
 
 
-# --------------------------------
-# REPLICATION CODE FOR TABLE 1
-# --------------------------------
+# --------------------------------------------
+# REPLICATION CODE FOR TABLE 1 & FIG 2 & FIG 3
+# --------------------------------------------
+REPRODUCED_FIGS_LOC = Path("reproduced-figs")
+
+
 @dataclass
 class CountResult:
     proof_step_count: list[int]
@@ -79,7 +89,61 @@ def get_coqstoq_proof_counts(
     return CountResult(proof_step_counts, list(num_proofs_count.values()))
 
 
-def replicate_tab1():
+def violin_plot(df, x, y, hue, plot_file_path, x_label, aspect):
+    # Create a figure and axis
+    fig, ax = plt.subplots(figsize=figaspect(aspect))
+
+    # Create the violin plot
+    violin = sns.violinplot(
+        data=df,
+        x=x,
+        y=y,
+        hue_order=["Training", "Benchmark", "Validation"],
+        hue=hue,
+        inner="quart",
+        ax=ax,
+        width=0.8,
+        orient="h",
+        cut=0,
+        log_scale=10,
+        # split=True
+    )
+    ax.set_xlabel(x_label, fontsize=16)
+    ax.set_ylabel("Density", fontsize=16)
+    ax.legend(loc="upper left", ncol=3, fontsize=14)
+
+    fig.tight_layout(pad=3)
+
+    plt.yticks(fontsize=16)
+    plt.xticks(fontsize=16)
+    plt.grid(axis="x")
+
+    plt.savefig(
+        plot_file_path,
+    )
+
+
+def mk_steps_df(set_names: list[str], count_results: list[CountResult]) -> pd.DataFrame:
+    rows = []
+    for set_name, count_result in zip(set_names, count_results):
+        for count in count_result.proof_step_count:
+            rows.append({"count": count, "Density": "Proofs", "Dataset": set_name})
+    return pd.DataFrame(rows)
+
+
+def mk_proofs_df(
+    set_names: list[str], count_results: list[CountResult]
+) -> pd.DataFrame:
+    rows = []
+    for set_name, count_result in zip(set_names, count_results):
+        for count in count_result.num_proofs_count:
+            if count == 0:
+                continue
+            rows.append({"count": count, "Density": "Proofs", "Dataset": set_name})
+    return pd.DataFrame(rows)
+
+
+def replicate_tab1_fig2_fig3():
     print("Getting training counts...")
     SPLIT_LOC = Path("splits/official-split-icse.json")
     TRAINING_DATA_LOC = Path("raw-data/coq-dataset")
@@ -140,6 +204,26 @@ def replicate_tab1():
         index=["Repositories", "Proofs", "Proof Steps"],
     )
     print(df)
+
+    steps_df = mk_steps_df(
+        ["Training", "Benchmark", "Validation"],
+        [training_results, test_results, val_results],
+    )
+
+    os.makedirs(REPRODUCED_FIGS_LOC, exist_ok=True)
+    save_loc = REPRODUCED_FIGS_LOC / "fig2.pdf"
+    violin_plot(
+        steps_df, "count", "Density", "Dataset", str(save_loc), "Size", 1 / 1.75
+    )
+
+    proofs_df = mk_proofs_df(
+        ["Training", "Benchmark", "Validation"],
+        [training_results, test_results, val_results],
+    )
+    save_loc = REPRODUCED_FIGS_LOC / "fig3.pdf"
+    violin_plot(
+        proofs_df, "count", "Density", "Dataset", str(save_loc), "Size", 1 / 1.75
+    )
 
 
 # --------------------------------
@@ -461,28 +545,6 @@ def replicate_tab5():
 # --------------------------------
 def replicate_tab6():
     RANGO_RESULTS_LOC = Path("results/rango.json")
-    RANGO_FIRST_STEP_LOC = Path("results/rango-abl-first-step.json")
-
-    rango_results = load_eval_result(RANGO_RESULTS_LOC)
-    rango_first_step_results = load_eval_result(RANGO_FIRST_STEP_LOC)
-
-    rango_df = results_to_df(rango_results, "Every Proof Step")
-    rango_first_step_df = results_to_df(rango_first_step_results, "Only First Step")
-    rango_df = filter_df(rango_df, rango_first_step_df.df.index)
-
-    total_df = pd.concat(
-        [get_totals(rango_df), get_totals(rango_first_step_df)], axis=1
-    )
-
-    print("Table 6")
-    print(total_df)
-
-
-# --------------------------------
-# REPLICATION CODE FOR TABLE 7
-# --------------------------------
-def replicate_tab7():
-    RANGO_RESULTS_LOC = Path("results/rango.json")
     TFIDF_RESULTS_LOC = Path("results/rango-abl-tfidf.json")
     CODEBERT_RESULTS_LOC = Path("results/rango-abl-codebert.json")
 
@@ -498,14 +560,14 @@ def replicate_tab7():
         [get_totals(rango_df), get_totals(tfidf_df), get_totals(codebert_df)], axis=1
     )
 
-    print("Table 7")
+    print("Table 6")
     print(total_df)
 
 
 # --------------------------------
-# REPLICATION CODE FOR TABLE 8
+# REPLICATION CODE FOR TABLE 7
 # --------------------------------
-def replicate_tab8():
+def replicate_tab7():
     RANGO_RESULTS_LOC = Path("results/rango.json")
     PREFIX_RESULTS_LOC = Path("results/rango-abl-prefix.json")
     HYBRID_RESULTS_LOC = Path("results/rango-abl-prefix-hybrid.json")
@@ -522,7 +584,7 @@ def replicate_tab8():
         [get_totals(rango_df), get_totals(prefix_df), get_totals(hybrid_df)], axis=1
     )
 
-    print("Table 8 (CoqStoq Test Set)")
+    print("Table 7 (CoqStoq Test Set)")
     print(total_df)
 
     RANGO_CUTOFF_RESULTS_LOC = Path("results/rango-cutoff.json")
@@ -546,14 +608,14 @@ def replicate_tab8():
         axis=1,
     )
 
-    print("\nTable 8 (CoqStoq Cutoff Set)")
+    print("\nTable 7 (CoqStoq Cutoff Set)")
     print(total_cutoff_df)
 
 
 # --------------------------------
-# REPLICATION CODE FOR TABLE 9
+# REPLICATION CODE FOR TABLE 8
 # --------------------------------
-def replicate_tab9():
+def replicate_tab8():
     RANGO_RESULTS_LOC = Path("results/rango.json")
     BEAM_RESULTS_LOC = Path("results/rango-abl-best-first-beam.json")
     TEMP_RESULTS_LOC = Path("results/rango-abl-best-first-temp.json")
@@ -571,12 +633,12 @@ def replicate_tab9():
         [get_totals(rango_df), get_totals(beam_df), get_totals(temp_df)], axis=1
     )
 
-    print("Table 9")
+    print("Table 8")
     print(total_df)
 
 
 # --------------------------------
-# REPLICATION CODE FOR TABLE 10
+# REPLICATION CODE FOR TABLE 9
 # --------------------------------
 def load_results(loc: Path) -> EvalResults:
     with loc.open() as fin:
@@ -652,7 +714,7 @@ def get_edists(
     return edists
 
 
-def replicate_tab10():
+def replicate_tab9():
     HUMAN_EVAL_LOC = Path("results/human.json")
     RANGO_EVAL_LOC = Path("results/rango.json")
     TACTICIAN_EVAL_LOC = Path("results/tactician.json")
@@ -728,28 +790,322 @@ def replicate_tab10():
     )
 
 
-def replicate_fig2():
-    pass
+# --------------------------------
+# REPLICATION CODE FOR FIG 4
+# --------------------------------
 
 
-def replicate_fig3():
-    pass
+def mk_time_plot(
+    ndfs: list[NamedDF], timeout: int = 600, save_path: Optional[Path] = None
+):
+    fig, ax = plt.subplots()
+    for ndf in ndfs:
+        success_df = ndf.df.loc[ndf.df["success"]]
+        by_time = list(success_df.sort_values("time")["time"]) + [timeout]
+        successes = list(np.arange(len(success_df)) + 1) + [len(success_df)]
+        ax.plot(by_time, successes, label=ndf.name)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("# Theorems Proven")
+    ax.set_title("# Theorems Proven over Time")
+    ax.legend()
+    if save_path is not None:
+        plt.savefig(save_path)
 
 
 def replicate_fig4():
-    pass
+    import scienceplots
+
+    plt.style.use(["science", "ieee", "no-latex"])
+    plt.rc("legend", fontsize="small")
+    plt.rc("xtick.minor", visible=False)
+    plt.rc("pdf", fonttype=42)
+    RANGO_RESULTS_LOC = Path("results/rango.json")
+    NO_LEMMA_RESULTS_LOC = Path("results/rango-abl-no-lemmas.json")
+    NO_PROOFS_RESULTS_LOC = Path("results/rango-abl-no-proofs.json")
+    NO_RETRIEVAL_RESULTS_LOC = Path("results/rango-abl-no-retrieval.json")
+
+    rango_results = load_eval_result(RANGO_RESULTS_LOC)
+    no_lemma_results = load_eval_result(NO_LEMMA_RESULTS_LOC)
+    no_proofs_results = load_eval_result(NO_PROOFS_RESULTS_LOC)
+    no_retrieval_results = load_eval_result(NO_RETRIEVAL_RESULTS_LOC)
+
+    rango_df = results_to_df(rango_results, "Rango")
+    no_lemma_df = results_to_df(no_lemma_results, "No Lemmas")
+    no_proofs_df = results_to_df(no_proofs_results, "No Proofs")
+    no_retrieval_df = results_to_df(no_retrieval_results, "No Retrieval")
+    rango_df = filter_df(rango_df, no_lemma_df.df.index)
+
+    os.makedirs(REPRODUCED_FIGS_LOC, exist_ok=True)
+    save_loc = REPRODUCED_FIGS_LOC / "fig4.pdf"
+    mk_time_plot(
+        [rango_df, no_lemma_df, no_proofs_df, no_retrieval_df], save_path=save_loc
+    )
+    print(f"Saved to {save_loc}")
+
+
+# --------------------------------
+# REPLICATION CODE FOR FIG 5
+# --------------------------------
+def assign_ranges(
+    eval_results: EvalResults, options: list[tuple[int, Optional[int]]]
+) -> list[tuple[int, Optional[int]]]:
+    ranges: list[tuple[int, Optional[int]]] = []
+    for r in eval_results.results:
+        assert r.proof is not None
+        found_range = False
+        for lo, hi in options:
+            if hi is None and lo <= proof_length(r.proof):
+                ranges.append((lo, hi))
+                found_range = True
+                break
+            elif hi is not None and lo <= proof_length(r.proof) <= hi:
+                ranges.append((lo, hi))
+                found_range = True
+                break
+        assert found_range
+    return ranges
+
+
+def get_success_rates_by_ranges(
+    eval_results: EvalResults,
+    ranges: list[tuple[int, Optional[int]]],
+    timeout: int = 600,
+) -> dict[tuple[int, Optional[int]], float]:
+    sum_counts: dict[tuple[int, Optional[int]], tuple[int, int]] = {}
+    assert len(eval_results.results) == len(ranges)
+    for i, r in enumerate(eval_results.results):
+        rng = ranges[i]
+        if rng not in sum_counts:
+            sum_counts[rng] = (0, 0)
+        cur_sum, cur_count = sum_counts[rng]
+        if r.proof is not None and r.time is not None and r.time < timeout:
+            sum_counts[rng] = (cur_sum + 1, cur_count + 1)
+        else:
+            sum_counts[rng] = (cur_sum, cur_count + 1)
+
+    success_rates: dict[tuple[int, Optional[int]], float] = {}
+    for rng, (success, total) in sum_counts.items():
+        success_rates[rng] = success / total
+    return success_rates
+
+
+def get_success_list(
+    ranges: list[tuple[int, Optional[int]]],
+    success_rates: dict[tuple[int, Optional[int]], float],
+) -> list[float]:
+    success_list = []
+    for rng in ranges:
+        success_list.append(success_rates[rng] * 100)
+    return success_list
+
+
+def format_range(rng: tuple[int, Optional[int]]) -> str:
+    start, end = rng
+    if end is None:
+        return f"{start}+"
+    return f"{start}-{end}"
 
 
 def replicate_fig5():
-    pass
+    import scienceplots
+
+    plt.style.use(["science", "ieee", "no-latex"])
+    plt.rc("legend", fontsize="small")
+    plt.rc("xtick.minor", visible=False)
+    plt.rc("pdf", fonttype=42)
+    RANGO_RESULTS_LOC = Path("results/rango.json")
+    TACTICIAN_RESULTS_LOC = Path("results/tactician.json")
+    PROVERBOT_RESULTS_LOC = Path("results/proverbot.json")
+    HUMAN_LOC = Path("results/human.json")
+
+    ranges = [
+        (1, 4),
+        (5, 8),
+        (9, 12),
+        (13, 16),
+        (17, 20),
+        (21, None),
+    ]
+
+    human_eval = load_results(HUMAN_LOC)
+    rango_eval = load_results(RANGO_RESULTS_LOC)
+    tactician_eval = load_results(TACTICIAN_RESULTS_LOC)
+    proverbot_eval = load_results(PROVERBOT_RESULTS_LOC)
+
+    thm_ranges = assign_ranges(human_eval, ranges)
+
+    rango_rates = get_success_rates_by_ranges(rango_eval, thm_ranges)
+    tactician_rates = get_success_rates_by_ranges(tactician_eval, thm_ranges)
+    proverbot_rates = get_success_rates_by_ranges(proverbot_eval, thm_ranges)
+
+    rango_list = get_success_list(ranges, rango_rates)
+    tactician_list = get_success_list(ranges, tactician_rates)
+    proverbot_list = get_success_list(ranges, proverbot_rates)
+
+    fig, ax = plt.subplots()
+    bar_width = 0.25
+    categories = np.arange(len(ranges))
+
+    ax.bar(categories - bar_width, rango_list, width=bar_width, label="Rango")
+    ax.bar(categories, tactician_list, width=bar_width, label="Tactician")
+    ax.bar(categories + bar_width, proverbot_list, width=bar_width, label="Proverbot")
+    ax.set_xticks(categories, minor=False)
+    ax.set_xticklabels([format_range(r) for r in ranges])
+
+    ax.set_title("% of Theorems Proven by Length")
+    ax.set_ylabel("% of Theorems Proven")
+    ax.set_xlabel("Length of Human-Written Proof (# Tactics)")
+    ax.legend()
+
+    os.makedirs(REPRODUCED_FIGS_LOC, exist_ok=True)
+    save_loc = REPRODUCED_FIGS_LOC / "fig5.pdf"
+    fig.savefig(str(save_loc))
+    print(f"Saved to {save_loc}")
+
+
+# --------------------------------
+# REPLICATION CODE FOR FIG 6
+# --------------------------------
+def get_num_deps(dataset_file: DatasetFile) -> tuple[int, int]:
+    dep_files: set[str] = set()
+    for p in dataset_file.out_of_file_avail_premises:
+        dep_files.add(p.file_path)
+    return len(dep_files) - 1, len(dataset_file.dependencies)  # exclude the file itself
+
+
+def get_thm_dep_list(
+    coqstoq_loc: Path, split: CQSplit, data_loc: Path, sentence_db: SentenceDB
+) -> list[int]:
+    thms = get_theorem_list(split, coqstoq_loc)
+    cached_path_deps: dict[Path, int] = {}
+    dep_list: list[int] = []
+    for thm in tqdm(thms):
+        thm_path = thm.project.workspace.name / thm.path
+        if thm_path in cached_path_deps:
+            dep_list.append(cached_path_deps[thm_path])
+        else:
+            thm_desc = get_thm_desc(thm, data_loc, sentence_db)
+            assert thm_desc is not None
+            num_deps, _ = get_num_deps(thm_desc.dp)
+            dep_list.append(num_deps)
+            cached_path_deps[thm_path] = num_deps
+    return dep_list
+
+
+def get_sum_counts_by_dep_ranges(
+    eval: EvalResults,
+    ranges: list[tuple[int, Optional[int]]],
+    deps: list[int],
+    timeout: int = 600,
+) -> dict[tuple[int, Optional[int]], tuple[int, int]]:
+    assert len(eval.results) == len(deps)
+    sum_counts: dict[tuple[int, Optional[int]], tuple[int, int]] = {}
+    for i, r in enumerate(eval.results):
+        deps_i = deps[i]
+        rng_i: Optional[tuple[int, Optional[int]]] = None
+        for rng in ranges:
+            lo, hi = rng
+            if hi is None and lo <= deps_i:
+                rng_i = rng
+                break
+            if hi is not None and lo <= deps_i <= hi:
+                rng_i = rng
+                break
+        assert rng_i is not None
+        if rng_i not in sum_counts:
+            sum_counts[rng_i] = (0, 0)
+
+        cur_sum, cur_count = sum_counts[rng_i]
+        if r.proof is not None and r.time is not None and r.time < timeout:
+            sum_counts[rng_i] = (cur_sum + 1, cur_count + 1)
+        else:
+            sum_counts[rng_i] = (cur_sum, cur_count + 1)
+
+        # sum_counts[rng_i] = (cur_sum + proof_length(HUMAN_EVAL.results[i].proof), cur_count + 1)
+
+    return sum_counts
+
+
+def get_success_rates_by_dep_ranges(
+    eval: EvalResults,
+    ranges: list[tuple[int, Optional[int]]],
+    deps: list[int],
+    timeout: int = 600,
+) -> dict[tuple[int, Optional[int]], float]:
+    sum_counts = get_sum_counts_by_dep_ranges(eval, ranges, deps, timeout)
+    success_rates: dict[tuple[int, Optional[int]], float] = {}
+    for rng, (success, total) in sum_counts.items():
+        success_rates[rng] = success / total
+    return success_rates
 
 
 def replicate_fig6():
-    pass
+    import scienceplots
+
+    plt.style.use(["science", "ieee", "no-latex"])
+    plt.rc("legend", fontsize="small")
+    plt.rc("xtick.minor", visible=False)
+    plt.rc("pdf", fonttype=42)
+    COQSTOQ_LOC = Path("CoqStoq").resolve()
+    TEST_DATA_LOC = Path("raw-data/coqstoq-test")
+    TEST_SENTENCE_DB_LOC = TEST_DATA_LOC / "coqstoq-test-sentences.db"
+    test_sentence_db = SentenceDB.load(TEST_SENTENCE_DB_LOC)
+    deps = get_thm_dep_list(COQSTOQ_LOC, CQSplit.TEST, TEST_DATA_LOC, test_sentence_db)
+
+    dep_ranges = [
+        (0, 49),
+        (50, 99),
+        (100, 149),
+        (150, 199),
+        (200, None),
+    ]
+
+    RANGO_RESULTS_LOC = Path("results/rango.json")
+    TACTICIAN_RESULTS_LOC = Path("results/tactician.json")
+    PROVERBOT_RESULTS_LOC = Path("results/proverbot.json")
+
+    rango_eval = load_results(RANGO_RESULTS_LOC)
+    tactician_eval = load_results(TACTICIAN_RESULTS_LOC)
+    proverbot_eval = load_results(PROVERBOT_RESULTS_LOC)
+
+    rango_dep_rates = get_success_rates_by_dep_ranges(rango_eval, dep_ranges, deps)
+    tactician_dep_rates = get_success_rates_by_dep_ranges(
+        tactician_eval, dep_ranges, deps
+    )
+    proverbot_dep_rates = get_success_rates_by_dep_ranges(
+        proverbot_eval, dep_ranges, deps
+    )
+
+    rango_dep_list = get_success_list(dep_ranges, rango_dep_rates)
+    tactician_dep_list = get_success_list(dep_ranges, tactician_dep_rates)
+    proverbot_dep_list = get_success_list(dep_ranges, proverbot_dep_rates)
+
+    fig, ax = plt.subplots()
+    bar_width = 0.25
+    categories = np.arange(len(dep_ranges))
+
+    ax.bar(categories - bar_width, rango_dep_list, width=bar_width, label="Rango")
+    ax.bar(categories, tactician_dep_list, width=bar_width, label="Tactician")
+    ax.bar(
+        categories + bar_width, proverbot_dep_list, width=bar_width, label="Proverbot"
+    )
+    ax.set_xticks(categories)
+    ax.set_xticklabels([format_range(r) for r in dep_ranges])
+
+    ax.set_title("% of Theorems Proven by # of Dependencies")
+    ax.set_ylabel("% of Theorems Proven")
+    ax.set_xlabel("# of Dependencies")
+    ax.legend()
+
+    os.makedirs(REPRODUCED_FIGS_LOC, exist_ok=True)
+    save_loc = REPRODUCED_FIGS_LOC / "fig6.pdf"
+
+    fig.savefig(save_loc)
+    print(f"Saved to {save_loc}")
 
 
 OPTIONS = {
-    "tab1": replicate_tab1,
+    "tab1": replicate_tab1_fig2_fig3,
     "tab2": replicate_tab2,
     "tab3": replicate_tab3,
     "tab4": replicate_tab4,
@@ -758,9 +1114,8 @@ OPTIONS = {
     "tab7": replicate_tab7,
     "tab8": replicate_tab8,
     "tab9": replicate_tab9,
-    "tab10": replicate_tab10,
-    "fig2": replicate_fig2,
-    "fig3": replicate_fig3,
+    "fig2": replicate_tab1_fig2_fig3,
+    "fig3": replicate_tab1_fig2_fig3,
     "fig4": replicate_fig4,
     "fig5": replicate_fig5,
     "fig6": replicate_fig6,
