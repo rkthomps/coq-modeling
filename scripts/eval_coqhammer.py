@@ -96,7 +96,7 @@ def test_theorem(thm: EvalTheorem, coqstoq_loc: Path, timeout: int) -> Optional[
     try:
         coq_top = CoqTop(
             str(eval_file.resolve()),
-            timeout=timeout + 60,
+            timeout=max(timeout + 60, 120),
             workdir=str(thm_workspace.resolve()),
             options=options,
         )
@@ -104,15 +104,17 @@ def test_theorem(thm: EvalTheorem, coqstoq_loc: Path, timeout: int) -> Optional[
         logging.warning(
             f"Failed to compile {thm.path} in workspace {thm_workspace}: {e}"
         )
+        logging.warning(f"Options used: {options}")
         os.remove(eval_file)
         return None
 
     # Synthesize Proof
     start_time = time.time()
     try:
-        print("Setting hammer limit.")
+        logging.warning("Setting hammer limit.")
+        coq_top.run("From Hammer Require Import Hammer.")
         coq_top.run(f"Set Hammer ATPLimit {timeout}.")
-        print("Running hammer.")
+        logging.warning("Running hammer.")
         stdout = coq_top.run(
             "all: hammer.",
             expect="(No more goals\.)|(Hammer failed: ATPs failed to find a proof\.)",
@@ -121,13 +123,13 @@ def test_theorem(thm: EvalTheorem, coqstoq_loc: Path, timeout: int) -> Optional[
         coq_top.process.expect("([a-zA-z1-9_][^\n]*?) < ")
         stdout += coq_top.process.before
         if "Hammer failed: ATPs failed to find a proof." in stdout:
-            print("PROOF FAILED")
+            logging.warning("PROOF FAILED")
             return Result(thm, None, time.time() - start_time)
         elif "No more goals." in stdout:
-            print("PROOF SUCCEEDED")
+            logging.warning("PROOF SUCCEEDED")
             return Result(thm, "all: hammer.", time.time() - start_time)
         else:
-            print("UNKNOWN PROOF STATUS")
+            logging.error("UNKNOWN PROOF STATUS")
             return None
 
     except pexpect.exceptions.TIMEOUT:

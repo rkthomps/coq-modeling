@@ -65,6 +65,7 @@ if __name__ == "__main__":
     parser.add_argument("--coqstoq_loc", type=str, required=True)
     parser.add_argument("--split", type=str, required=True)
     parser.add_argument("--save_loc", type=str, required=True)
+    parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--slurm_conf", type=str)
     parser.add_argument("--n_workers", type=int)
 
@@ -83,7 +84,7 @@ if __name__ == "__main__":
     module_command = "source unity-module-change-revert"
     opam_command = "module load opam/2.1.2"
     eval_opam_command = "eval $(opam env)"
-    worker_command = f"python3 {WORKER_LOC} slurm --coqstoq_loc {coqstoq_loc} --save_loc {save_loc} --queue_loc {queue_loc}"
+    worker_command = f"python3 {WORKER_LOC} slurm --coqstoq_loc {coqstoq_loc} --save_loc {save_loc} --queue_loc {queue_loc} --timeout {args.timeout}"
     commands: list[str] = [
         module_command,
         opam_command,
