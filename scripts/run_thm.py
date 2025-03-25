@@ -1,6 +1,7 @@
 import argparse
 import json
 import shutil
+from typing import Optional
 
 from pathlib import Path
 from dataclasses import dataclass
@@ -110,6 +111,7 @@ def get_searcher_conf(model_alias: str) -> SearcherConf:
         print_proofs=True,
         initial_proof=None,
         token_mask=None,
+        interleave_hammer=False,
     )
 
     match model_alias:
@@ -131,6 +133,15 @@ def get_searcher_conf(model_alias: str) -> SearcherConf:
                 timeout=600,
                 beam_decode=False,
                 initial_proof=None,
+            )
+
+        case "rango-hammer":
+            return StraightLineSearcherConf(
+                timeout=timeout,
+                print_proofs=True,
+                initial_proof=None,
+                token_mask=None,
+                interleave_hammer=True,
             )
 
         case _:
@@ -189,7 +200,7 @@ def get_tactic_confs(model_alias: str, split: Split) -> list[TacticGenConf]:
     )
 
     match model_alias:
-        case "rango" | "rango-best-beam" | "rango-best-rand":
+        case "rango" | "rango-best-beam" | "rango-best-rand" | "rango-hammer":
             checkpoint = (
                 "models/deepseek-bm25-proof-tfidf-proj-thm-prem-final/checkpoint-54500"
             )
@@ -373,6 +384,7 @@ def get_results_loc(model_alias: str) -> list[Path]:
             Path("results/rango.json"),
             Path("results/rango-cutoff.json"),
         ],
+        "rango-hammer": [],
         "rango-inter-file": [
             Path("results/rango-abl-intersect-random.json"),
         ],
@@ -420,7 +432,7 @@ def get_results_loc(model_alias: str) -> list[Path]:
     return results_locs[model_alias]
 
 
-def get_result(model_alias: str, thm: EvalTheorem) -> Result:
+def get_result(model_alias: str, thm: EvalTheorem) -> Optional[Result]:
     results_locs = get_results_loc(model_alias)
     for results_loc in results_locs:
         with open(results_loc) as f:
@@ -430,10 +442,10 @@ def get_result(model_alias: str, thm: EvalTheorem) -> Result:
         for r in results.results:
             if r.thm == thm:
                 return r
-    raise ValueError(f"Do not have a results for {model_alias}")
+    return None
 
 
-def get_orig_result(model_alias: str, split: Split, idx: int) -> Result:
+def get_orig_result(model_alias: str, split: Split, idx: int) -> Optional[Result]:
     thm = get_theorem(split, idx, COQSTOQ_LOC)
     return get_result(model_alias, thm)
 
@@ -543,10 +555,13 @@ if __name__ == "__main__":
         conf = get_test_proof(args.alias, coqstoq_split, args.idx)
         print(conf.thm.project.dir_name, conf.thm.path)
         orig_result = get_orig_result(args.alias, coqstoq_split, args.idx)
-        print("Original Proof:")
-        print(orig_result.proof)
-        print("Original Time:")
-        print(orig_result.time)
+        if orig_result is not None:
+            print("Original Proof:")
+            print(orig_result.proof)
+            print("Original Time:")
+            print(orig_result.time)
+        else:
+            print("Original Proof: None")
     else:
         assert args.command == "eval"
         conf = get_test_proof(args.alias, coqstoq_split, 0)
@@ -580,11 +595,12 @@ if __name__ == "__main__":
             result = run_proof(conf.to_run_conf())
             match result:
                 case ClassicalSuccess():
-                    print(
-                        f"\n\n ORIGINAL RESULT: {'SUCCESS' if orig_result.proof is not None else 'FAILURE'}"
-                    )
-                    print(f"ORIGINAL TIME: {orig_result.time}")
-                    print(f"ORIGINAL PROOF: {orig_result.proof}")
+                    if orig_result is not None:
+                        print(
+                            f"\n\n ORIGINAL RESULT: {'SUCCESS' if orig_result.proof is not None else 'FAILURE'}"
+                        )
+                        print(f"ORIGINAL TIME: {orig_result.time}")
+                        print(f"ORIGINAL PROOF: {orig_result.proof}")
                     print("CURRENT RESULT: SUCCESS")
                     print(f"CURRENT TIME: {result.time}")
                     print(f"CURRENT PROOF:")
@@ -593,11 +609,12 @@ if __name__ == "__main__":
                 case ClassicalFailure():
                     print("failed")
                 case StraightLineSuccess():
-                    print(
-                        f"\n\nORIGINAL RESULT: {'SUCCESS' if orig_result.proof is not None else 'FAILURE'}"
-                    )
-                    print(f"ORIGINAL TIME: {orig_result.time}")
-                    print(f"ORIGINAL PROOF: {orig_result.proof}")
+                    if orig_result is not None:
+                        print(
+                            f"\n\nORIGINAL RESULT: {'SUCCESS' if orig_result.proof is not None else 'FAILURE'}"
+                        )
+                        print(f"ORIGINAL TIME: {orig_result.time}")
+                        print(f"ORIGINAL PROOF: {orig_result.proof}")
                     print("CURRENT RESULT: SUCCESS")
                     print(f"CURRENT TIME: {result.time}")
                     print(f"CURRENT PROOF:")
