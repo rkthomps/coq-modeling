@@ -54,6 +54,19 @@ class ModelResult:
             "costs": self.costs,
         }
 
+    def concat(self, mr2: ModelResult) -> ModelResult:
+        new = ModelResult(
+            self.next_tactic_list + mr2.next_tactic_list,
+            self.score_list + mr2.score_list,
+            self.num_tokens_list + mr2.num_tokens_list,
+            costs=self.costs + mr2.costs if self.costs and mr2.costs else None,
+        )
+        assert len(new.next_tactic_list) == len(new.score_list)
+        assert len(new.next_tactic_list) == len(new.num_tokens_list)
+        if new.costs:
+            assert len(new.next_tactic_list) == len(new.costs)
+        return new
+
     @classmethod
     def from_json(cls, json_data: Any) -> ModelResult:
         next_tactic_list = json_data["next_tactic_list"]
@@ -61,3 +74,8 @@ class ModelResult:
         num_tokens_list = json_data["num_tokens_list"]
         costs = json_data.get("costs", None)
         return cls(next_tactic_list, score_list, num_tokens_list, costs)
+
+    
+    @classmethod
+    def empty(cls) -> ModelResult:
+        return cls([], [], [], costs=[])
