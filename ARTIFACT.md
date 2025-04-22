@@ -10,7 +10,7 @@ This artifact is applying for the following badges:
 This artifact deserves each of the listed badges for the following reasons.
 
 ### Available
-All models, data and code are publically available and stored in an archival source: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14757301.svg)](https://doi.org/10.5281/zenodo.14757301) 
+All models, data and code are publically available and stored in an archival source: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14853833.svg)](https://doi.org/10.5281/zenodo.14853833) 
 
 ### Functional
 - The artifact can replicate all of the main results (table 1-9 and figures 2-6) from our paper using cached results. 
@@ -21,7 +21,7 @@ System is well-documented with a map of the source code given in `MAP.md` of the
 System is also  provided as a Docker image to enable automatic installation and configuration across machines. 
 
 ## Provenance
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14757301.svg)](https://doi.org/10.5281/zenodo.14757301) 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14853833.svg)](https://doi.org/10.5281/zenodo.14853833) 
 
 ## Data
 The artifcat contains the entire corpus of data used to train and evaluate Rango.  
@@ -43,7 +43,7 @@ To build this artifact, you must:
 - Have at least 50GB of disk space available for the docker image and container. 
 - Have `nvidia-container-toolkit` installed on the machine.
 
-1. Download the replication package from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14757301.svg)](https://doi.org/10.5281/zenodo.14757301) .
+1. Download the replication package from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14853833.svg)](https://doi.org/10.5281/zenodo.14853833) .
 2. Decompress the replication package: `tar -xzvf coq-modeling.tar.gz`
 3. Build the replication package:
    ```
