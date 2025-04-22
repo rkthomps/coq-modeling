@@ -82,7 +82,6 @@ class DiversitySearcher:
         tactic_clients: list[TacticGenClient],
         proof_manager: ProofManager,
     ) -> DiversitySearcher:
-        assert len(tactic_clients) == 1
         return cls(
             tactic_clients,
             proof_manager,
@@ -150,9 +149,7 @@ class DiversitySearcher:
     def search_step(self, attempt_num: int, print_proofs: bool) -> Optional[Candidate]:
         cur_candidate = heapq.heappop(self.frontier)
         if print_proofs:
-            print(f"===== Attempt {attempt_num} ======")
-            print(cur_candidate.proof_str)
-            print()
+            self.root_candidate.print()
         proof_check_result = self.proof_manager.check_proof(
             cur_candidate.proof_str,
             self.initial_dset_file.proofs[-1].theorem,

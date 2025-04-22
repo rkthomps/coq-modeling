@@ -74,6 +74,13 @@ class Candidate:
 
     def __lt__(self, other: Candidate) -> bool:
         return other.score <= self.score  # Reversed so higher scores are first in pq
+    
+    def print(self, indent: str="") -> None:
+        print(f"{indent}Tactic: {self.tactic}, Score: {self.score}")
+        for child in self.children:
+            child.print(indent + "  ")
+
+
 
 
 class ClassicalSearcher:
