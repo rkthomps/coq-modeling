@@ -42,7 +42,7 @@ class CoqStoqFile:
     workspace: Path
 
 
-def get_coqstoq_file(thm: EvalTheorem, coqstoq_loc: Path, split: Split) -> CoqStoqFile:
+def get_coqstoq_file(thm: EvalTheorem, coqstoq_loc: Path) -> CoqStoqFile:
     path = coqstoq_loc / thm.project.workspace / thm.path
     assert get_file_hash(path) == thm.hash
     return CoqStoqFile(
@@ -52,11 +52,11 @@ def get_coqstoq_file(thm: EvalTheorem, coqstoq_loc: Path, split: Split) -> CoqSt
 
 
 def get_coqstoq_files(
-    thms: list[EvalTheorem], coqstoq_loc: Path, split: Split
+    thms: list[EvalTheorem], coqstoq_loc: Path
 ) -> set[CoqStoqFile]:
     files: set[CoqStoqFile] = set()
     for thm in thms:
-        files.add(get_coqstoq_file(thm, coqstoq_loc, split))
+        files.add(get_coqstoq_file(thm, coqstoq_loc))
     return files
 
 
@@ -90,14 +90,14 @@ if __name__ == "__main__":
     set_rango_logger(__file__, logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("coqstoq_loc")
-    parser.add_argument("split", choices=["val", "test", "cutoff"])
+    parser.add_argument("split")
     parser.add_argument("save_loc")
     parser.add_argument("sentence_db_loc")
 
     args = parser.parse_args()
     coqstoq_loc = Path(args.coqstoq_loc)
     assert coqstoq_loc.exists()
-    coqstoq_split = get_coqstoq_split(args.split)
+    coqstoq_split: str = args.split
     sentence_db_loc = Path(args.sentence_db_loc)
     save_loc = Path(args.save_loc)
 
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         save_loc.mkdir(parents=True)
 
     theorem_list = get_theorem_list(coqstoq_split, coqstoq_loc)
-    files = get_coqstoq_files(theorem_list, coqstoq_loc, coqstoq_split)
+    files = get_coqstoq_files(theorem_list, coqstoq_loc)
     for f in files:
         predicted_dp_name = get_predicted_dp_name(f)
         if os.path.exists(save_loc / predicted_dp_name):

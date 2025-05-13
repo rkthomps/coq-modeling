@@ -60,7 +60,7 @@ def initialize_and_fill_queue(
 
 @dataclass
 class EvalConf:
-    split: Split
+    split: str
     save_loc: Path
     data_loc: Path
     coqstoq_loc: Path
@@ -89,7 +89,7 @@ class EvalConf:
             raise ValueError("No tactic gen conf found.")
 
         return cls(
-            str2split(yaml_data["split"]),
+            yaml_data["split"],
             Path(yaml_data["save_loc"]),
             Path(yaml_data["data_loc"]),
             Path(yaml_data["coqstoq_loc"]),

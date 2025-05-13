@@ -68,6 +68,21 @@ The following instructions apply if you want to set up this repository without d
         - "coqstoq-test/data_points" is where we want to save the data points 
         - "coqstoq-test-sentences.db" is where we want to save the sentencedb (Contains shared premises between files.)
 
+  ### Running Rango on a Custom Project
+  1. Create a CoqStoq "split" for the custom project. Refer to the [CoqStoq README](https://github.com/rkthomps/CoqStoq/blob/main/README.md)
+  2. Create the directory structure: 
+     ```
+     <name of coqstoq split>
+       /<repos (symbollically linked to CoqStoq/<name of coqstoq split>/repos)>
+     ```
+  3. Create data points:
+    ```
+    rm -rf ~/.cache/coqpyt_cache
+    python3 scripts/create_coqstoq_data_points.py CoqStoq <name of coqstoq split> raw-data/<name of split>/data_points raw-data/<name of split>/<name of split>-sentences.db
+    ```
+    Note that this can take some time, so be patient. Coqpyt looks though all of the dependencies in all of the files, gathering all definitions and proof states. Rango doesn't actually use all of this information so this step could be made faster. 
+  
+
 
   ### Running the Evaluation
   You can run Rango on a dataset like the one above with either of the following scripts: 
