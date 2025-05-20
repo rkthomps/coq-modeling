@@ -1,7 +1,9 @@
 from __future__ import annotations
 from typing import Optional, Any
+import os
 import random
 from dataclasses import dataclass
+import json
 import math
 import time
 import ipdb
@@ -49,6 +51,18 @@ class StraightLineSearcherConf:
             yaml_data.get("token_mask", None),
             yaml_data.get("interleave_hammer", False),
         )
+
+# For demos (replaying proofs)
+@dataclass
+class ModifyLog:
+    proof: str
+    time: float
+
+    def to_json(self) -> Any:
+        return {
+            "proof": self.proof,
+            "time": self.time,
+        }
 
 
 class StraightLineSearcher:
@@ -105,16 +119,24 @@ class StraightLineSearcher:
             conf.token_mask,
             conf.interleave_hammer,
         )
+    
+    def write_logs(self, logs: list[ModifyLog]):
+        os.makedirs("logs/modify_logs", exist_ok=True)
+        with open("logs/modify_logs/log.json", "w") as fout:
+            fout.write(json.dumps([log.to_json() for log in logs], indent=2))
 
     def search(self, **kwargs) -> StraightLineSuccess | StraightLineFailure:
         start_time = time.time()
         attempts: list[str] = []
         cur_time = time.time() - start_time
+        logs: list[ModifyLog] = []
         while cur_time < self.timeout:
             maybe_complete, attempt = self.search_step(
                 start_time,
                 self.tactic_clients[len(attempts) % len(self.tactic_clients)],
+                logs,
             )
+            self.write_logs(logs)
             if self.print_proofs:
                 print(attempt)
             attempts.append(attempt)
@@ -130,7 +152,7 @@ class StraightLineSearcher:
         return StraightLineFailure(cur_time, self.total_model_time, attempts)
 
     def search_step(
-        self, start_time: float, client: TacticGenClient
+        self, start_time: float, client: TacticGenClient, logs: list[ModifyLog],
     ) -> tuple[Optional[Proof], str]:
         cur_proof_result = self.initial_check_result
         cur_time = time.time() - start_time
@@ -168,6 +190,12 @@ class StraightLineSearcher:
             last_proof_script = cur_proof_script + next_tactic
             cur_proof_result = proof_check_result
             cur_time = time.time() - start_time
+            logs.append(
+                ModifyLog(
+                    last_proof_script,
+                    cur_time,
+                )
+            )
 
             if (
                 self.interleave_hammer

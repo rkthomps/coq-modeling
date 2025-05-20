@@ -1,13 +1,14 @@
 from __future__ import annotations
 from typing import Any, Optional, Iterable
 
+import logging
 import requests
 import random
 from dataclasses import dataclass
 from pathlib import Path
 
 from data_management.sentence_db import SentenceDB
-from data_management.dataset_file import FocusedStep, Proof, DatasetFile, Sentence
+from data_management.dataset_file import FocusedStep, Proof, DatasetFile, Sentence, DPCache
 from premise_selection.rerank_example import RerankExample
 from premise_selection.retrieved_premise_db import RetrievedPremiseDB
 from premise_selection.rerank_formatter import (
@@ -28,6 +29,9 @@ from premise_selection.premise_client import (
 )
 
 from util.util import FlexibleUrl
+from util.constants import RANGO_LOGGER
+
+_logger = logging.getLogger(RANGO_LOGGER)
 
 
 @dataclass
@@ -58,6 +62,22 @@ class RerankConf:
             Path(yaml_data["sentence_db_loc"]),
         )
 
+@dataclass
+class OracleClientConf:
+    ALIAS = "oracle-client"
+    base_client: PremiseConf
+    purity: float 
+    sentence_db_loc: Path
+    data_loc: Path
+
+    @classmethod
+    def from_yaml(cls, yaml_data: Any) -> OracleClientConf:
+        return cls(
+            premise_conf_from_yaml(yaml_data["base_client"]),
+            yaml_data["purity"],
+            Path(yaml_data["sentence_db_loc"]),
+            Path(yaml_data["data_loc"]),
+        )
 
 @dataclass
 class RerankClientConf:
@@ -92,7 +112,7 @@ class RerankClientConf:
         )
 
 
-PremiseConf = SelectClientConf | RerankConf | RerankClientConf
+PremiseConf = SelectClientConf | RerankConf | RerankClientConf | OracleClientConf
 
 
 def premise_conf_update_ips(c: PremiseConf, port_map: dict[int, tuple[str, int]]):
@@ -110,6 +130,8 @@ def premise_conf_from_yaml(yaml_data: Any) -> PremiseConf:
             return RerankConf.from_yaml(yaml_data)
         case RerankClientConf.ALIAS:
             return RerankClientConf.from_yaml(yaml_data)
+        case OracleClientConf.ALIAS:
+            return OracleClientConf.from_yaml(yaml_data)
         case _:
             return select_conf_from_yaml(yaml_data)
 
@@ -120,8 +142,95 @@ def premise_client_from_conf(conf: PremiseConf) -> PremiseClient:
             raise ValueError("Rerank Conf CAnnot be directly converted into a client.")
         case RerankClientConf():
             return RerankClient.from_conf(conf)
+        case OracleClientConf():
+            return OracleClient.from_conf(conf)
         case _:
             return select_client_from_conf(conf)
+
+
+class OracleClient:
+    def __init__(
+        self,
+        base_client: PremiseClient,
+        purity: float,
+        sentence_db: SentenceDB,
+        data_loc: Path,
+    ):
+        self.base_client = base_client
+        self.purity = purity 
+        self.sentence_db = sentence_db
+        self.data_loc = data_loc
+        self.dp_cache = DPCache()
+        self.context_format = self.base_client.context_format
+        self.premise_format = self.base_client.premise_format
+        self.premise_filter = self.base_client.premise_filter
+    
+    def collect_premises(
+        self,
+        proof: Proof,
+    ) -> list[Sentence]:
+        premises: list[Sentence] = []
+        for step in proof.steps:
+            for premise in step.step.context:
+                if self.premise_filter.filter_premise(premise) and premise not in premises:
+                    premises.append(premise)
+        return premises
+
+    
+    def get_ranked_premises(
+        self,
+        step_idx: int,
+        proof: Proof,
+        dp_obj: DatasetFile,
+        premises: list[Sentence],
+        training: bool,
+    ) -> list[Sentence]:
+        orig_dp = self.dp_cache.get_dp(dp_obj.dp_name, self.data_loc, self.sentence_db)
+        orig_proof = orig_dp.proofs[proof.proof_idx]
+        ground_truth_premises = self.collect_premises(orig_proof) 
+        ranked_premises = self.base_client.get_ranked_premises(
+            step_idx, proof, dp_obj, premises, training
+        )
+        neg_premises = [p for p in ranked_premises if p not in ground_truth_premises]
+
+        if len(ranked_premises) == 0:
+            final_premises = []
+            pos_prems = 0
+            neg_prems = 0
+
+        elif self.purity == 0:
+            final_premises = neg_premises
+            pos_prems = 0
+            neg_prems = len(neg_premises)
+
+        elif len(ground_truth_premises) == 0:
+            final_premises = []
+            pos_prems = 0
+            neg_prems = 0 
+    
+        else:
+            target_total = int(len(ground_truth_premises) / self.purity)
+            target_num_negs = target_total - len(ground_truth_premises)
+            random.shuffle(neg_premises)
+            neg_premises = neg_premises[:target_num_negs]
+            ranked_premises = ground_truth_premises + neg_premises
+            random.shuffle(ranked_premises)
+            final_premises = ranked_premises
+            pos_prems = len(ground_truth_premises)
+            neg_prems = len(neg_premises)
+
+        _logger.info(f"OracleClient (DPName: {dp_obj.dp_name}; Proof: {proof.proof_idx}): Purity {self.purity} requested. Observed purity {pos_prems} / {neg_prems}.")
+        return final_premises 
+    
+    @classmethod
+    def from_conf(cls, conf: OracleClientConf) -> OracleClient:
+        return cls(
+            premise_client_from_conf(conf.base_client),
+            conf.purity,
+            SentenceDB.load(conf.sentence_db_loc),
+            conf.data_loc
+        )
+    
 
 
 class RerankClient:
@@ -222,4 +331,4 @@ def close_premise_client(c: PremiseClient):
             pass
 
 
-PremiseClient = SelectClient | RerankClient
+PremiseClient = SelectClient | RerankClient | OracleClient
