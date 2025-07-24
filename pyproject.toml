@@ -45,5 +45,6 @@ dependencies = [
 where = ["src", "test"]
 
 [tool.pyright]
-exclude = ["raw-data", "data", "models", "results"]
+include = ["src"]
+# exclude = ["raw-data", "data", "models", "results"]
 extraPaths = ["coqpyt", "CoqStoq", "src", "test"]

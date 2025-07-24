@@ -1,20 +1,22 @@
 from __future__ import annotations
 import heapq
 import time
+from enum import Enum
 from typing import Optional, Any
 from dataclasses import dataclass
 from data_management.dataset_file import Proof, DatasetFile
 from model_deployment.proof_manager import ProofManager, TacticResult
 from model_deployment.tactic_gen_client import TacticGenClient
 from model_deployment.goal_comparer import AlphaGoalComparer
-from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure, Candidate
+from model_deployment.classical_searcher import ClassicalSuccess, ClassicalFailure, Candidate, Kind
 from model_deployment.model_result import ModelResult
-
 from coqpyt.coq.lsp.structs import Goal
+
 
 
 @dataclass
 class DiversitySearcherConf:
+    kind: Kind
     max_branch_per_model: int
     max_search_steps: int
     depth_limit: int
@@ -26,6 +28,7 @@ class DiversitySearcherConf:
     @classmethod
     def from_yaml(cls, yaml_data: Any) -> DiversitySearcherConf:
         return cls(
+            Kind[yaml_data["kind"]],
             yaml_data["max_branch_per_model"],
             yaml_data["max_search_steps"],
             yaml_data["depth_limit"],
@@ -40,6 +43,7 @@ class DiversitySearcher:
         self,
         tactic_clients: list[TacticGenClient],
         proof_manager: ProofManager,
+        kind: Kind,
         max_branch: int,
         max_search_steps: int,
         depth_limit: int,
@@ -49,6 +53,7 @@ class DiversitySearcher:
     ):
         self.tactic_clients = tactic_clients
         self.proof_manager = proof_manager
+        self.kind = kind
         self.max_branch = max_branch
         self.max_search_steps = max_search_steps
         self.depth_limit = depth_limit
@@ -70,10 +75,13 @@ class DiversitySearcher:
         self.comparer = AlphaGoalComparer()
 
         self.root_candidate = Candidate(None, "", initial_proof, 0, 0, 0, None)
-        self.frontier: list[Candidate] = []
+        self.frontier: list[tuple[float, Candidate]] = []
         self.seen_goals: list[list[Goal]] = []
         self.seen_goals_candidates: list[Candidate] = []
-        heapq.heappush(self.frontier, self.root_candidate)
+        self.add_candidate(self.root_candidate)
+    
+    def add_candidate(self, candidate: Candidate) -> None:
+        heapq.heappush(self.frontier, (candidate.get_score(self.kind), candidate))
 
     @classmethod
     def from_conf(
@@ -85,6 +93,7 @@ class DiversitySearcher:
         return cls(
             tactic_clients,
             proof_manager,
+            conf.kind,
             conf.max_branch_per_model,
             conf.max_search_steps,
             conf.depth_limit,
@@ -147,7 +156,7 @@ class DiversitySearcher:
         return False
 
     def search_step(self, attempt_num: int, print_proofs: bool) -> Optional[Candidate]:
-        cur_candidate = heapq.heappop(self.frontier)
+        (_, cur_candidate) = heapq.heappop(self.frontier)
         if print_proofs:
             self.root_candidate.print()
         proof_check_result = self.proof_manager.check_proof(
@@ -202,4 +211,4 @@ class DiversitySearcher:
                         None, proof_str, tactic, score, tactic_score, depth, None
                     )
                     cur_candidate.children.append(new_candidate)
-                    heapq.heappush(self.frontier, new_candidate)
+                    self.add_candidate(new_candidate)

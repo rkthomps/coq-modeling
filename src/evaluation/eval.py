@@ -76,16 +76,17 @@ if __name__ == "__main__":
     worker_command = (
         f"python3 {WORKER_LOC} --conf_loc {conf_loc} --queue_loc {queue_loc}"
     )
+    _logger.info(f"Worker command: '{worker_command}'")
     match job_conf:
         case LocalJobConf(_, n_workers):
             run_local(worker_command, n_workers)
         case SlurmJobConf(_, slurm_conf):
             commands = [
                 f"cp -r {conf.sentence_db_loc} /tmp/{conf.sentence_db_loc.name}",
-                f"source unity-module-change-revert",
                 f"module load opam/2.1.2",
                 f"eval $(opam env)",
                 worker_command,
             ]
             slurm_conf.write_script(f"eval-{conf.save_loc.name}", commands, slurm_loc)
+            _logger.info(f"Slurm script written to {slurm_loc}")
             subprocess.run(["sbatch", str(slurm_loc)])

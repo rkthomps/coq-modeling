@@ -145,6 +145,7 @@ class DecoderLocalWrapper:
         beam: bool,
         token_mask_str,
     ) -> ModelResult:
+        assert not beam # Not doing beam search in diversity search
         token_mask = None
         if token_mask_str is not None:
             token_mask = TokenMask.from_str(token_mask_str)
@@ -162,31 +163,34 @@ class DecoderLocalWrapper:
             inputs["input_ids"],
             inputs["attention_mask"],
         )
-        with torch.no_grad():
-            outputs = self.model.generate(
-                inputs["input_ids"].cuda(),
-                max_new_tokens=128,
-                return_dict_in_generate=True,
-                output_scores=True,
-                length_penalty=0,
-                num_return_sequences=n,
-                temperature=None if beam else 1,
-                do_sample=not beam,
-                num_beams=n if beam and 1 < n else None,
-                attention_mask=attention_mask.cuda(),
-            )
-        input_num_tokens = inputs["input_ids"].shape[1]
-        generated_seqs = outputs.sequences[:, input_num_tokens:]
-        tactics = self.tokenizer.batch_decode(generated_seqs, skip_special_tokens=True)
-        non_special_tokens = torch.concat(
-            [(generated_seqs != t)[:, :, None] for t in self.tokenizer.all_special_ids],
-            axis=2,
-        ).all(dim=2)
-        lengths = non_special_tokens.sum(axis=1).tolist()
-        if beam and 1 < n:
-            scores = outputs.sequences_scores.tolist()
-            return ModelResult(tactics, scores, lengths)
-        else:
+
+        all_tactics = []
+        all_scores = []
+        all_lengths = []
+
+        for i in range(n):
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    inputs["input_ids"].cuda(),
+                    max_new_tokens=128,
+                    return_dict_in_generate=True,
+                    output_scores=True,
+                    length_penalty=0,
+                    num_return_sequences=1,
+                    temperature=None if beam else 1,
+                    do_sample=not beam,
+                    num_beams=n if beam and 1 < n else None,
+                    low_memory=True,
+                    attention_mask=attention_mask.cuda(),
+                )
+            input_num_tokens = inputs["input_ids"].shape[1]
+            generated_seqs = outputs.sequences[:, input_num_tokens:]
+            tactics = self.tokenizer.batch_decode(generated_seqs, skip_special_tokens=True)
+            non_special_tokens = torch.concat(
+                [(generated_seqs != t)[:, :, None] for t in self.tokenizer.all_special_ids],
+                axis=2,
+            ).all(dim=2)
+            lengths = non_special_tokens.sum(axis=1).tolist()
             with torch.no_grad():
                 transition_scores = self.model.compute_transition_scores(
                     generated_seqs, outputs.scores, normalize_logits=True
@@ -198,7 +202,11 @@ class DecoderLocalWrapper:
                     .sum(axis=1)
                     .tolist()
                 )
-                return ModelResult(tactics, scores, lengths)
+            assert len(tactics) == len(scores) == len(lengths) == 1
+            all_tactics.append(tactics[0])
+            all_scores.append(scores[0])
+            all_lengths.append(lengths[0])
+        return ModelResult(all_tactics, all_scores, all_lengths)
 
     @classmethod
     def get_training_conf(cls, checkpoint_loc: Path) -> Any:

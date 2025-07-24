@@ -1,6 +1,7 @@
 from __future__ import annotations
 import heapq
 import time
+from enum import Enum
 from typing import Optional, Any
 from dataclasses import dataclass
 from data_management.dataset_file import Proof, DatasetFile
@@ -9,6 +10,11 @@ from model_deployment.tactic_gen_client import TacticGenClient
 from model_deployment.goal_comparer import AlphaGoalComparer
 
 from coqpyt.coq.lsp.structs import Goal
+
+class Kind(Enum):
+    BEST = "best"
+    DEPTH = "depth"
+    BREADTH = "breadth"
 
 
 @dataclass
@@ -74,6 +80,24 @@ class Candidate:
 
     def __lt__(self, other: Candidate) -> bool:
         return other.score <= self.score  # Reversed so higher scores are first in pq
+    
+    def best_score(self) -> float:
+        return -1 * self.score # Want better scores to be smaller (so we negate)
+    
+    def depth_score(self) -> int:
+        return -1 * self.depth  # Want deeper candidates to have lower scores (so we negate)
+    
+    def breadth_score(self) -> int:
+        return self.depth  # Candidates at lower depth should have higher scores 
+    
+    def get_score(self, kind: Kind) -> float:
+        match kind:
+            case Kind.BEST:
+                return self.best_score()
+            case Kind.DEPTH:
+                return self.depth_score()
+            case Kind.BREADTH:
+                return self.breadth_score()
     
     def print(self, indent: str="") -> None:
         print(f"{indent}Tactic: {self.tactic}, Score: {self.score}")
