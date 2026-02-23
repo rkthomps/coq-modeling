@@ -42,7 +42,7 @@ The following instructions apply if you want to set up this repository without d
           
 
   ### Running Rango on a CoqStoq Project
-  1. Ensure you have the Rango model downloaded (TODO: Put Rango model on huggingface.) 
+  1. Ensure you have the Rango model downloaded (You can download the model by downloading the Rango artifact.) 
   2. Ensure you have CoqStoq properly built `cd CoqStoq` then `pytest` 
   3. Ensure the CoqStoq data is arranged as follows:
     - Rango assumes that data has the following directory structure during evaluation:
